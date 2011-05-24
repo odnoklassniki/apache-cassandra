@@ -18,28 +18,23 @@
 
 package org.apache.cassandra.db;
 
-import java.io.File;
-import java.io.FilenameFilter;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.io.IOError;
-
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.log4j.Logger;
-
-import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.db.filter.QueryPath;
-import org.apache.cassandra.db.filter.QueryFilter;
-import org.apache.cassandra.db.filter.NamesQueryFilter;
-import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.config.DatabaseDescriptor;
-
+import java.io.*;
 import java.net.InetAddress;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
+
+import org.apache.log4j.Logger;
+
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.filter.NamesQueryFilter;
+import org.apache.cassandra.db.filter.QueryFilter;
+import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.FBUtilities;
 
 public class SystemTable
 {
@@ -188,6 +183,7 @@ public class SystemTable
         columns.add(TOKEN);
         columns.add(GENERATION);
         columns.add(CLUSTERNAME);
+        columns.add(PARTITIONER);
         QueryFilter filter = new NamesQueryFilter(LOCATION_KEY, new QueryPath(STATUS_CF), columns);
         ColumnFamily cf = table.getColumnFamilyStore(STATUS_CF).getColumnFamily(filter);
         String partitioner = DatabaseDescriptor.getPartitioner().getClass().getName();

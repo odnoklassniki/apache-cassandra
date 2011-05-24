@@ -20,13 +20,17 @@ package org.apache.cassandra.service;
 
 import java.io.*;
 import java.net.InetAddress;
+import java.security.MessageDigest;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+
+import org.apache.log4j.Logger;
 
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.dht.Range;
@@ -34,15 +38,12 @@ import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.CompactionIterator.CompactedRow;
 import org.apache.cassandra.io.ICompactSerializer;
 import org.apache.cassandra.io.IndexSummary;
-import org.apache.cassandra.io.SSTableReader;
-import org.apache.cassandra.streaming.StreamOut;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
+import org.apache.cassandra.streaming.StreamOut;
 import org.apache.cassandra.streaming.StreamOutManager;
 import org.apache.cassandra.utils.*;
-
-import org.apache.log4j.Logger;
 
 /**
  * AntiEntropyService encapsulates "validating" (hashing) individual column families,
@@ -361,8 +362,10 @@ public class AntiEntropyService
         {
             validated++;
             // MerkleTree uses XOR internally, so we want lots of output bits here
-            byte[] rowhash = FBUtilities.hash("SHA-256", row.key.key.getBytes(), row.buffer.getData());
-            return new MerkleTree.RowHash(row.key.token, rowhash);
+            MessageDigest messageDigest = FBUtilities.createDigest("SHA-256");
+            messageDigest.update(row.key.key.getBytes());
+            messageDigest.update(row.buffer.getData(), 0, row.buffer.getLength());
+            return new MerkleTree.RowHash(row.key.token, messageDigest.digest());
         }
 
         /**
@@ -420,7 +423,7 @@ public class AntiEntropyService
         public final InetAddress remote;
         public final MerkleTree ltree;
         public final MerkleTree rtree;
-        public final List<MerkleTree.TreeRange> differences;
+        public final List<Range> differences;
 
         public Differencer(CFPair cf, InetAddress local, InetAddress remote, MerkleTree ltree, MerkleTree rtree)
         {
@@ -429,7 +432,7 @@ public class AntiEntropyService
             this.remote = remote;
             this.ltree = ltree;
             this.rtree = rtree;
-            differences = new ArrayList<MerkleTree.TreeRange>();
+            differences = new ArrayList<Range>();
         }
 
         /**
@@ -449,24 +452,15 @@ public class AntiEntropyService
             Set<Range> interesting = new HashSet(ss.getRangesForEndPoint(cf.left, local));
             interesting.retainAll(ss.getRangesForEndPoint(cf.left, remote));
 
-            // compare trees, and filter out uninteresting differences
+            // compare trees, and collect interesting differences
             for (MerkleTree.TreeRange diff : MerkleTree.difference(ltree, rtree))
-            {
                 for (Range localrange: interesting)
-                {
-                    if (diff.intersects(localrange))
-                    {
-                        differences.add(diff);
-                        break; // the inner loop
-                    }
-                }
-            }
+                    differences.addAll(diff.intersectionWith(localrange));
             
             // choose a repair method based on the significance of the difference
-            float difference = differenceFraction();
             try
             {
-                if (difference == 0.0)
+                if (differences.isEmpty())
                 {
                     logger.debug("Endpoints " + local + " and " + remote + " are consistent for " + cf);
                     return;
@@ -481,18 +475,6 @@ public class AntiEntropyService
         }
         
         /**
-         * @return the fraction of the keyspace that is different, as represented by our
-         * list of different ranges. A range at depth 0 == 1.0, at depth 1 == 0.5, etc.
-         */
-        float differenceFraction()
-        {
-            double fraction = 0.0;
-            for (MerkleTree.TreeRange diff : differences)
-                fraction += 1.0 / Math.pow(2, diff.depth);
-            return (float)fraction;
-        }
-
-        /**
          * Sends our list of differences to the remote endpoint using the
          * Streaming API.
          */
@@ -503,12 +485,12 @@ public class AntiEntropyService
             try
             {
                 List<Range> ranges = new ArrayList<Range>(differences);
-                final List<SSTableReader> sstables = CompactionManager.instance.submitAnticompaction(cfstore, ranges, remote).get();
+                final List<String> filenames = CompactionManager.instance.submitAnticompaction(cfstore, ranges, remote).get();
                 Future f = StageManager.getStage(StageManager.STREAM_STAGE).submit(new WrappedRunnable() 
                 {
                     protected void runMayThrow() throws Exception
                     {
-                        StreamOut.transferSSTables(remote, sstables, cf.left);
+                        StreamOut.transferSSTables(remote, filenames, cf.left);
                         StreamOutManager.remove(remote);
                     }
                 });

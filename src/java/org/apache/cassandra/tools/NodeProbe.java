@@ -25,17 +25,13 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.RuntimeMXBean;
 import java.net.InetAddress;
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
-
-import javax.management.*;
+import javax.management.JMX;
+import javax.management.MBeanServerConnection;
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
@@ -46,6 +42,7 @@ import org.apache.cassandra.db.ColumnFamilyStoreMBean;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.CompactionManagerMBean;
 import org.apache.cassandra.dht.Range;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.service.StorageServiceMBean;
 import org.apache.cassandra.streaming.StreamingService;
 import org.apache.cassandra.streaming.StreamingServiceMBean;
@@ -130,10 +127,18 @@ public class NodeProbe
     {
         ssProxy.forceTableCleanup();
     }
-    
+    public void forceTableCleanup(String ks, String... columnFamilies) throws IOException
+    {
+        ssProxy.forceTableCleanup(ks, columnFamilies);
+    }
+
     public void forceTableCompaction() throws IOException
     {
         ssProxy.forceTableCompaction();
+    }
+    public void forceTableCompaction(String ks, String... columnFamilies) throws IOException
+    {
+        ssProxy.forceTableCompaction(ks, columnFamilies);
     }
 
     public void forceTableFlush(String tableName, String... columnFamilies) throws IOException
@@ -240,6 +245,11 @@ public class NodeProbe
         return ssProxy.getLoadMap();
     }
 
+    public Map<Token, Float> getOwnership()
+    {
+        return ssProxy.getOwnership();
+    }
+
     public Iterator<Map.Entry<String, ColumnFamilyStoreMBean>> getColumnFamilyStoreMBeanProxies()
     {
         try
@@ -275,6 +285,26 @@ public class NodeProbe
         try
         {
             return JMX.newMBeanProxy(mbeanServerConn, new ObjectName(rowCachePath), JMXInstrumentedCacheMBean.class);
+        }
+        catch (MalformedObjectNameException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Get MBean representing ColumnFamilyStore
+     * @param keySpace name of the keyspace
+     * @param cfName name of the column family
+     * @return ColumnFamilyStoreMBean
+     */
+    public ColumnFamilyStoreMBean getColumnFamilyStoreMBean(String keySpace, String cfName)
+    {
+        String path = String.format("org.apache.cassandra.db:type=ColumnFamilyStores,keyspace=%s,columnfamily=%s", keySpace, cfName);
+
+        try
+        {
+            return JMX.newMBeanProxy(mbeanServerConn, new ObjectName(path), ColumnFamilyStoreMBean.class);
         }
         catch (MalformedObjectNameException e)
         {

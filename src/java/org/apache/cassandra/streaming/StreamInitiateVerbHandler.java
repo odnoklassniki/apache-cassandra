@@ -29,15 +29,14 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.log4j.Logger;
+import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Table;
-import org.apache.cassandra.streaming.StreamInitiateMessage;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.streaming.StreamInManager;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 
@@ -145,10 +144,17 @@ public class StreamInitiateVerbHandler implements IVerbHandler
         {
             String tableName;
             String[] pieces = FBUtilities.strip(distinctEntry, "-");
-            tableName = pieces[0];
+
+            if(pieces.length > 2) {
+                tableName = StringUtils.join(pieces, "-", 0, pieces.length -2);
+            }
+            else {
+                tableName = pieces[0];
+            }
+
             Table table = Table.open( tableName );
 
-            ColumnFamilyStore cfStore = table.getColumnFamilyStore(pieces[1]);
+            ColumnFamilyStore cfStore = table.getColumnFamilyStore(pieces[pieces.length -2]);
             if (logger.isDebugEnabled())
               logger.debug("Generating file name for " + distinctEntry + " ...");
             fileNames.put(distinctEntry, cfStore.getTempSSTableFileName());

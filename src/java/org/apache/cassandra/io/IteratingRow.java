@@ -21,23 +21,23 @@ package org.apache.cassandra.io;
  */
 
 
-import java.io.*;
+import java.io.DataOutput;
+import java.io.IOException;
+
+import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.IColumn;
-import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.io.util.FileDataInput;
-import com.google.common.collect.AbstractIterator;
 
 public class IteratingRow extends AbstractIterator<IColumn> implements Comparable<IteratingRow>
 {
     private final DecoratedKey key;
     private final long finishedAt;
     private final BufferedRandomAccessFile file;
-    private SSTableReader sstable;
+    public final SSTableReader sstable;
     private long dataStart;
 
     public IteratingRow(BufferedRandomAccessFile file, SSTableReader sstable) throws IOException

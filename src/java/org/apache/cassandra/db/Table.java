@@ -18,30 +18,29 @@
 
 package org.apache.cassandra.db;
 
-import java.util.*;
-import java.io.IOException;
 import java.io.File;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.util.*;
 import java.util.concurrent.Future;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
+import org.apache.log4j.Logger;
+
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
-import org.apache.cassandra.db.commitlog.CommitLogSegment;
+import org.apache.cassandra.db.filter.IdentityQueryFilter;
+import org.apache.cassandra.db.filter.QueryFilter;
+import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.io.SSTableDeletingReference;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
-
-import java.net.InetAddress;
-
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.*;
-import org.apache.cassandra.db.filter.*;
+import org.apache.cassandra.utils.FBUtilities;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
-
-import org.apache.log4j.Logger;
 
 public class Table 
 {
@@ -181,8 +180,6 @@ public class Table
     private final Table.TableMetadata tableMetadata;
     /* ColumnFamilyStore per column family */
     private final Map<String, ColumnFamilyStore> columnFamilyStores = new HashMap<String, ColumnFamilyStore>();
-    // cache application CFs since Range queries ask for them a _lot_
-    private SortedSet<String> applicationColumnFamilies;
 
     public static Table open(String table) throws IOException
     {
@@ -198,12 +195,16 @@ public class Table
                 {
                     tableInstance = new Table(table);
                     instances.put(table, tableInstance);
+
+                    //table has to be constructed and in the cache before cacheRow can be called
+                    for (ColumnFamilyStore cfs : tableInstance.getColumnFamilyStores())
+                        cfs.initRowCache();
                 }
             }
         }
         return tableInstance;
     }
-        
+
     public Set<String> getColumnFamilies()
     {
         return tableMetadata.getColumnFamilies();
@@ -225,15 +226,28 @@ public class Table
     public void forceCleanup()
     {
         if (name.equals(SYSTEM_TABLE))
-            throw new RuntimeException("Cleanup of the system table is neither necessary nor wise");
+            throw new UnsupportedOperationException("Cleanup of the system table is neither necessary nor wise");
 
-        Set<String> columnFamilies = tableMetadata.getColumnFamilies();
-        for ( String columnFamily : columnFamilies )
+        // Sort the column families in order of SSTable size, so cleanup of smaller CFs
+        // can free up space for larger ones
+        List<ColumnFamilyStore> sortedColumnFamilies = new ArrayList<ColumnFamilyStore>(columnFamilyStores.values());
+        Collections.sort(sortedColumnFamilies, new Comparator<ColumnFamilyStore>()
         {
-            ColumnFamilyStore cfStore = columnFamilyStores.get( columnFamily );
-            if ( cfStore != null )
-                cfStore.forceCleanup();
-        }   
+            // Compare first on size and, if equal, sort by name (arbitrary & deterministic).
+            public int compare(ColumnFamilyStore cf1, ColumnFamilyStore cf2)
+            {
+                long diff = (cf1.getTotalDiskSpaceUsed() - cf2.getTotalDiskSpaceUsed());
+                if (diff > 0)
+                    return 1;
+                if (diff < 0)
+                    return -1;
+                return cf1.columnFamily_.compareTo(cf2.columnFamily_);
+            }
+        });
+
+        // Cleanup in sorted order to free up space for the larger ones
+        for (ColumnFamilyStore cfs : sortedColumnFamilies)
+            cfs.forceCleanup();
     }
     
     
@@ -281,9 +295,9 @@ public class Table
      * do a complete compaction since we can figure out based on the ranges
      * whether the files need to be split.
     */
-    public List<SSTableReader> forceAntiCompaction(Collection<Range> ranges, InetAddress target)
+    public List<String> forceAntiCompaction(Collection<Range> ranges, InetAddress target)
     {
-        List<SSTableReader> allResults = new ArrayList<SSTableReader>();
+        List<String> allResults = new ArrayList<String>();
         Set<String> columnFamilies = tableMetadata.getColumnFamilies();
         for ( String columnFamily : columnFamilies )
         {

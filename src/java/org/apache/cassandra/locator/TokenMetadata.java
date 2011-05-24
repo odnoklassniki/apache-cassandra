@@ -18,6 +18,7 @@
 
 package org.apache.cassandra.locator;
 
+import java.net.InetAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -25,12 +26,11 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.google.common.collect.*;
-import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.dht.Range;
-
-import java.net.InetAddress;
-
 import org.apache.commons.lang.StringUtils;
+
+import org.apache.cassandra.dht.Range;
+import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.service.StorageService;
 
 public class TokenMetadata
 {
@@ -172,24 +172,10 @@ public class TokenMetadata
         }
     }
 
-    public void removeLeavingEndPoint(InetAddress endpoint)
+    public void removeEndpoint(InetAddress endpoint)
     {
         assert endpoint != null;
 
-        lock.writeLock().lock();
-        try
-        {
-            leavingEndPoints.remove(endpoint);
-        }
-        finally
-        {
-            lock.writeLock().unlock();
-        }
-    }
-
-    public void removeEndpoint(InetAddress endpoint)
-    {
-        assert tokenToEndPointMap.containsValue(endpoint);
         lock.writeLock().lock();
         try
         {
@@ -333,13 +319,15 @@ public class TokenMetadata
         }
     }
 
-    private synchronized Multimap<Range, InetAddress> getPendingRangesMM(String table)
+    private Multimap<Range, InetAddress> getPendingRangesMM(String table)
     {
         Multimap<Range, InetAddress> map = pendingRanges.get(table);
         if (map == null)
         {
-             map = HashMultimap.create();
-            pendingRanges.put(table, map);
+            map = HashMultimap.create();
+            Multimap<Range, InetAddress> priorMap = pendingRanges.putIfAbsent(table, map);
+            if (priorMap != null)
+                map = priorMap;
         }
         return map;
     }
@@ -404,36 +392,46 @@ public class TokenMetadata
     /**
      * iterator over the Tokens in the given ring, starting with the token for the node owning start
      * (which does not have to be a Token in the ring)
+     * @param includeMin True if the minimum token should be returned in the ring even if it has no owner.
      */
-    public static Iterator<Token> ringIterator(final List ring, Token start)
+    public static Iterator<Token> ringIterator(final List ring, Token start, boolean includeMin)
     {
         assert ring.size() > 0;
+        // insert the minimum token (at index == -1) if we were asked to include it and it isn't a member of the ring
+        final boolean insertMin = (includeMin && !ring.get(0).equals(StorageService.getPartitioner().getMinimumToken())) ? true : false;
+
         int i = Collections.binarySearch(ring, start);
         if (i < 0)
         {
             i = (i + 1) * (-1);
             if (i >= ring.size())
-            {
-                i = 0;
-            }
+                i = insertMin ? -1 : 0;
         }
+
         final int startIndex = i;
         return new AbstractIterator<Token>()
         {
             int j = startIndex;
             protected Token computeNext()
             {
-                if (j < 0)
+                if (j < -1)
                     return endOfData();
                 try
                 {
+                    // return minimum for index == -1
+                    if (j == -1)
+                        return StorageService.getPartitioner().getMinimumToken();
+                    // return ring token for other indexes
                     return (Token) ring.get(j);
                 }
                 finally
                 {
-                    j = (j + 1) % ring.size();
+                    j++;
+                    if (j == ring.size())
+                        j = insertMin ? -1 : 0;
                     if (j == startIndex)
-                        j = -1;
+                        // end iteration
+                        j = -2;
                 }
             }
         };

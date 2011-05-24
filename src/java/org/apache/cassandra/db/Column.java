@@ -18,10 +18,10 @@
 
 package org.apache.cassandra.db;
 
-import java.util.Collection;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
-import java.io.IOException;
+import java.util.Collection;
 
 import org.apache.log4j.Logger;
 import org.apache.commons.lang.ArrayUtils;
@@ -220,6 +220,11 @@ public class Column implements IColumn
         sb.append("@");
         sb.append(timestamp());
         return sb.toString();
+    }
+
+    public boolean isLive()
+    {
+        return !isMarkedForDelete;
     }
 }
 

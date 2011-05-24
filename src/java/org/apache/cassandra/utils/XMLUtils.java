@@ -18,17 +18,21 @@
 
 package org.apache.cassandra.utils;
 
-import java.util.*;
-import javax.xml.parsers.*;
-import javax.xml.transform.*;
-import javax.xml.xpath.XPath;
-import javax.xml.xpath.XPathConstants;
-import javax.xml.xpath.XPathExpression;
-import javax.xml.xpath.XPathExpressionException;
-import javax.xml.xpath.XPathFactory;
-import java.io.*;
-import org.w3c.dom.*;
-import org.xml.sax.*;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.xpath.*;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 public class XMLUtils
 {
@@ -42,6 +46,17 @@ public class XMLUtils
         File xmlFile = new File(xmlSrc);
         document_ = db.parse(xmlFile);
         
+        XPathFactory xpathFactory = XPathFactory.newInstance();
+        xpath_ = xpathFactory.newXPath();
+    }
+
+    public XMLUtils(URI xmlURI) throws FileNotFoundException, ParserConfigurationException, SAXException, IOException
+    {
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        DocumentBuilder db = dbf.newDocumentBuilder();
+	InputStream stream = xmlURI.toURL().openStream();
+        document_ = db.parse(stream);
+
         XPathFactory xpathFactory = XPathFactory.newInstance();
         xpath_ = xpathFactory.newXPath();
     }

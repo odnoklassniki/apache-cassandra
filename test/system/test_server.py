@@ -163,8 +163,8 @@ def _verify_super(supercf='Super1', key='key1'):
 def _expect_exception(fn, type_):
     try:
         r = fn()
-    except type_:
-        pass
+    except type_, e:
+        return e
     else:
         raise Exception('expected %s; got %s' % (type_.__name__, r))
     
@@ -712,6 +712,11 @@ class TestMutations(CassandraTester):
                                                                    Column(_i64(7), 'value7', 0)])]
         assert super_columns == super_columns_expected, super_columns
 
+        # shouldn't be able to specify a column w/o a super column for remove
+        cp = ColumnPath(column_family='Super1', column=_i64(6))
+        e = _expect_exception(lambda: client.remove('Keyspace1', 'key1', cp, 5, ConsistencyLevel.ONE), InvalidRequestException)
+        assert e.why.find("column cannot be specified without") >= 0
+
     def test_super_cf_remove_supercolumn(self):
         _insert_simple()
         _insert_super()
@@ -850,7 +855,30 @@ class TestMutations(CassandraTester):
         result = client.get_range_slice("Keyspace2", cp, SlicePredicate(column_names=['sc1']), 'key2', 'key4', 5, ConsistencyLevel.ONE)
         assert len(result) == 3
         assert list(set(row.columns[0].super_column.name for row in result))[0] == 'sc1'
-        
+
+    def test_get_range_slice_after_deletion(self):
+        key = 'key1'
+        # three supercoluns, each with "col1" subcolumn
+        for i in range(1,4):
+            client.insert('Keyspace2', key, ColumnPath('Super3', 'sc%d' % i, 'col1'), 'val1', 0, ConsistencyLevel.ONE)
+
+        cp = ColumnParent('Super3')
+        predicate = SlicePredicate(slice_range=SliceRange('sc1', 'sc3', False, count=1))
+        k_range = KeyRange(start_key=key, end_key=key, count=1)
+
+        # validate count=1 restricts to 1 supercolumn
+        result = client.get_range_slices('Keyspace2', cp, predicate, k_range, ConsistencyLevel.ONE)
+        assert len(result[0].columns) == 1
+
+        # remove sc1; add back subcolumn to override tombstone
+        client.remove('Keyspace2', key, ColumnPath('Super3', 'sc1'), 1, ConsistencyLevel.ONE)
+        result = client.get_range_slices('Keyspace2', cp, predicate, k_range, ConsistencyLevel.ONE)
+        assert len(result[0].columns) == 1
+        client.insert('Keyspace2', key, ColumnPath('Super3', 'sc1', 'col1'), 'val1', 2, ConsistencyLevel.ONE)
+        result = client.get_range_slices('Keyspace2', cp, predicate, k_range, ConsistencyLevel.ONE)
+        assert len(result[0].columns) == 1, result[0].columns
+        assert result[0].columns[0].super_column.name == 'sc1'
+
     def test_get_range_slice(self):
         for key in ['key1', 'key2', 'key3', 'key4', 'key5']:
             for cname in ['col1', 'col2', 'col3', 'col4', 'col5']:

@@ -16,9 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.cassandra.cache;
+package org.apache.cassandra.locator;
 
-public interface ICacheExpungeHook<K,V>
+import java.net.InetAddress;
+
+public interface ILatencySubscriber
 {
-    public void callMe(K key , V value);
+    public void receiveTiming(InetAddress address, Double latency);
 }

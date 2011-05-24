@@ -29,6 +29,8 @@
                 name="paranamer-ant" rev="2.1"/>
     <dependency org="junit" name="junit" rev="4.6" />
     <dependency org="org.apache.rat" name="apache-rat" rev="0.6" />
+
+    <dependency org="net.java.dev.jna" name="jna" rev="3.2.7"/>
   </dependencies>
 </ivy-module>
 

@@ -18,12 +18,11 @@
 
 package org.apache.cassandra.io.util;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.text.DecimalFormat;
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-
-import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
+import java.util.Comparator;
+import java.util.List;
 
 import org.apache.log4j.Logger;
 
@@ -147,29 +146,6 @@ public class FileUtils
     }
     
     /**
-     * calculate the total space used by a file or directory
-     * 
-     * @param path the path
-     * @return total space used.
-     */
-    public static long getUsedDiskSpaceForPath(String path)
-    {
-        File file = new File(path);
-        
-        if (file.isFile()) 
-        {
-            return file.length();
-        }
-        
-        long diskSpace = 0;
-        for (File childFile: file.listFiles())
-        {
-            diskSpace += getUsedDiskSpaceForPath(childFile.getPath());
-        }
-        return diskSpace;
-    }
-
-    /**
      * Deletes all files and subdirectories under "dir".
      * @param dir Directory to be deleted
      * @throws IOException if any part of the tree cannot be deleted
@@ -178,54 +154,11 @@ public class FileUtils
     {
         if (dir.isDirectory())
         {
-            String[] children = dir.list();
-            for (int i = 0; i < children.length; i++)
-            {
-                deleteDir(new File(dir, children[i]));
-            }
+            for (String aChildren : dir.list())
+                deleteDir(new File(dir, aChildren));
         }
 
         // The directory is now empty so now it can be smoked
         deleteWithConfirm(dir);
-    }
-
-    /**
-     * Create a hard link for a given file.
-     * 
-     * @param sourceFile      The name of the source file.
-     * @param destinationFile The name of the destination file.
-     * 
-     * @throws IOException if an error has occurred while creating the link.
-     */
-    public static void createHardLink(File sourceFile, File destinationFile) throws IOException
-    {
-        String osname = System.getProperty("os.name");
-        ProcessBuilder pb;
-        if (osname.startsWith("Windows"))
-        {
-            float osversion = Float.parseFloat(System.getProperty("os.version"));
-            if (osversion >= 6.0f)
-            {
-                pb = new ProcessBuilder("cmd", "/c", "mklink", "/H", destinationFile.getAbsolutePath(), sourceFile.getAbsolutePath());
-            }
-            else
-            {
-                pb = new ProcessBuilder("fsutil", "hardlink", "create", destinationFile.getAbsolutePath(), sourceFile.getAbsolutePath());
-            }
-        }
-        else
-        {
-            pb = new ProcessBuilder("ln", sourceFile.getAbsolutePath(), destinationFile.getAbsolutePath());
-            pb.redirectErrorStream(true);
-        }
-        Process p = pb.start();
-        try
-        {
-            p.waitFor();
-        }
-        catch (InterruptedException e)
-        {
-            throw new RuntimeException(e);
-        }
     }
 }

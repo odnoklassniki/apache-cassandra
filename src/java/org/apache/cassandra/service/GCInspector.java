@@ -21,23 +21,21 @@ package org.apache.cassandra.service;
  */
 
 
-import org.apache.log4j.Logger;
-
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
-import org.apache.cassandra.utils.WrappedRunnable;
-import org.apache.cassandra.concurrent.IExecutorMBean;
-import org.apache.cassandra.db.CompactionManagerMBean;
-
-import com.sun.management.GarbageCollectorMXBean;
-import com.sun.management.GcInfo;
-import java.lang.management.MemoryUsage;
 import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryUsage;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.*;
 import javax.management.JMX;
 import javax.management.MBeanServer;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
+
+import org.apache.log4j.Logger;
+
+import org.apache.cassandra.concurrent.IExecutorMBean;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.CompactionManager;
 
 public class GCInspector
 {
@@ -51,17 +49,30 @@ public class GCInspector
     private HashMap<String, Long> gctimes = new HashMap<String, Long>();
     private final MBeanServer server = ManagementFactory.getPlatformMBeanServer();
 
-    List<GarbageCollectorMXBean> beans = new ArrayList<GarbageCollectorMXBean>();
+    List<Object> beans = new ArrayList<Object>(); // these are instances of com.sun.management.GarbageCollectorMXBean
 
     public GCInspector()
     {
+        // we only want this class to do its thing on sun jdks, or when the sun classes are present.
+        Class gcBeanClass = null;
+        try
+        {
+            gcBeanClass = Class.forName("com.sun.management.GarbageCollectorMXBean");
+            Class.forName("com.sun.management.GcInfo");
+        }
+        catch (ClassNotFoundException ex)
+        {
+            // this happens when using a non-sun jdk.
+            logger.warn("Cannot load sun GC monitoring classes. GCInspector is disabled.");
+        }
+        
         MBeanServer server = ManagementFactory.getPlatformMBeanServer();
         try
         {
             ObjectName gcName = new ObjectName(ManagementFactory.GARBAGE_COLLECTOR_MXBEAN_DOMAIN_TYPE + ",*");
             for (ObjectName name : server.queryNames(gcName, null))
             {
-                GarbageCollectorMXBean gc = ManagementFactory.newPlatformMXBeanProxy(server, name.getCanonicalName(), GarbageCollectorMXBean.class);
+                Object gc = ManagementFactory.newPlatformMXBeanProxy(server, name.getCanonicalName(), gcBeanClass);
                 beans.add(gc);
             }
         }
@@ -73,6 +84,9 @@ public class GCInspector
 
     public void start()
     {
+        // don't bother starting a thread that will do nothing.
+        if (beans.size() == 0)
+            return;         
         TimerTask t = new TimerTask()
         {
             public void run()
@@ -85,25 +99,25 @@ public class GCInspector
 
     private void logIntervalGCStats()
     {
-        for (GarbageCollectorMXBean gc : beans)
+        for (Object gc : beans)
         {
-            GcInfo gci = gc.getLastGcInfo();
-            if (gci == null)
+            SunGcWrapper gcw = new SunGcWrapper(gc);
+            if (gcw.isLastGcInfoNull())
                 continue;
 
-            Long previous = gctimes.get(gc.getName());
-            if (previous != null && previous == gc.getCollectionTime())
+            Long previous = gctimes.get(gcw.getName());
+            if (previous != null && previous.longValue() == gcw.getCollectionTime().longValue())            
                 continue;
-            gctimes.put(gc.getName(), gc.getCollectionTime());
+            gctimes.put(gcw.getName(), gcw.getCollectionTime());
 
             long previousMemoryUsed = 0;
             long memoryUsed = 0;
             long memoryMax = 0;
-            for (Map.Entry<String, MemoryUsage> entry : gci.getMemoryUsageBeforeGc().entrySet())
+            for (Map.Entry<String, MemoryUsage> entry : gcw.getMemoryUsageBeforeGc().entrySet())
             {
                 previousMemoryUsed += entry.getValue().getUsed();
             }
-            for (Map.Entry<String, MemoryUsage> entry : gci.getMemoryUsageAfterGc().entrySet())
+            for (Map.Entry<String, MemoryUsage> entry : gcw.getMemoryUsageAfterGc().entrySet())
             {
                 MemoryUsage mu = entry.getValue();
                 memoryUsed += mu.getUsed();
@@ -111,40 +125,131 @@ public class GCInspector
             }
 
             String st = String.format("GC for %s: %s ms, %s reclaimed leaving %s used; max is %s",
-                                      gc.getName(), gci.getDuration(), previousMemoryUsed - memoryUsed, memoryUsed, memoryMax);
-            if (gci.getDuration() > MIN_DURATION)
+                    gcw.getName(), gcw.getDuration(), previousMemoryUsed - memoryUsed, memoryUsed, memoryMax);
+            if (gcw.getDuration() > MIN_DURATION)                          
                 logger.info(st);
             else if (logger.isDebugEnabled())
                 logger.debug(st);
-            if (gci.getDuration() > MIN_DURATION_TPSTATS)
+            if (gcw.getDuration() > MIN_DURATION_TPSTATS)
             {
-                try
-                {
-                    logThreadPoolStats();
-                }
-                catch (MalformedObjectNameException e)
-                {
-                    throw new RuntimeException(e);
-                }
+                logStats();
             }
         }
     }
 
-    private void logThreadPoolStats() throws MalformedObjectNameException
+    public void logStats()
     {
-        ObjectName query = new ObjectName("org.apache.cassandra.concurrent:type=*");
-        Iterator<ObjectName> tpiter = server.queryNames(query, null).iterator();
+        // everything from o.a.c.concurrent
         logger.info(String.format("%-25s%10s%10s", "Pool Name", "Active", "Pending"));
-        while(tpiter.hasNext())
+        ObjectName concurrent = null;
+        try
         {
-            ObjectName objectName = tpiter.next();
+            concurrent = new ObjectName("org.apache.cassandra.concurrent:type=*");
+        }
+        catch (MalformedObjectNameException e)
+        {
+            throw new RuntimeException(e);
+        }
+        for (ObjectName objectName : server.queryNames(concurrent, null))
+        {
             String poolName = objectName.getKeyProperty("type");
             IExecutorMBean threadPoolProxy = JMX.newMBeanProxy(server, objectName, IExecutorMBean.class);
-            logger.info(String.format("%-25s%10d%10d", poolName, threadPoolProxy.getActiveCount(), threadPoolProxy.getPendingTasks()));
+            logger.info(String.format("%-25s%10s%10s",
+                                      poolName, threadPoolProxy.getActiveCount(), threadPoolProxy.getPendingTasks()));
         }
-        // one off for compaction
-        ObjectName cm = new ObjectName("org.apache.cassandra.db:type=CompactionManager");
-        CompactionManagerMBean cmProxy = JMX.newMBeanProxy(server, cm, CompactionManagerMBean.class);
-        logger.info(String.format("%-25s%10s%10s", "CompactionManager", "n/a", cmProxy.getPendingTasks()));
+        // one offs
+        logger.info(String.format("%-25s%10s%10s",
+                                  "CompactionManager", "n/a", CompactionManager.instance.getPendingTasks()));
+
+        // per-CF stats
+        logger.info(String.format("%-25s%20s%20s%20s", "ColumnFamily", "Memtable ops,data", "Row cache size/cap", "Key cache size/cap"));
+        for (ColumnFamilyStore cfs : ColumnFamilyStore.all())
+        {
+            logger.info(String.format("%-25s%20s%20s%20s",
+                                      cfs.getTable().name + "." + cfs.columnFamily_,
+                                      cfs.getMemtableColumnsCount() + "," + cfs.getMemtableDataSize(),
+                                      cfs.getRowCacheSize() + "/" + cfs.getRowCacheCapacity(),
+                                      cfs.getKeyCacheSize() + "/" + cfs.getKeyCacheCapacity()));
+        }
     }
+    
+    
+    // wrapper for sun class. this enables other jdks to compile this class.
+    private final class SunGcWrapper
+    {
+        
+        private Map<String, MemoryUsage> usageBeforeGc = null;
+        private Map<String, MemoryUsage> usageAfterGc = null;
+        private String name;
+        private Long collectionTime;
+        private Long duration;
+        
+        SunGcWrapper(Object gcMxBean)
+        {
+            // if we've gotten this far, we've already verified that the right classes are in the CP. Now we just
+            // need to check for boneheadedness.
+            // grab everything we need here so that we don't have to deal with try/catch everywhere.
+            try
+            {
+                assert Class.forName("com.sun.management.GarbageCollectorMXBean").isAssignableFrom(gcMxBean.getClass());
+                Method getGcInfo = gcMxBean.getClass().getDeclaredMethod("getLastGcInfo");
+                Object lastGcInfo = getGcInfo.invoke(gcMxBean);
+                if (lastGcInfo != null)
+                {
+                    usageBeforeGc = (Map<String, MemoryUsage>)lastGcInfo.getClass().getDeclaredMethod("getMemoryUsageBeforeGc").invoke(lastGcInfo);
+                    usageAfterGc = (Map<String, MemoryUsage>)lastGcInfo.getClass().getDeclaredMethod("getMemoryUsageAfterGc").invoke(lastGcInfo);
+                    duration = (Long)lastGcInfo.getClass().getDeclaredMethod("getDuration").invoke(lastGcInfo);
+                    name = (String)gcMxBean.getClass().getDeclaredMethod("getName").invoke(gcMxBean);
+                    collectionTime = (Long)gcMxBean.getClass().getDeclaredMethod("getCollectionTime").invoke(gcMxBean);
+                }
+            }
+            catch (ClassNotFoundException e)
+            {
+                throw new RuntimeException(e);
+            }
+            catch (NoSuchMethodException e)
+            {
+                throw new RuntimeException(e);
+            }
+            catch (IllegalAccessException e)
+            {
+                throw new RuntimeException(e);
+            }
+            catch (InvocationTargetException e)
+            {
+                throw new RuntimeException(e);
+            }
+        }
+        
+        String getName()
+        {
+            return name;
+        }
+        
+        Long getCollectionTime()
+        {
+            return collectionTime;
+        }
+        
+        Long getDuration()
+        {
+            return duration;
+        }
+        
+        Map<String, MemoryUsage> getMemoryUsageAfterGc()
+        {
+            return usageAfterGc;
+        }
+        
+        Map<String, MemoryUsage> getMemoryUsageBeforeGc()
+        {
+            return usageBeforeGc;
+        }
+        
+        boolean isLastGcInfoNull()
+        {
+            return usageBeforeGc == null;
+        }
+    }
+    
 }

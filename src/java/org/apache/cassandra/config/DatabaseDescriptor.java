@@ -18,34 +18,39 @@
 
 package org.apache.cassandra.config;
 
-import org.apache.cassandra.auth.AllowAllAuthenticator;
-import org.apache.cassandra.auth.IAuthenticator;
-import org.apache.cassandra.db.*;
-import org.apache.cassandra.db.commitlog.CommitLog;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.marshal.UTF8Type;
-import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.locator.IEndPointSnitch;
-import org.apache.cassandra.locator.AbstractReplicationStrategy;
-import org.apache.cassandra.io.util.FileUtils;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.XMLUtils;
-import org.apache.log4j.Logger;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
-import org.xml.sax.SAXException;
-
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.TransformerException;
-import javax.xml.xpath.XPathExpressionException;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
-import java.util.*;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.net.URI;
 import java.net.URL;
+import java.net.UnknownHostException;
+import java.util.*;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerException;
+import javax.xml.xpath.XPathExpressionException;
+
+import org.apache.log4j.Logger;
+
+import org.apache.cassandra.auth.AllowAllAuthenticator;
+import org.apache.cassandra.auth.IAuthenticator;
+import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.HintedHandOffManager;
+import org.apache.cassandra.db.SystemTable;
+import org.apache.cassandra.db.Table;
+import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.locator.AbstractReplicationStrategy;
+import org.apache.cassandra.locator.DynamicEndpointSnitch;
+import org.apache.cassandra.locator.IEndPointSnitch;
+import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.XMLUtils;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 public class DatabaseDescriptor
 {
@@ -81,6 +86,7 @@ public class DatabaseDescriptor
     /* Current index into the above list of directories */
     private static int currentIndex = 0;
     private static String logFileDirectory;
+    private static String savedCachesDirectory;
     private static int consistencyThreads = 4; // not configurable
     private static int concurrentReaders = 8;
     private static int concurrentWriters = 32;
@@ -119,7 +125,7 @@ public class DatabaseDescriptor
     private static int gcGraceInSeconds = 10 * 24 * 3600; // 10 days
 
     // the path qualified config file (storage-conf.xml) name
-    private static String configFileName;
+    private static URI configFileURI;
     /* initial token in the ring */
     private static String initialToken = null;
 
@@ -137,34 +143,71 @@ public class DatabaseDescriptor
 
     private static IAuthenticator authenticator = new AllowAllAuthenticator();
 
+    private static int indexinterval = 128;
+
     private final static String STORAGE_CONF_FILE = "storage-conf.xml";
+
+    public static final int DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS = 0;
+    public static final int DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS = 0;
+
+    public static File getSerializedRowCachePath(String ksName, String cfName)
+    {
+        return new File(savedCachesDirectory + File.separator + ksName + "-" + cfName + "-RowCache");
+    }
+
+    public static File getSerializedKeyCachePath(String ksName, String cfName)
+    {
+        return new File(savedCachesDirectory + File.separator + ksName + "-" + cfName + "-KeyCache");
+    }
+
+    public static int getCompactionPriority()
+    {
+        String priorityString = System.getProperty("cassandra.compaction.priority");
+        return priorityString == null ? Thread.NORM_PRIORITY : Integer.parseInt(priorityString);
+    }
 
     /**
      * Try the storage-config system property, and then inspect the classpath.
      */
-    static String getStorageConfigPath()
+    static URI getStorageConfigURI()
     {
-        String scp = System.getProperty("storage-config") + File.separator + STORAGE_CONF_FILE;
-        if (new File(scp).exists())
-            return scp;
-        // try the classpath
-        ClassLoader loader = DatabaseDescriptor.class.getClassLoader();
-        URL scpurl = loader.getResource(STORAGE_CONF_FILE);
-        if (scpurl != null)
-            return scpurl.getFile();
-        throw new RuntimeException("Cannot locate " + STORAGE_CONF_FILE + " via storage-config system property or classpath lookup.");
-    }
+	String confdir = System.getProperty("storage-config");
+	if (confdir != null) {
+	    String scp = confdir + File.separator + STORAGE_CONF_FILE;
+	    File scpf = new File(scp);
+	    if (scpf.exists()) {
+		return scpf.toURI();
+	    }
+	}
 
-    private static int stageQueueSize_ = 4096;
+	// try the classpath
+	ClassLoader loader = DatabaseDescriptor.class.getClassLoader();
+	URL scpurl = loader.getResource(STORAGE_CONF_FILE);
+	if (scpurl != null) {
+	    String s = scpurl.toString();
+	    URI u;
+	    try {
+		u = new URI(s);
+	    }
+	    catch (java.net.URISyntaxException e)
+	    {
+		throw new RuntimeException(e);
+	    }
+	    return u;
+	}
+
+	throw new RuntimeException("Cannot locate " + STORAGE_CONF_FILE + " via storage-config system property or classpath lookup.");
+    }
 
     static
     {
         try
         {
-            configFileName = getStorageConfigPath();
-            if (logger.isDebugEnabled())
-                logger.debug("Loading settings from " + configFileName);
-            XMLUtils xmlUtils = new XMLUtils(configFileName);
+	    configFileURI = getStorageConfigURI();
+
+	    if (logger.isDebugEnabled())
+                logger.debug("Loading settings from " + configFileURI);
+            XMLUtils xmlUtils = new XMLUtils(configFileURI);
 
             /* Cluster Name */
             clusterName = xmlUtils.getNodeValue("/Storage/ClusterName");
@@ -237,12 +280,12 @@ public class DatabaseDescriptor
             {
                 diskAccessMode = DiskAccessMode.standard;
                 indexAccessMode = DiskAccessMode.mmap;
-                logger.info("DiskAccessMode is" + diskAccessMode + ", indexAccessMode is " + indexAccessMode );
+                logger.info("DiskAccessMode is " + diskAccessMode + ", indexAccessMode is " + indexAccessMode );
             }
             else
             {
                 indexAccessMode = diskAccessMode;
-                logger.info("DiskAccessMode is" + diskAccessMode + ", indexAccessMode is " + indexAccessMode );
+                logger.info("DiskAccessMode is " + diskAccessMode + ", indexAccessMode is " + indexAccessMode );
             }
 
             /* Authentication and authorization backend, implementing IAuthenticator */
@@ -469,6 +512,7 @@ public class DatabaseDescriptor
             /* data file and commit log directories. they get created later, when they're needed. */
             dataFileDirectories = xmlUtils.getNodeValues("/Storage/DataFileDirectories/DataFileDirectory");
             logFileDirectory = xmlUtils.getNodeValue("/Storage/CommitLogDirectory");
+            savedCachesDirectory = xmlUtils.getNodeValue("/Storage/SavedCachesDirectory");
 
             for (String datadir : dataFileDirectories)
             {
@@ -495,6 +539,14 @@ public class DatabaseDescriptor
             if (logger.isDebugEnabled())
                 logger.debug("setting hintedHandoffEnabled to " + hintedHandoffEnabled);
 
+            String indexIntervalStr = xmlUtils.getNodeValue("/Storage/IndexInterval");
+            if (indexIntervalStr != null)
+            {
+                indexinterval = Integer.parseInt(indexIntervalStr);
+                if (indexinterval <= 0)
+                    throw new ConfigurationException("Index Interval must be a positive, non-zero integer.");
+            }
+
             readTablesFromXml();
             if (tables.isEmpty())
                 throw new ConfigurationException("No keyspaces configured");
@@ -505,11 +557,13 @@ public class DatabaseDescriptor
             systemMeta.cfMetaData.put(SystemTable.STATUS_CF, new CFMetaData(Table.SYSTEM_TABLE,
                                                                             SystemTable.STATUS_CF,
                                                                             "Standard",
-                                                                            new UTF8Type(),
+                                                                            new BytesType(),
                                                                             null,
                                                                             "persistent metadata for the local node",
                                                                             0.0,
-                                                                            0.01));
+                                                                            0.01,
+                                                                            DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS,
+                                                                            DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS));
 
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
                                                                                     HintedHandOffManager.HINTS_CF,
@@ -518,7 +572,9 @@ public class DatabaseDescriptor
                                                                                     new BytesType(),
                                                                                     "hinted handoff data",
                                                                                     0.0,
-                                                                                    0.01));
+                                                                                    0.01,
+                                                                                    DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS,
+                                                                                    DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS));
 
             /* Load the seeds for node contact points */
             String[] seedsxml = xmlUtils.getNodeValues("/Storage/Seeds/Seed");
@@ -526,10 +582,16 @@ public class DatabaseDescriptor
             {
                 throw new ConfigurationException("A minimum of one seed is required.");
             }
-            for( int i = 0; i < seedsxml.length; ++i )
+            for (String seedString : seedsxml)
             {
-                seeds.add(InetAddress.getByName(seedsxml[i]));
+                seeds.add(InetAddress.getByName(seedString));
             }
+        }
+        catch (UnknownHostException e)
+        {
+            logger.error("Fatal error: " + e.getMessage());
+            System.err.println("Unable to start with unknown hosts configured.  Use IP addresses instead of hostnames.");
+            System.exit(2);
         }
         catch (ConfigurationException e)
         {
@@ -548,7 +610,7 @@ public class DatabaseDescriptor
         XMLUtils xmlUtils = null;
         try
         {
-            xmlUtils = new XMLUtils(configFileName);
+            xmlUtils = new XMLUtils(configFileURI);
         }
         catch (ParserConfigurationException e)
         {
@@ -626,7 +688,11 @@ public class DatabaseDescriptor
                 try
                 {
                     Class cls = Class.forName(endPointSnitchClassName);
-                    epSnitch = (IEndPointSnitch)cls.getConstructor().newInstance();
+                    IEndPointSnitch snitch = (IEndPointSnitch)cls.getConstructor().newInstance();
+                    if (Boolean.getBoolean("cassandra.dynamic_snitch"))
+                        epSnitch = new DynamicEndpointSnitch(snitch);
+                    else
+                        epSnitch = snitch;
                 }
                 catch (ClassNotFoundException e)
                 {
@@ -648,7 +714,6 @@ public class DatabaseDescriptor
                 {
                     throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName + " " + e.getMessage());
                 }
-
                 String xqlTable = "/Storage/Keyspaces/Keyspace[@Name='" + ksName + "']/";
                 NodeList columnFamilies = xmlUtils.getRequestedNodeList(xqlTable + "ColumnFamily");
 
@@ -720,7 +785,11 @@ public class DatabaseDescriptor
                     String comment = xmlUtils.getNodeValue(xqlCF + "Comment");
 
                     // insert it into the table dictionary.
-                    meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, comment, rowCacheSize, keyCacheSize));
+                    String rowCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "RowCacheSavePeriodInSeconds");
+                    String keyCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "KeyCacheSavePeriodInSeconds");
+                    int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
+                    int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
+                    meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
                 }
 
                 tables.put(meta.name, meta);
@@ -794,6 +863,11 @@ public class DatabaseDescriptor
                 throw new ConfigurationException("CommitLogDirectory must be specified");
             }
             FileUtils.createDirectory(logFileDirectory);
+            if (savedCachesDirectory == null)
+            {
+                throw new ConfigurationException("SavedCachesDirectory must be specified");
+            }
+            FileUtils.createDirectory(savedCachesDirectory);
         }
         catch (ConfigurationException ex) {
             logger.error("Fatal error: " + ex.getMessage());
@@ -852,7 +926,7 @@ public class DatabaseDescriptor
     {
         return partitioner;
     }
-    
+
     public static IEndPointSnitch getEndPointSnitch(String table)
     {
         return tables.get(table).epSnitch;
@@ -904,7 +978,7 @@ public class DatabaseDescriptor
     }
 
     public static String getConfigFileName() {
-        return configFileName;
+        return configFileURI.toString();
     }
 
     public static String getJobJarLocation()
@@ -969,11 +1043,6 @@ public class DatabaseDescriptor
     public static int getReplicationFactor(String table)
     {
         return tables.get(table).replicationFactor;
-    }
-
-    public static int getQuorum(String table)
-    {
-        return (tables.get(table).replicationFactor / 2) + 1;
     }
 
     public static long getRpcTimeout()
@@ -1107,11 +1176,6 @@ public class DatabaseDescriptor
         return getCFMetaData(tableName, cfName).subcolumnComparator;
     }
 
-    public static int getStageQueueSize()
-    {
-        return stageQueueSize_;
-    }
-
     /**
      * @return The absolute number of keys that should be cached per table.
      */
@@ -1130,14 +1194,6 @@ public class DatabaseDescriptor
         CFMetaData cfm = getCFMetaData(tableName, columnFamilyName);
         double v = (cfm == null) ? CFMetaData.DEFAULT_ROW_CACHE_SIZE : cfm.rowCacheSize;
         return (int)Math.min(FBUtilities.absoluteFromFraction(v, expectedRows), Integer.MAX_VALUE);
-    }
-
-    private static class ConfigurationException extends Exception
-    {
-        public ConfigurationException(String message)
-        {
-            super(message);
-        }
     }
 
     public static InetAddress getListenAddress()
@@ -1212,5 +1268,10 @@ public class DatabaseDescriptor
     public static boolean hintedHandoffEnabled()
     {
         return hintedHandoffEnabled;
+    }
+
+    public static int getIndexInterval()
+    {
+        return indexinterval;
     }
 }

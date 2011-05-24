@@ -18,11 +18,11 @@
 
 package org.apache.cassandra.net;
 
-import java.util.List;
+import java.net.InetAddress;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-public interface IAsyncResult
+public interface IAsyncResult extends IMessageCallback
 {    
     /**
      * This is used to check if the task has been completed
@@ -51,4 +51,6 @@ public interface IAsyncResult
      * @param result the response message
      */
     public void result(Message result);
+
+    public InetAddress getFrom();
 }

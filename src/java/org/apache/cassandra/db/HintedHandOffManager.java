@@ -18,33 +18,29 @@
 
 package org.apache.cassandra.db;
 
-import java.net.UnknownHostException;
-import java.util.Collection;
-import java.util.Arrays;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.ExecutorService;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeoutException;
 
 import org.apache.log4j.Logger;
+import org.apache.commons.lang.ArrayUtils;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.QueryFilter;
+import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
-
-import java.net.InetAddress;
-
-import org.apache.commons.lang.ArrayUtils;
-
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.service.*;
+import org.apache.cassandra.service.DigestMismatchException;
+import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.cassandra.thrift.InvalidRequestException;
-import org.apache.cassandra.db.filter.IdentityQueryFilter;
-import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.utils.WrappedRunnable;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
@@ -113,24 +109,48 @@ public class HintedHandOffManager
         }
 
         Table table = Table.open(tableName);
-        RowMutation rm = new RowMutation(tableName, key);
-        for (ColumnFamilyStore cfstore : table.getColumnFamilyStores())
+        for (ColumnFamilyStore cfs : table.getColumnFamilyStores())
         {
-            ColumnFamily cf = cfstore.getColumnFamily(new IdentityQueryFilter(key, new QueryPath(cfstore.getColumnFamilyName())));
-            if (cf != null)
-                rm.add(cf);
-        }
-        Message message = rm.makeRowMutationMessage();
-        WriteResponseHandler responseHandler = new WriteResponseHandler(1, tableName);
-        MessagingService.instance.sendRR(message, new InetAddress[] { endPoint }, responseHandler);
+            byte[] startColumn = ArrayUtils.EMPTY_BYTE_ARRAY;
+            while (true)
+            {
+                QueryFilter filter = new SliceQueryFilter(key, new QueryPath(cfs.getColumnFamilyName()), startColumn, ArrayUtils.EMPTY_BYTE_ARRAY, false, PAGE_SIZE);
+                ColumnFamily cf = cfs.getColumnFamily(filter);
+                if (pagingFinished(cf, startColumn))
+                    break;
+                if (cf.getColumnNames().isEmpty())
+                {
+                    if (logger_.isDebugEnabled())
+                        logger_.debug("Nothing to hand off for " + key);
+                    break;
+                }
 
-        try
-        {
-            responseHandler.get();
-        }
-        catch (TimeoutException e)
-        {
-            return false;
+                startColumn = cf.getColumnNames().last();
+                RowMutation rm = new RowMutation(tableName, key);
+                rm.add(cf);
+                Message message = rm.makeRowMutationMessage();
+                WriteResponseHandler responseHandler = new WriteResponseHandler(1, tableName);
+                MessagingService.instance.sendRR(message, endPoint, responseHandler);
+                try
+                {
+                    responseHandler.get();
+                }
+                catch (TimeoutException e)
+                {
+                    return false;
+                }
+            }
+
+            String throttleRaw = System.getProperty("hinted_handoff_throttle");
+            Integer throttle = throttleRaw == null ? null : Integer.valueOf(throttleRaw);
+            try
+            {
+                Thread.sleep(throttle == null ? 0 : throttle);
+            }
+            catch (InterruptedException e)
+            {
+                throw new AssertionError(e);
+            }
         }
         return true;
     }

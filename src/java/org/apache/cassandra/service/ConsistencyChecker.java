@@ -26,41 +26,57 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
-import org.apache.log4j.Logger;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.cache.ICacheExpungeHook;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ReadCommand;
 import org.apache.cassandra.db.ReadResponse;
 import org.apache.cassandra.db.Row;
-import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.net.IAsyncCallback;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.cassandra.utils.ExpiringMap;
-import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.WrappedRunnable;
 
-
-class ConsistencyChecker implements Runnable
+/**
+ * ConsistencyChecker does the following:
+ *
+ * [ConsistencyChecker.run]
+ * (1) sends DIGEST read requests to each other replica of the given row.
+ *
+ * [DigestResponseHandler]
+ * (2) If any of the digests to not match the data read, it sends a second round of requests
+ * to each replica, this time for the full data
+ *
+ * [DataRepairHandler]
+ * (3) processes full-read responses and invokes resolve.  The actual sending of messages
+ * repairing out-of-date or missing data is handled by ReadResponseResolver.
+ */
+public class ConsistencyChecker implements Runnable
 {
-	private static Logger logger_ = Logger.getLogger(ConsistencyChecker.class);
-    private static ExpiringMap<String, String> readRepairTable_ = new ExpiringMap<String, String>(DatabaseDescriptor.getRpcTimeout());
+    private static Logger logger_ = LoggerFactory.getLogger(ConsistencyChecker.class);
 
-    private final String table_;
+    private static ScheduledExecutorService executor_ = new ScheduledThreadPoolExecutor(1); // TODO add JMX
+
     private final Row row_;
     protected final List<InetAddress> replicas_;
     private final ReadCommand readCommand_;
+    private final InetAddress dataSource;
 
-    public ConsistencyChecker(String table, Row row, List<InetAddress> endpoints, ReadCommand readCommand)
+    public ConsistencyChecker(ReadCommand command, Row row, List<InetAddress> endpoints, InetAddress dataSource)
     {
-        table_ = table;
         row_ = row;
         replicas_ = endpoints;
-        readCommand_ = readCommand;
+        readCommand_ = command;
+        this.dataSource = dataSource;
     }
 
     public void run()
@@ -68,15 +84,16 @@ class ConsistencyChecker implements Runnable
         ReadCommand readCommandDigestOnly = constructReadMessage(true);
 		try
 		{
-			Message message = readCommandDigestOnly.makeReadMessage();
-            if (logger_.isDebugEnabled())
-              logger_.debug("Reading consistency digest for " + readCommand_.key + " from " + message.getMessageId() + "@[" + StringUtils.join(replicas_, ", ") + "]");
-
-            MessagingService.instance.addCallback(new DigestResponseHandler(), message.getMessageId());
+            DigestResponseHandler handler = new DigestResponseHandler();
             for (InetAddress endpoint : replicas_)
             {
-                if (!endpoint.equals(FBUtilities.getLocalAddress()))
-                    MessagingService.instance.sendOneWay(message, endpoint);
+                if (!endpoint.equals(dataSource))
+                {
+                    Message message = readCommandDigestOnly.makeReadMessage();
+                    if (logger_.isDebugEnabled())
+                      logger_.debug("Reading consistency digest for " + readCommand_.key + " from " + message.getMessageId() + "@" + endpoint);
+                    MessagingService.instance.sendRR(message, endpoint, handler);
+                }
             }
 		}
 		catch (IOException ex)
@@ -92,11 +109,12 @@ class ConsistencyChecker implements Runnable
         return readCommand;
     }
 
-    class DigestResponseHandler implements IAsyncCallback
+    public class DigestResponseHandler implements IAsyncCallback
 	{
         private boolean repairInvoked;
+        private final byte[] dataDigest = ColumnFamily.digest(row_.cf);
 
-		public synchronized void response(Message response)
+        public synchronized void response(Message response)
 		{
             if (repairInvoked)
                 return;
@@ -108,24 +126,19 @@ class ConsistencyChecker implements Runnable
                 ReadResponse result = ReadResponse.serializer().deserialize(new DataInputStream(bufIn));
                 byte[] digest = result.digest();
 
-                if (!Arrays.equals(ColumnFamily.digest(row_.cf), digest))
+                if (!Arrays.equals(dataDigest, digest))
                 {
-                    IResponseResolver<Row> readResponseResolver = new ReadResponseResolver(table_, replicas_.size());
-                    IAsyncCallback responseHandler;
-                    if (replicas_.contains(FBUtilities.getLocalAddress()))
-                        responseHandler = new DataRepairHandler(row_, replicas_.size(), readResponseResolver);
-                    else
-                        responseHandler = new DataRepairHandler(replicas_.size(), readResponseResolver);
-
                     ReadCommand readCommand = constructReadMessage(false);
-                    Message message = readCommand.makeReadMessage();
-                    if (logger_.isDebugEnabled())
-                      logger_.debug("Performing read repair for " + readCommand_.key + " to " + message.getMessageId() + "@[" + StringUtils.join(replicas_, ", ") + "]");
-                    MessagingService.instance.addCallback(responseHandler, message.getMessageId());
+                    DataRepairHandler handler = new DataRepairHandler();
                     for (InetAddress endpoint : replicas_)
                     {
-                        if (!endpoint.equals(FBUtilities.getLocalAddress()))
-                            MessagingService.instance.sendOneWay(message, endpoint);
+                        if (!endpoint.equals(dataSource))
+                        {
+                            Message message = readCommand.makeReadMessage();
+                            if (logger_.isDebugEnabled())
+                                logger_.debug("Digest mismatch; re-reading " + readCommand_.key + " from " + message.getMessageId() + "@" + endpoint);
+                            MessagingService.instance.sendRR(message, endpoint, handler);
+                        }
                     }
 
                     repairInvoked = true;
@@ -138,52 +151,41 @@ class ConsistencyChecker implements Runnable
         }
     }
 
-	static class DataRepairHandler implements IAsyncCallback, ICacheExpungeHook<String, String>
+    class DataRepairHandler implements IAsyncCallback
 	{
 		private final Collection<Message> responses_ = new LinkedBlockingQueue<Message>();
-		private final IResponseResolver<Row> readResponseResolver_;
+		private final ReadResponseResolver readResponseResolver_;
 		private final int majority_;
-		
-		DataRepairHandler(int responseCount, IResponseResolver<Row> readResponseResolver)
-		{
-			readResponseResolver_ = readResponseResolver;
-			majority_ = (responseCount / 2) + 1;  
-		}
 
-        public DataRepairHandler(Row localRow, int responseCount, IResponseResolver<Row> readResponseResolver) throws IOException
+        public DataRepairHandler() throws IOException
         {
-            this(responseCount, readResponseResolver);
-            // wrap localRow in a response Message so it doesn't need to be special-cased in the resolver
-            ReadResponse readResponse = new ReadResponse(localRow);
-            DataOutputBuffer out = new DataOutputBuffer();
-            ReadResponse.serializer().serialize(readResponse, out);
-            byte[] bytes = new byte[out.getLength()];
-            System.arraycopy(out.getData(), 0, bytes, 0, bytes.length);
-            responses_.add(new Message(FBUtilities.getLocalAddress(), StageManager.RESPONSE_STAGE, StorageService.Verb.READ_RESPONSE, bytes));
+            readResponseResolver_ = new ReadResponseResolver(readCommand_.table, readCommand_.key, replicas_.size());
+            majority_ = (replicas_.size() / 2) + 1;
+            // wrap original data Row in a response Message so it doesn't need to be special-cased in the resolver
+            ReadResponse readResponse = new ReadResponse(row_);
+            Message fakeMessage = new Message(dataSource, StageManager.RESPONSE_STAGE, StorageService.Verb.READ_RESPONSE, ArrayUtils.EMPTY_BYTE_ARRAY);
+            responses_.add(fakeMessage);
+            readResponseResolver_.injectPreProcessed(fakeMessage, readResponse);
         }
 
         // synchronized so the " == majority" is safe
 		public synchronized void response(Message message)
 		{
 			if (logger_.isDebugEnabled())
-			  logger_.debug("Received responses in DataRepairHandler : " + message.toString());
+			  logger_.debug("Received response in DataRepairHandler : " + message.toString());
 			responses_.add(message);
+            readResponseResolver_.preprocess(message);
             if (responses_.size() == majority_)
             {
-                String messageId = message.getMessageId();
-                readRepairTable_.put(messageId, messageId, this);
-            }
-        }
-
-		public void callMe(String key, String value)
-		{
-            try
-			{
-				readResponseResolver_.resolve(responses_);
-            }
-            catch (Exception ex)
-            {
-                throw new RuntimeException(ex);
+                Runnable runnable = new WrappedRunnable()
+                {
+                    public void runMayThrow() throws IOException, DigestMismatchException
+                    {
+                        readResponseResolver_.resolve(responses_);
+                    }
+                };
+                // give remaining replicas until timeout to reply and get added to responses_
+                executor_.schedule(runnable, DatabaseDescriptor.getRpcTimeout(), TimeUnit.MILLISECONDS);
             }
         }
     }

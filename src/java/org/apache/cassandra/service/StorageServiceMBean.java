@@ -19,15 +19,15 @@
 package org.apache.cassandra.service;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
 
 import org.apache.cassandra.dht.Range;
-import java.net.InetAddress;
+import org.apache.cassandra.dht.Token;
 
 
 public interface StorageServiceMBean
@@ -96,9 +96,19 @@ public interface StorageServiceMBean
     public void forceTableCompaction() throws IOException;
 
     /**
+     * Forces major compaction on a single cf of a single keyspace
+     */
+    public void forceTableCompaction(String ks, String... columnFamilies) throws IOException;
+
+    /**
      * Trigger a cleanup of keys on all tables.
      */
     public void forceTableCleanup() throws IOException;
+
+    /**
+     * Trigger a cleanup of keys on a single keyspace
+     */
+    public void forceTableCleanup(String tableName, String... columnFamilies) throws IOException;
 
     /**
      * Takes the snapshot for a given table.
@@ -172,4 +182,13 @@ public interface StorageServiceMBean
     
     /** force hint delivery to an endpoint **/
     public void deliverHints(String host) throws UnknownHostException;
+
+    /** save row and key caches */
+    public void saveCaches() throws ExecutionException, InterruptedException;
+
+    /**
+     * given a list of tokens (representing the nodes in the cluster), returns
+     *   a mapping from "token -> %age of cluster owned by that token"
+     */
+    public Map<Token, Float> getOwnership();
 }

@@ -18,8 +18,12 @@
 
 package org.apache.cassandra.db;
 
+import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -159,7 +163,8 @@ public class Memtable implements Comparable<Memtable>, IFlushable
         }
 
         SSTableReader ssTable = writer.closeAndOpenReader();
-        logger.info("Completed flushing " + ssTable.getFilename());
+        logger.info(String.format("Completed flushing %s (%d bytes)",
+                                  ssTable.getFilename(), new File(ssTable.getFilename()).length()));
         return ssTable;
     }
 
