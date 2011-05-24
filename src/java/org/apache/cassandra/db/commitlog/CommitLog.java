@@ -172,7 +172,9 @@ public class CommitLog
         Arrays.sort(files, new FileUtils.FileComparator());
         logger.info("Replaying " + StringUtils.join(files, ", "));
         recover(files,false);
-        FileUtils.delete(files);
+        
+        archiveLogFiles(files);
+        
         logger.info("Log replay complete");
     }
 
@@ -454,8 +456,20 @@ public class CommitLog
             header.turnOff(id);
             if (header.isSafeToDelete())
             {
-                logger.info("Discarding obsolete commit log:" + segment);
-                segment.close();
+
+                if (DatabaseDescriptor.isLogArchiveActive())
+                {
+                    logger.info("Archiving obsolete commit log:" + segment);
+                    segment.close();
+
+                    archiveLogfile(segment.getPath());
+                }
+                else
+                {
+                    logger.info("Discarding obsolete commit log:" + segment);
+                    segment.close();
+                }
+           
                 DeletionService.submitDelete(segment.getPath());
                 // usually this will be the first (remaining) segment, but not always, if segment A contains
                 // writes to a CF that is unflushed but is followed by segment B whose CFs are all flushed.
@@ -465,8 +479,44 @@ public class CommitLog
             {
                 if (logger.isDebugEnabled())
                     logger.debug("Not safe to delete commit log " + segment + "; dirty is " + header.dirtyString());
+
                 segment.writeHeader();
             }
+        }
+    }
+    
+    private static void archiveLogFiles(File[] files) throws IOException
+    {
+        if (DatabaseDescriptor.isLogArchiveActive())
+        {
+            for (File file : files) {
+                logger.info("Archiving obsolete commit log:" + file);
+                archiveLogfile(file.getPath());
+            }
+
+        }
+        FileUtils.delete(files);
+    }
+
+    /**
+     * @param oldLogFile
+     */
+    private static void archiveLogfile(String oldLogFile)
+    {
+        try {
+            int lastSlash=oldLogFile.lastIndexOf( File.separator );
+            String archivePath = DatabaseDescriptor.getLogArchiveDestination() + oldLogFile.substring(lastSlash);
+            
+            FileUtils.createHardLink(
+                    new File( oldLogFile ),
+                    new File( archivePath )
+            );
+            
+            logger.info("Log file archived "+archivePath);
+            
+        } catch (IOException e) 
+        {
+            logger.warn("Cannot make hard link to "+oldLogFile, e);
         }
     }
 

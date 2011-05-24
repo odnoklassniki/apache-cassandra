@@ -1064,12 +1064,12 @@ public class DatabaseDescriptor
         return logFileDirectory;
     }
     
-    public static String getLogShipDestination()
+    public static String getLogArchiveDestination()
     {
         return logFileArchiveDestination;
     }
     
-    public static boolean isLogShipingActive()
+    public static boolean isLogArchiveActive()
     {
         return logFileArchiveDestination != null;
     }

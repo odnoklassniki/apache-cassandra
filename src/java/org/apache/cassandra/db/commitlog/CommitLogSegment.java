@@ -24,7 +24,6 @@ package org.apache.cassandra.db.commitlog;
 import java.io.File;
 import java.io.IOError;
 import java.io.IOException;
-import java.sql.DatabaseMetaData;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
@@ -34,7 +33,6 @@ import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.DataOutputBuffer;
-import org.apache.cassandra.io.util.FileUtils;
 import org.apache.log4j.Logger;
 
 public class CommitLogSegment
@@ -181,35 +179,6 @@ public class CommitLogSegment
             throw new IOError(e);
         }
         
-
-        if (DatabaseDescriptor.isLogShipingActive())
-        {
-            shipLogfile(logWriter.getPath());
-        }
-   
-    }
-
-    /**
-     * @param oldLogFile
-     */
-    private void shipLogfile(String oldLogFile)
-    {
-        try {
-            int lastSlash=oldLogFile.lastIndexOf( File.separator );
-            String shippedPath = DatabaseDescriptor.getLogShipDestination() + oldLogFile.substring(lastSlash);
-            
-            FileUtils.createHardLink(
-                    new File(oldLogFile),
-                    new File( shippedPath )
-            );
-            
-            if (logger.isDebugEnabled())
-                logger.debug("New file shipped "+shippedPath);
-            
-        } catch (IOException e) 
-        {
-            logger.warn("Cannot make hard link to "+oldLogFile, e);
-        }
     }
 
     @Override
