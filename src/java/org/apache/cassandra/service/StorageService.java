@@ -1601,4 +1601,40 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         tokenMetadata_ = tmd;
         return old;
     }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.service.StorageServiceMBean#getMemtableThroughput()
+     */
+    @Override
+    public int getMemtableThroughput()
+    {
+        return DatabaseDescriptor.getMemtableThroughput();
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.service.StorageServiceMBean#setMemtableThroughput(int)
+     */
+    @Override
+    public void setMemtableThroughput(int throughputMBytes)
+    {
+        DatabaseDescriptor.setMemtableThroughput(throughputMBytes);
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.service.StorageServiceMBean#getMemtableOperations()
+     */
+    @Override
+    public double getMemtableOperations()
+    {
+        return DatabaseDescriptor.getMemtableOperations();
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.service.StorageServiceMBean#setMemtableOperations(double)
+     */
+    @Override
+    public void setMemtableOperations(double operations)
+    {
+        DatabaseDescriptor.setMemtableOperations(operations);
+    }
 }

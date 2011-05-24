@@ -909,10 +909,28 @@ public class DatabaseDescriptor
     {
       return memtableThroughput;
     }
+    
+    /**
+     * MM: allow experiments with memtable throughput at runtime
+     * @param memtableThroughput the memtableThroughput to set
+     */
+    public static void setMemtableThroughput(int memtableThroughput)
+    {
+        DatabaseDescriptor.memtableThroughput = memtableThroughput;
+    }
 
     public static double getMemtableOperations()
     {
       return memtableOperations;
+    }
+    
+    /**
+     * MM: allow experiments with memtable operations at runtime
+     * @param memtableOperations the memtableOperations to set
+     */
+    public static void setMemtableOperations(double memtableOperations)
+    {
+        DatabaseDescriptor.memtableOperations = memtableOperations;
     }
 
     public static boolean getConsistencyCheck()

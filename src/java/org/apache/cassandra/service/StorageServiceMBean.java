@@ -172,4 +172,28 @@ public interface StorageServiceMBean
     
     /** force hint delivery to an endpoint **/
     public void deliverHints(String host) throws UnknownHostException;
+    
+    /**
+     * 
+     * @return currently configured value
+     */
+    int getMemtableThroughput();
+    /**
+     * MM: allow experiments with memtable throughout change at runtime
+     * 
+     * @param throughputMBytes
+     */
+    void setMemtableThroughput(int throughputMBytes);
+    
+    /**
+     * 
+     * @return currently configured value
+     */
+    double getMemtableOperations();
+    /**
+     * MM: allow experiments with memtable operations change at runtime
+     * 
+     * @param operations
+     */
+    void setMemtableOperations(double operations);
 }
