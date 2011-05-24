@@ -612,6 +612,13 @@ public class CompactionManager implements CompactionManagerMBean
         {
             return ci == null ? null : ci.getBytesRead();
         }
+        
+        public boolean isMajor()
+        {
+            return ci == null ? false : ci.isMajor();
+        }
+        
+        
     }
 
     public String getColumnFamilyInProgress()
@@ -627,6 +634,11 @@ public class CompactionManager implements CompactionManagerMBean
     public Long getBytesCompacted()
     {
         return executor.getBytesCompleted();
+    }
+    
+    public boolean isMajorCompaction()
+    {
+        return executor.isMajor();
     }
 
     public int getPendingTasks()

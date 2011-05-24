@@ -180,6 +180,11 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     {
         return bytesRead;
     }
+    
+    public boolean isMajor()
+    {
+        return major;
+    }
 
     public static class CompactedRow
     {

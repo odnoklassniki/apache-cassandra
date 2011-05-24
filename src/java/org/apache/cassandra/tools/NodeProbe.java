@@ -398,8 +398,7 @@ public class NodeProbe
         
         if (cf!=null)
         {
-            return "Compacting "+cf+", progress "+mcmProxy.getBytesCompacted()+"/"+mcmProxy.getBytesTotalInProgress();
-            
+            return (mcmProxy.isMajorCompaction() ? "Major " : "" )+"Compacting "+cf+", progress "+mcmProxy.getBytesCompacted()+"/"+mcmProxy.getBytesTotalInProgress();
         } else
         {
             return "Not active";

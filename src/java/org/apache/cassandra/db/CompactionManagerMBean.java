@@ -54,6 +54,11 @@ public interface CompactionManagerMBean
      * @return the progress on the current compaction; null if none
      */
     public Long getBytesCompacted();
+    
+    /**
+     * @return true, if currently running compaction is major, false - minor or no compaction currently running
+     */
+    public boolean isMajorCompaction();
 
     /**
      * @return estimated number of compactions remaining to perform
