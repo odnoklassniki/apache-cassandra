@@ -26,6 +26,7 @@ import java.util.List;
 
 import org.junit.Test;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.CleanupHelper;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -37,7 +38,7 @@ import static org.junit.Assert.assertTrue;
 public class StorageServiceServerTest
 {
     @Test
-    public void testRegularMode() throws IOException, InterruptedException
+    public void testRegularMode() throws IOException, InterruptedException, ConfigurationException
     {
         CleanupHelper.mkdirs();
         CleanupHelper.cleanup();
@@ -60,5 +61,11 @@ public class StorageServiceServerTest
         List<Token> toks = Collections.emptyList();
         assertEquals(Collections.emptyList(), StorageService.instance.getAllRanges(toks));
     }
-}
 
+    @Test
+    public void testSnapshot() throws IOException
+    {
+        // no need to insert extra data, even an "empty" database will have a little information in the system keyspace
+        StorageService.instance.takeAllSnapshot(null);
+    }
+}

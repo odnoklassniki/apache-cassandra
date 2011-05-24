@@ -18,9 +18,10 @@
 
 package org.apache.cassandra.db;
 
-import java.io.IOException;
 import java.io.File;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.net.InetAddress;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
@@ -30,23 +31,21 @@ import java.util.concurrent.TimeUnit;
 import javax.management.*;
 
 import org.apache.log4j.Logger;
+import org.apache.commons.collections.PredicateUtils;
+import org.apache.commons.collections.iterators.CollatingIterator;
+import org.apache.commons.collections.iterators.FilterIterator;
+import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.concurrent.DebuggableThreadPoolExecutor;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.io.*;
-import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.service.AntiEntropyService;
 import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.service.AntiEntropyService;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
-
-import java.net.InetAddress;
-
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.collections.iterators.FilterIterator;
-import org.apache.commons.collections.iterators.CollatingIterator;
-import org.apache.commons.collections.PredicateUtils;
 
 public class CompactionManager implements CompactionManagerMBean
 {
@@ -91,7 +90,9 @@ public class CompactionManager implements CompactionManagerMBean
                     return 0;
                 }
                 logger.debug("Checking to see if compaction of " + cfs.columnFamily_ + " would be useful");
-                Set<List<SSTableReader>> buckets = getBuckets(cfs.getSSTables(), 50L * 1024L * 1024L);
+
+                Set<List<SSTableReader>> buckets = getBuckets(
+                        convertSSTablesToPairs(cfs.getSSTables()), 50L * 1024L * 1024L);
                 updateEstimateFor(cfs, buckets);
                 
                 for (List<SSTableReader> sstables : buckets)
@@ -136,11 +137,11 @@ public class CompactionManager implements CompactionManagerMBean
         return executor.submit(runnable);
     }
 
-    public Future<List<SSTableReader>> submitAnticompaction(final ColumnFamilyStore cfStore, final Collection<Range> ranges, final InetAddress target)
+    public Future<List<String>> submitAnticompaction(final ColumnFamilyStore cfStore, final Collection<Range> ranges, final InetAddress target)
     {
-        Callable<List<SSTableReader>> callable = new Callable<List<SSTableReader>>()
+        Callable<List<String>> callable = new Callable<List<String>>()
         {
-            public List<SSTableReader> call() throws IOException
+            public List<String> call() throws IOException
             {
                 return doAntiCompaction(cfStore, cfStore.getSSTables(), ranges, target);
             }
@@ -272,14 +273,17 @@ public class CompactionManager implements CompactionManagerMBean
         long totalkeysWritten = 0;
 
         // TODO the int cast here is potentially buggy
-        int expectedBloomFilterSize = Math.max(SSTableReader.indexInterval(), (int)SSTableReader.getApproximateKeyCount(sstables));
+        int expectedBloomFilterSize = Math.max(DatabaseDescriptor.getIndexInterval(), (int)SSTableReader.getApproximateKeyCount(sstables));
         if (logger.isDebugEnabled())
           logger.debug("Expected bloom filter size : " + expectedBloomFilterSize);
 
         SSTableWriter writer;
-        CompactionIterator ci = new CompactionIterator(sstables, gcBefore, major); // retain a handle so we can call close()
+        CompactionIterator ci = new CompactionIterator(cfs, sstables, gcBefore, major); // retain a handle so we can call close()
         Iterator<CompactionIterator.CompactedRow> nni = new FilterIterator(ci, PredicateUtils.notNullPredicate());
         executor.beginCompaction(cfs, ci);
+
+        Map<DecoratedKey, SSTable.PositionSize> cachedKeys = new HashMap<DecoratedKey, SSTable.PositionSize>();
+        boolean preheatKeyCache = Boolean.getBoolean("compaction_preheat_key_cache");
 
         try
         {
@@ -306,6 +310,18 @@ public class CompactionManager implements CompactionManagerMBean
                 if (rowsize > DatabaseDescriptor.getRowWarningThreshold())
                     logger.warn("Large row " + row.key.key + " in " + cfs.getColumnFamilyName() + " " + rowsize + " bytes");
                 cfs.addToCompactedRowStats(rowsize);
+
+                if (preheatKeyCache)
+                {
+                    for (SSTableReader sstable : sstables)
+                    {
+                        if (sstable.getCachedPosition(row.key) != null)
+                        {
+                            cachedKeys.put(row.key, new SSTable.PositionSize(prevpos, rowsize));
+                            break;
+                        }
+                    }
+                }
             }
         }
         finally
@@ -315,26 +331,17 @@ public class CompactionManager implements CompactionManagerMBean
 
         SSTableReader ssTable = writer.closeAndOpenReader();
         cfs.replaceCompactedSSTables(sstables, Arrays.asList(ssTable));
+        for (Entry<DecoratedKey, SSTable.PositionSize> entry : cachedKeys.entrySet()) // empty if preheat is off
+            ssTable.cacheKey(entry.getKey(), entry.getValue());
         submitMinorIfNeeded(cfs);
 
-        String format = "Compacted to %s.  %d/%d bytes for %d keys.  Time: %dms.";
+        String format = "Compacted to %s.  %d/%d bytes for %d keys.  Time: %dms";
         long dTime = System.currentTimeMillis() - startTime;
         logger.info(String.format(format, writer.getFilename(), SSTable.getTotalBytes(sstables), ssTable.length(), totalkeysWritten, dTime));
         return sstables.size();
     }
 
-    /**
-     * This function is used to do the anti compaction process , it spits out the file which has keys that belong to a given range
-     * If the target is not specified it spits out the file as a compacted file with the unecessary ranges wiped out.
-     *
-     * @param cfs
-     * @param sstables
-     * @param ranges
-     * @param target
-     * @return
-     * @throws java.io.IOException
-     */
-    private List<SSTableReader> doAntiCompaction(ColumnFamilyStore cfs, Collection<SSTableReader> sstables, Collection<Range> ranges, InetAddress target)
+    private SSTableWriter antiCompactionHelper(ColumnFamilyStore cfs, Collection<SSTableReader> sstables, Collection<Range> ranges, InetAddress target)
             throws IOException
     {
         Table table = cfs.getTable();
@@ -351,27 +358,21 @@ public class CompactionManager implements CompactionManagerMBean
             // compacting for streaming: send to subdirectory
             compactionFileLocation = compactionFileLocation + File.separator + DatabaseDescriptor.STREAMING_SUBDIR;
         }
-        List<SSTableReader> results = new ArrayList<SSTableReader>();
 
+        long totalKeysWritten = 0;
         long startTime = System.currentTimeMillis();
-        long totalkeysWritten = 0;
 
-        int expectedBloomFilterSize = Math.max(SSTableReader.indexInterval(), (int)(SSTableReader.getApproximateKeyCount(sstables) / 2));
+        int expectedBloomFilterSize = Math.max(DatabaseDescriptor.getIndexInterval(), (int)(SSTableReader.getApproximateKeyCount(sstables) / 2));
         if (logger.isDebugEnabled())
           logger.debug("Expected bloom filter size : " + expectedBloomFilterSize);
 
         SSTableWriter writer = null;
-        CompactionIterator ci = new AntiCompactionIterator(sstables, ranges, getDefaultGCBefore(), cfs.isCompleteSSTables(sstables));
+        CompactionIterator ci = new AntiCompactionIterator(cfs, sstables, ranges, getDefaultGCBefore(), cfs.isCompleteSSTables(sstables));
         Iterator<CompactionIterator.CompactedRow> nni = new FilterIterator(ci, PredicateUtils.notNullPredicate());
         executor.beginCompaction(cfs, ci);
 
         try
         {
-            if (!nni.hasNext())
-            {
-                return results;
-            }
-
             while (nni.hasNext())
             {
                 CompactionIterator.CompactedRow row = nni.next();
@@ -382,22 +383,61 @@ public class CompactionManager implements CompactionManagerMBean
                     writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner());
                 }
                 writer.append(row.key, row.buffer);
-                totalkeysWritten++;
+                totalKeysWritten++;
             }
         }
         finally
         {
             ci.close();
         }
+        if (writer != null) {
+            List<String> filenames = writer.getAllFilenames();
+            String format = "AntiCompacted to %s.  %d/%d bytes for %d keys.  Time: %dms.";
+            long dTime = System.currentTimeMillis() - startTime;
+            long length = new File(filenames.get(filenames.size() -1)).length(); // Data file is last in the list
+            logger.info(String.format(format, writer.getFilename(), SSTable.getTotalBytes(sstables), length, totalKeysWritten, dTime));
+        }
+        return writer;
+    }
 
+    /**
+     * This function is used to do the anti compaction process.  It spits out a file which has keys
+     * that belong to a given range. If the target is not specified it spits out the file as a compacted file with the
+     * unnecessary ranges wiped out.
+     *
+     * @param cfs
+     * @param sstables
+     * @param ranges
+     * @param target
+     * @return
+     * @throws java.io.IOException
+     */
+    private List<String> doAntiCompaction(ColumnFamilyStore cfs, Collection<SSTableReader> sstables, Collection<Range> ranges, InetAddress target)
+            throws IOException
+    {
+        List<String> filenames = new ArrayList<String>(SSTable.FILES_ON_DISK);
+        SSTableWriter writer = antiCompactionHelper(cfs, sstables, ranges, target);
+        if (writer != null)
+        {
+            writer.close();
+            filenames = writer.getAllFilenames();
+        }
+        return filenames;
+    }
+
+    /**
+     * Like doAntiCompaction(), but returns an List of SSTableReaders instead of a list of filenames.
+     * @throws java.io.IOException
+     */
+    private List<SSTableReader> doAntiCompactionReturnReaders(ColumnFamilyStore cfs, Collection<SSTableReader> sstables, Collection<Range> ranges, InetAddress target)
+            throws IOException
+    {
+        List<SSTableReader> results = new ArrayList<SSTableReader>(1);
+        SSTableWriter writer = antiCompactionHelper(cfs, sstables, ranges, target);
         if (writer != null)
         {
             results.add(writer.closeAndOpenReader());
-            String format = "AntiCompacted to %s.  %d/%d bytes for %d keys.  Time: %dms.";
-            long dTime = System.currentTimeMillis() - startTime;
-            logger.info(String.format(format, writer.getFilename(), SSTable.getTotalBytes(sstables), results.get(0).length(), totalkeysWritten, dTime));
         }
-
         return results;
     }
 
@@ -410,7 +450,7 @@ public class CompactionManager implements CompactionManagerMBean
     private void doCleanupCompaction(ColumnFamilyStore cfs) throws IOException
     {
         Collection<SSTableReader> originalSSTables = cfs.getSSTables();
-        List<SSTableReader> sstables = doAntiCompaction(cfs, originalSSTables, StorageService.instance.getLocalRanges(cfs.getTable().name), null);
+        List<SSTableReader> sstables = doAntiCompactionReturnReaders(cfs, originalSSTables, StorageService.instance.getLocalRanges(cfs.getTable().name), null);
         if (!sstables.isEmpty())
         {
             cfs.replaceCompactedSSTables(originalSSTables, sstables);
@@ -424,7 +464,7 @@ public class CompactionManager implements CompactionManagerMBean
     private void doValidationCompaction(ColumnFamilyStore cfs, AntiEntropyService.Validator validator) throws IOException
     {
         Collection<SSTableReader> sstables = cfs.getSSTables();
-        CompactionIterator ci = new CompactionIterator(sstables, getDefaultGCBefore(), true);
+        CompactionIterator ci = new CompactionIterator(cfs, sstables, getDefaultGCBefore(), true);
         executor.beginCompaction(cfs, ci);
         try
         {
@@ -448,29 +488,43 @@ public class CompactionManager implements CompactionManagerMBean
     /*
     * Group files of similar size into buckets.
     */
-    static Set<List<SSTableReader>> getBuckets(Iterable<SSTableReader> files, long min)
+    static <T> Set<List<T>> getBuckets(Iterable<Pair<T, Long>> files, long min)
     {
-        Map<List<SSTableReader>, Long> buckets = new HashMap<List<SSTableReader>, Long>();
-        for (SSTableReader sstable : files)
+        // Sort the list in order to get deterministic results during the grouping below
+        List<Pair<T, Long>> sortedFiles = new ArrayList<Pair<T, Long>>();
+        for (Pair<T, Long> pair: files)
+            sortedFiles.add(pair);
+
+        Collections.sort(sortedFiles, new Comparator<Pair<T, Long>>()
         {
-            long size = sstable.length();
+            public int compare(Pair<T, Long> p1, Pair<T, Long> p2)
+            {
+                return p1.right.compareTo(p2.right);
+            }
+        });
+
+        Map<List<T>, Long> buckets = new HashMap<List<T>, Long>();
+
+        for (Pair<T, Long> pair: sortedFiles)
+        {
+            long size = pair.right;
 
             boolean bFound = false;
             // look for a bucket containing similar-sized files:
             // group in the same bucket if it's w/in 50% of the average for this bucket,
             // or this file and the bucket are all considered "small" (less than `min`)
-            for (Entry<List<SSTableReader>, Long> entry : buckets.entrySet())
+            for (Entry<List<T>, Long> entry : buckets.entrySet())
             {
-                List<SSTableReader> bucket = entry.getKey();
+                List<T> bucket = entry.getKey();
                 long averageSize = entry.getValue();
-                if ((size > averageSize / 2 && size < 3 * averageSize / 2)
+                if ((size > (averageSize / 2) && size < (3 * averageSize) / 2)
                     || (size < min && averageSize < min))
                 {
                     // remove and re-add because adding changes the hash
                     buckets.remove(bucket);
                     long totalSize = bucket.size() * averageSize;
                     averageSize = (totalSize + size) / (bucket.size() + 1);
-                    bucket.add(sstable);
+                    bucket.add(pair.left);
                     buckets.put(bucket, averageSize);
                     bFound = true;
                     break;
@@ -479,13 +533,21 @@ public class CompactionManager implements CompactionManagerMBean
             // no similar bucket found; put it in a new one
             if (!bFound)
             {
-                ArrayList<SSTableReader> bucket = new ArrayList<SSTableReader>();
-                bucket.add(sstable);
+                ArrayList<T> bucket = new ArrayList<T>();
+                bucket.add(pair.left);
                 buckets.put(bucket, size);
             }
         }
 
         return buckets.keySet();
+    }
+
+    private static Collection<Pair<SSTableReader, Long>> convertSSTablesToPairs(Collection<SSTableReader> collection)
+    {
+        Collection<Pair<SSTableReader, Long>> tablePairs = new HashSet<Pair<SSTableReader, Long>>();
+        for(SSTableReader table: collection)
+            tablePairs.add(new Pair<SSTableReader, Long>(table, table.length()));
+        return tablePairs;
     }
 
     public static int getDefaultGCBefore()
@@ -497,10 +559,10 @@ public class CompactionManager implements CompactionManagerMBean
     {
         private Set<SSTableScanner> scanners;
 
-        public AntiCompactionIterator(Collection<SSTableReader> sstables, Collection<Range> ranges, int gcBefore, boolean isMajor)
+        public AntiCompactionIterator(ColumnFamilyStore cfStore, Collection<SSTableReader> sstables, Collection<Range> ranges, int gcBefore, boolean isMajor)
                 throws IOException
         {
-            super(getCollatedRangeIterator(sstables, ranges), gcBefore, isMajor);
+            super(cfStore, getCollatedRangeIterator(sstables, ranges), gcBefore, isMajor);
         }
 
         private static Iterator getCollatedRangeIterator(Collection<SSTableReader> sstables, final Collection<Range> ranges)
@@ -546,7 +608,9 @@ public class CompactionManager implements CompactionManagerMBean
                 public void run ()
                 {
                     logger.debug("Estimating compactions for " + cfs.columnFamily_);
-                    final Set<List<SSTableReader>> buckets = getBuckets(cfs.getSSTables(), 50L * 1024L * 1024L);
+
+                    final Set<List<SSTableReader>> buckets =
+                            getBuckets(convertSSTablesToPairs(cfs.getSSTables()), 50L * 1024L * 1024L);
                     updateEstimateFor(cfs, buckets);
                 }
             };
@@ -579,9 +643,7 @@ public class CompactionManager implements CompactionManagerMBean
 
         public CompactionExecutor()
         {
-            super("COMPACTION-POOL", System.getProperty("cassandra.compaction.priority") == null
-                                     ? Thread.NORM_PRIORITY
-                                     : Integer.parseInt(System.getProperty("cassandra.compaction.priority")));
+            super("COMPACTION-POOL", DatabaseDescriptor.getCompactionPriority());
         }
 
         @Override

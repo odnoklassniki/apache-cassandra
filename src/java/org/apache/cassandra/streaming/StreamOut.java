@@ -21,21 +21,20 @@ package org.apache.cassandra.streaming;
  */
 
 
-import java.net.InetAddress;
-import java.util.*;
-import java.io.IOException;
 import java.io.File;
 import java.io.IOError;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import org.apache.log4j.Logger;
 import org.apache.commons.lang.StringUtils;
 
-import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.db.Table;
-import org.apache.cassandra.io.SSTable;
-import org.apache.cassandra.io.SSTableReader;
+import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 
@@ -112,19 +111,16 @@ public class StreamOut
      * Transfers a group of sstables from a single table to the target endpoint
      * and then marks them as ready for local deletion.
      */
-    public static void transferSSTables(InetAddress target, List<SSTableReader> sstables, String table) throws IOException
+    public static void transferSSTables(InetAddress target, List<String> filenames, String table) throws IOException
     {
-        PendingFile[] pendingFiles = new PendingFile[SSTable.FILES_ON_DISK * sstables.size()];
+        PendingFile[] pendingFiles = new PendingFile[filenames.size()];
         int i = 0;
-        for (SSTableReader sstable : sstables)
+        for (String filename : filenames)
         {
-            for (String filename : sstable.getAllFilenames())
-            {
-                File file = new File(filename);
-                pendingFiles[i++] = new PendingFile(file.getAbsolutePath(), file.length(), table);
-            }
+            File file = new File(filename);
+            pendingFiles[i++] = new PendingFile(file.getAbsolutePath(), file.length(), table);
         }
-        logger.info("Stream context metadata " + StringUtils.join(pendingFiles, ", " + " " + sstables.size() + " sstables."));
+        logger.info("Stream context metadata " + StringUtils.join(pendingFiles, ", " + " " + filenames.size() + " sstables."));
         StreamOutManager.get(target).addFilesToStream(pendingFiles);
         StreamInitiateMessage biMessage = new StreamInitiateMessage(pendingFiles);
         Message message = StreamInitiateMessage.makeStreamInitiateMessage(biMessage);

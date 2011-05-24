@@ -18,9 +18,8 @@
 
 package org.apache.cassandra.service;
 
-import java.util.Collection;
-import java.util.List;
 import java.io.IOException;
+import java.util.Collection;
 
 import org.apache.cassandra.net.Message;
 
@@ -37,4 +36,5 @@ public interface IResponseResolver<T> {
 	public T resolve(Collection<Message> responses) throws DigestMismatchException, IOException;
 	public boolean isDataPresent(Collection<Message> responses);
 
+    public void preprocess(Message message);
 }

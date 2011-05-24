@@ -19,144 +19,104 @@
 package org.apache.cassandra.utils;
 
 import java.util.*;
-import java.util.Map.Entry;
+import java.util.concurrent.Callable;
 
-import org.apache.log4j.Logger;
+import com.google.common.base.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import org.apache.cassandra.cache.ICacheExpungeHook;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 public class ExpiringMap<K, V>
 {
-    private class CacheableObject
+    private static final Logger logger = LoggerFactory.getLogger(ExpiringMap.class);
+    private final Function<Pair<K,V>, ?> postExpireHook;
+
+    private static class CacheableObject<T>
     {
-        private V value_;
-        private long age_;
+        private final T value;
+        private final long age;
 
-        CacheableObject(V o)
+        CacheableObject(T o)
         {
-            value_ = o;
-            age_ = System.currentTimeMillis();
+            value = o;
+            age = System.currentTimeMillis();
         }
 
-        @Override
-        public boolean equals(Object o)
+        T getValue()
         {
-            return value_.equals(o);
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return value_.hashCode();
-        }
-
-        V getValue()
-        {
-            return value_;
+            return value;
         }
 
         boolean isReadyToDie(long expiration)
         {
-            return ((System.currentTimeMillis() - age_) > expiration);
+            return ((System.currentTimeMillis() - age) > expiration);
         }
     }
 
     private class CacheMonitor extends TimerTask
     {
-        private long expiration_;
+        private final long expiration;
 
         CacheMonitor(long expiration)
         {
-            expiration_ = expiration;
+            this.expiration = expiration;
         }
 
         @Override
         public void run()
         {
-            Map<K, V> expungedValues = new HashMap<K, V>();
-            synchronized (cache_)
+            for (Map.Entry<K, CacheableObject> entry : cache.entrySet())
             {
-                Enumeration<K> e = cache_.keys();
-                while (e.hasMoreElements())
+                if (entry.getValue().isReadyToDie(expiration))
                 {
-                    K key = e.nextElement();
-                    CacheableObject co = cache_.get(key);
-                    if (co != null && co.isReadyToDie(expiration_))
-                    {
-                        V v = co.getValue();
-                        if (null != v)
-                        {
-                            expungedValues.put(key, v);
-                        }
-                        cache_.remove(key);
-                    }
+                    cache.remove(entry.getKey());
+                    postExpireHook.apply(new Pair(entry.getKey(), entry.getValue().getValue()));
                 }
             }
-
-            /* Calling the hooks on the keys that have been expunged */
-            for (Entry<K, V> entry : expungedValues.entrySet())
-            {
-                K key = entry.getKey();
-                V value = entry.getValue();
-                
-                ICacheExpungeHook<K, V> hook = hooks_.remove(key);
-                if (hook != null)
-                {
-                    hook.callMe(key, value);
-                }
-            }
-            expungedValues.clear();
         }
     }
 
-    private Hashtable<K, CacheableObject> cache_;
-    private Map<K, ICacheExpungeHook<K, V>> hooks_;
-    private Timer timer_;
-    private static int counter_ = 0;
-    private static final Logger LOGGER = Logger.getLogger(ExpiringMap.class);
+    private final NonBlockingHashMap<K, CacheableObject> cache = new NonBlockingHashMap<K, CacheableObject>();
+    private final Timer timer;
+    private static int counter = 0;
 
-    private void init(long expiration)
+    public ExpiringMap(long expiration)
     {
+        this(expiration, null);
+    }
+
+    /**
+     *
+     * @param expiration the TTL for objects in the cache in milliseconds
+     */
+    public ExpiringMap(long expiration, Function<Pair<K,V>, ?> postExpireHook)
+    {
+        this.postExpireHook = postExpireHook;
         if (expiration <= 0)
         {
             throw new IllegalArgumentException("Argument specified must be a positive number");
         }
 
-        cache_ = new Hashtable<K, CacheableObject>();
-        hooks_ = new Hashtable<K, ICacheExpungeHook<K, V>>();
-        timer_ = new Timer("CACHETABLE-TIMER-" + (++counter_), true);
-        timer_.schedule(new CacheMonitor(expiration), expiration, expiration);
-    }
-
-    /*
-    * Specify the TTL for objects in the cache
-    * in milliseconds.
-    */
-    public ExpiringMap(long expiration)
-    {
-        init(expiration);
+        timer = new Timer("EXPIRING-MAP-TIMER-" + (++counter), true);
+        timer.schedule(new CacheMonitor(expiration), expiration / 2, expiration / 2);
     }
 
     public void shutdown()
     {
-        timer_.cancel();
+        timer.cancel();
     }
 
-    public void put(K key, V value)
+    public V put(K key, V value)
     {
-        cache_.put(key, new CacheableObject(value));
-    }
-
-    public void put(K key, V value, ICacheExpungeHook<K, V> hook)
-    {
-        put(key, value);
-        hooks_.put(key, hook);
+        CacheableObject<V> previous = cache.put(key, new CacheableObject<V>(value));
+        return (previous == null) ? null : previous.getValue();
     }
 
     public V get(K key)
     {
         V result = null;
-        CacheableObject co = cache_.get(key);
+        CacheableObject<V> co = cache.get(key);
         if (co != null)
         {
             result = co.getValue();
@@ -166,7 +126,7 @@ public class ExpiringMap<K, V>
 
     public V remove(K key)
     {
-        CacheableObject co = cache_.remove(key);
+        CacheableObject<V> co = cache.remove(key);
         V result = null;
         if (co != null)
         {
@@ -175,23 +135,34 @@ public class ExpiringMap<K, V>
         return result;
     }
 
+    public long getAge(K key)
+    {
+        long age = 0;
+        CacheableObject<V> co = cache.get(key);
+        if (co != null)
+        {
+            age = co.age;
+        }
+        return age;
+    }
+
     public int size()
     {
-        return cache_.size();
+        return cache.size();
     }
 
     public boolean containsKey(K key)
     {
-        return cache_.containsKey(key);
+        return cache.containsKey(key);
     }
 
     public boolean isEmpty()
     {
-        return cache_.isEmpty();
+        return cache.isEmpty();
     }
 
     public Set<K> keySet()
     {
-        return cache_.keySet();
+        return cache.keySet();
     }
 }

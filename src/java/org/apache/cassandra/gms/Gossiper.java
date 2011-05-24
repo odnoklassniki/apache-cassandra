@@ -18,18 +18,20 @@
 
 package org.apache.cassandra.gms;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.InetAddress;
 import java.util.*;
 import java.util.Map.Entry;
-import java.net.InetAddress;
+
+import org.apache.log4j.Logger;
 
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.StorageService;
-
-import org.apache.log4j.Logger;
 
 /**
  * This module is responsible for Gossiping information for the local endpoint. This abstraction
@@ -137,8 +139,8 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
         gossipTimer_ = new Timer(false);
         // 3 days
         aVeryLongTime_ = 259200 * 1000;
-        // 1 hour
-        FatClientTimeout_ = 60 * 60 * 1000;
+        // half of RING_DELAY, to ensure justRemovedEndpoints has enough leeway to prevent re-gossip
+        FatClientTimeout_ = (long)(StorageService.RING_DELAY / 2);
         /* register with the Failure Detector for receiving Failure detector events */
         FailureDetector.instance.registerFailureDetectionEventListener(this);
     }
@@ -216,6 +218,10 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
      */
     public void removeEndPoint(InetAddress endpoint)
     {
+        // do subscribers first so anything in the subscriber that depends on gossiper state won't get confused
+        for (IEndPointStateChangeSubscriber subscriber : subscribers_)
+            subscriber.onRemove(endpoint);
+
         liveEndpoints_.remove(endpoint);
         unreachableEndpoints_.remove(endpoint);
         endPointStateMap_.remove(endpoint);
@@ -401,6 +407,7 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
                     {
                         logger_.info("FatClient " + endpoint + " has been silent for " + FatClientTimeout_ + "ms, removing from gossip");
                         removeEndPoint(endpoint);
+                        break; // avoid CME. this is fixed better in 0.7
                     }
                 }
 

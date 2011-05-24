@@ -18,10 +18,9 @@
 
 package org.apache.cassandra.db;
 
-import java.io.Closeable;
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.lang.management.ManagementFactory;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -40,6 +39,7 @@ import org.apache.commons.collections.IteratorUtils;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
+import org.apache.cassandra.concurrent.RetryingScheduledThreadPoolExecutor;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.commitlog.CommitLogSegment;
@@ -48,15 +48,18 @@ import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.AbstractBounds;
 import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.Range;
-import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.*;
 import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.SliceRange;
 import org.apache.cassandra.utils.*;
 
 public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 {
+    private static final ScheduledThreadPoolExecutor cacheSavingExecutor =
+            new RetryingScheduledThreadPoolExecutor("CACHE-SAVER", Thread.MIN_PRIORITY);
+
     private static Logger logger_ = Logger.getLogger(ColumnFamilyStore.class);
 
     /*
@@ -68,27 +71,27 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
      * For BinaryMemtable that's about all that happens.  For live Memtables there are two other things
      * that switchMemtable does (which should be the only caller of submitFlush in this case).
      * First, it puts the Memtable into memtablesPendingFlush, where it stays until the flush is complete
-     * and it's been added as an SSTableReader to ssTables_.  Second, it adds an entry to commitLogUpdater
+     * and it's been added as an SSTableReader to ssTables_.  Second, it adds an entry to postFlushExecutor
      * that waits for the flush to complete, then calls onMemtableFlush.  This allows multiple flushes
      * to happen simultaneously on multicore systems, while still calling onMF in the correct order,
      * which is necessary for replay in case of a restart since CommitLog assumes that when onMF is
      * called, all data up to the given context has been persisted to SSTables.
      */
-    private static ExecutorService flushSorter_
+    private static final ExecutorService flushSorter
             = new JMXEnabledThreadPoolExecutor(1,
                                                Runtime.getRuntime().availableProcessors(),
                                                Integer.MAX_VALUE,
                                                TimeUnit.SECONDS,
                                                new LinkedBlockingQueue<Runnable>(Runtime.getRuntime().availableProcessors()),
                                                new NamedThreadFactory("FLUSH-SORTER-POOL"));
-    private static ExecutorService flushWriter_
+    private static final ExecutorService flushWriter
             = new JMXEnabledThreadPoolExecutor(1,
                                                DatabaseDescriptor.getAllDataFileLocations().length,
                                                Integer.MAX_VALUE,
                                                TimeUnit.SECONDS,
                                                new LinkedBlockingQueue<Runnable>(DatabaseDescriptor.getAllDataFileLocations().length),
                                                new NamedThreadFactory("FLUSH-WRITER-POOL"));
-    private static ExecutorService commitLogUpdater_ = new JMXEnabledThreadPoolExecutor("MEMTABLE-POST-FLUSHER");
+    public static final ExecutorService postFlushExecutor = new JMXEnabledThreadPoolExecutor("MEMTABLE-POST-FLUSHER");
 
     private static final int KEY_RANGE_FILE_BUFFER_SIZE = 256 * 1024;
 
@@ -119,7 +122,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     private long maxRowCompactedSize = 0L;
     private long rowsCompactedTotalSize = 0L;
     private long rowsCompactedCount = 0L;
-    
+    private Runnable rowCacheWriteTask;
+    private Runnable keyCacheWriteTask;
+
     ColumnFamilyStore(String table, String columnFamilyName, boolean isSuper, int indexValue) throws IOException
     {
         table_ = table;
@@ -134,6 +139,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         // scan for data files corresponding to this CF
         List<File> sstableFiles = new ArrayList<File>();
         Pattern auxFilePattern = Pattern.compile("(.*)(-Filter\\.db$|-Index\\.db$)");
+        Pattern tmpCacheFilePattern = Pattern.compile(table + "-" + columnFamilyName + "-(Key|Row)Cache.*\\.tmp$");
         for (File file : files())
         {
             String filename = file.getName();
@@ -157,6 +163,13 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                 continue;
             }
 
+            if (tmpCacheFilePattern.matcher(filename).matches())
+            {
+                logger_.info("removing incomplete saved cache " + file.getAbsolutePath());
+                FileUtils.deleteWithConfirm(file);
+                continue;
+            }
+
             if (filename.contains("-Data.db"))
             {
                 sstableFiles.add(file.getAbsoluteFile());
@@ -164,7 +177,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
         Collections.sort(sstableFiles, new FileUtils.FileComparator());
 
-        /* Load the index files and the Bloom Filters associated with them. */
+        // scan for sstables corresponding to this cf and load them
+        ssTables_ = new SSTableTracker(table, columnFamilyName);
+        Set<String> savedKeys = readSavedCache(DatabaseDescriptor.getSerializedKeyCachePath(table, columnFamilyName), false);
         List<SSTableReader> sstables = new ArrayList<SSTableReader>();
         for (File file : sstableFiles)
         {
@@ -175,7 +190,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             SSTableReader sstable;
             try
             {
-                sstable = SSTableReader.open(filename);
+                sstable = SSTableReader.open(filename, savedKeys, ssTables_);
             }
             catch (IOException ex)
             {
@@ -184,8 +199,114 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             sstables.add(sstable);
         }
-        ssTables_ = new SSTableTracker(table, columnFamilyName);
         ssTables_.add(sstables);
+    }
+
+    protected Set<String> readSavedCache(File path, boolean sort)
+    {
+        Set<String> keys;
+        if (sort)
+        {
+            // sort the results on read because cache may be written many times during server lifetime,
+            // so better to pay that price once on startup than sort at write time.
+            keys = new TreeSet<String>(StorageProxy.keyComparator);
+        }
+        else
+        {
+            keys = new HashSet<String>();
+        }
+
+        if (path.exists())
+        {
+            try
+            {
+                long start = System.currentTimeMillis();
+                logger_.info("reading saved cache " + path);
+                ObjectInputStream in = new ObjectInputStream(new BufferedInputStream(new FileInputStream(path)));
+                Charset UTF8 = Charset.forName("UTF-8");
+                while (in.available() > 0)
+                {
+                    int size = in.readInt();
+                    byte[] bytes = new byte[size];
+                    in.readFully(bytes);
+                    keys.add(new String(bytes, UTF8));
+                }
+                in.close();
+                if (logger_.isDebugEnabled())
+                    logger_.debug(String.format("completed reading (%d ms; %d keys) saved cache %s",
+                                                (System.currentTimeMillis() - start), keys.size(), path));
+            }
+            catch (IOException ioe)
+            {
+                logger_.warn("error reading saved cache " + path, ioe);
+            }
+        }
+
+        return keys;
+    }
+
+    // must be called after all sstables are loaded since row cache merges all row versions
+    public void initRowCache()
+    {
+        String msgSuffix = String.format(" row cache for %s of %s", columnFamily_, table_);
+        int rowCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).rowCacheSavePeriodInSeconds;
+        int keyCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).keyCacheSavePeriodInSeconds;
+
+        long start = System.currentTimeMillis();
+        try
+        {
+            for (String key : readSavedCache(DatabaseDescriptor.getSerializedRowCachePath(table_, columnFamily_), true))
+                cacheRow(key);
+        }
+        catch (IOException ioe)
+        {
+            logger_.warn("error loading " + msgSuffix, ioe);
+        }
+        if (ssTables_.getRowCache().getSize() > 0)
+            logger_.info(String.format("completed loading (%d ms; %d keys) %s",
+                                       System.currentTimeMillis() - start,
+                                       ssTables_.getRowCache().getSize(),
+                                       msgSuffix));
+
+        rowCacheWriteTask = new WrappedRunnable()
+        {
+            protected void runMayThrow() throws IOException
+            {
+                ssTables_.saveRowCache();
+            }
+        };
+        if (rowCacheSavePeriodInSeconds > 0)
+        {
+            cacheSavingExecutor.scheduleWithFixedDelay(rowCacheWriteTask,
+                                                       rowCacheSavePeriodInSeconds,
+                                                       rowCacheSavePeriodInSeconds,
+                                                       TimeUnit.SECONDS);
+        }
+
+        keyCacheWriteTask = new WrappedRunnable()
+        {
+            protected void runMayThrow() throws IOException
+            {
+                ssTables_.saveKeyCache();
+            }
+        };
+        if (keyCacheSavePeriodInSeconds > 0)
+        {
+            cacheSavingExecutor.scheduleWithFixedDelay(keyCacheWriteTask,
+                                                       keyCacheSavePeriodInSeconds,
+                                                       keyCacheSavePeriodInSeconds,
+                                                       TimeUnit.SECONDS);
+        }
+    }
+
+    public Future<?> submitKeyCacheWrite()
+    {
+        return cacheSavingExecutor.submit(keyCacheWriteTask);
+    }
+
+    public Future<?> submitRowCacheWrite()
+    {
+        return cacheSavingExecutor.submit(rowCacheWriteTask);
     }
 
     public void addToCompactedRowStats(Long rowsize)
@@ -286,7 +407,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     }
 
     private static String getColumnFamilyFromFileName(String filename)
-            {
+    {
         return filename.split("-")[0];
     }
 
@@ -359,7 +480,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             memtable_ = new Memtable(this);
             // a second executor that makes sure the onMemtableFlushes get called in the right order,
             // while keeping the wait-for-flush (future.get) out of anything latency-sensitive.
-            return commitLogUpdater_.submit(new WrappedRunnable()
+            return postFlushExecutor.submit(new WrappedRunnable()
             {
                 public void runMayThrow() throws InterruptedException, IOException
                 {
@@ -513,6 +634,24 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
+    /**
+     * Uses bloom filters to check if key may be present in any sstable in this
+     * ColumnFamilyStore, minus a set of provided ones.
+     *
+     * Because BFs are checked, negative returns ensure that the key is not
+     * present in the checked SSTables, but positive ones doesn't ensure key
+     * presence.
+     */
+    public boolean isKeyInRemainingSSTables(DecoratedKey key, Set<SSTable> sstablesToIgnore)
+    {
+        for (SSTableReader sstable : ssTables_)
+        {
+            if (!sstablesToIgnore.contains(sstable) && sstable.getBloomFilter().isPresent(key.key))
+                return true;
+        }
+        return false;
+    }
+
     /*
      * Called after the Memtable flushes its in-memory data, or we add a file
      * via bootstrap. This information is
@@ -562,7 +701,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return maxFile;
     }
 
-    void forceCleanup()
+    public void forceCleanup()
     {
         CompactionManager.instance.submitCleanup(ColumnFamilyStore.this);
     }
@@ -608,7 +747,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     {
         logger_.info("Enqueuing flush of " + flushable);
         final Condition condition = new SimpleCondition();
-        flushable.flushAndSignal(condition, flushSorter_, flushWriter_);
+        flushable.flushAndSignal(condition, flushSorter, flushWriter);
         return condition;
     }
 
@@ -1071,15 +1210,15 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
             // hard links
             File targetLink = new File(snapshotDirectoryPath, sourceFile.getName());
-            FileUtils.createHardLink(sourceFile, targetLink);
+            CLibrary.createHardLink(sourceFile, targetLink);
 
             sourceFile = new File(ssTable.indexFilename());
             targetLink = new File(snapshotDirectoryPath, sourceFile.getName());
-            FileUtils.createHardLink(sourceFile, targetLink);
+            CLibrary.createHardLink(sourceFile, targetLink);
 
             sourceFile = new File(ssTable.filterFilename());
             targetLink = new File(snapshotDirectoryPath, sourceFile.getName());
-            FileUtils.createHardLink(sourceFile, targetLink);
+            CLibrary.createHardLink(sourceFile, targetLink);
 
             if (logger_.isDebugEnabled())
                 logger_.debug("Snapshot for " + table_ + " table data file " + sourceFile.getAbsolutePath() +
@@ -1128,14 +1267,24 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         ssTables_.getRowCache().clear();
     }
 
-    public int getRowCacheSize()
+    public int getRowCacheCapacity()
     {
         return ssTables_.getRowCache().getCapacity();
     }
 
-    public int getKeyCacheSize()
+    public int getKeyCacheCapacity()
     {
         return ssTables_.getKeyCache().getCapacity();
+    }
+
+    public int getRowCacheSize()
+    {
+        return ssTables_.getRowCache().getSize();
+    }
+
+    public int getKeyCacheSize()
+    {
+        return ssTables_.getKeyCache().getSize();
     }
 
     public static Iterable<ColumnFamilyStore> all()
@@ -1222,5 +1371,10 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         if (falseCount.equals(0L) && trueCount.equals(0L))
             return 0d;
         return falseCount.doubleValue() / (trueCount.doubleValue() + falseCount.doubleValue());
+    }
+
+    public long estimateKeys()
+    {
+        return ssTables_.estimatedKeys();
     }
 }

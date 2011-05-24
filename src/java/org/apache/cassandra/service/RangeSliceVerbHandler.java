@@ -18,6 +18,8 @@
 
 package org.apache.cassandra.service;
 
+import org.apache.log4j.Logger;
+
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RangeSliceCommand;
 import org.apache.cassandra.db.RangeSliceReply;
@@ -25,7 +27,6 @@ import org.apache.cassandra.db.Table;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.log4j.Logger;
 
 public class RangeSliceVerbHandler implements IVerbHandler
 {
@@ -36,6 +37,11 @@ public class RangeSliceVerbHandler implements IVerbHandler
     {
         try
         {
+            if (StorageService.instance.isBootstrapMode())
+            {
+                /* Don't service reads! */
+                throw new RuntimeException("Cannot service reads while bootstrapping!");
+            }
             RangeSliceCommand command = RangeSliceCommand.read(message);
             ColumnFamilyStore cfs = Table.open(command.keyspace).getColumnFamilyStore(command.column_family);
             RangeSliceReply reply = cfs.getRangeSlice(command.super_column,

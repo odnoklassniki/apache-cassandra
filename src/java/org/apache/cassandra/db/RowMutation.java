@@ -22,28 +22,24 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 
-import org.apache.cassandra.io.util.DataOutputBuffer;
+import org.apache.cassandra.concurrent.StageManager;
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.io.ICompactSerializer;
+import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.net.Message;
-import org.apache.cassandra.service.*;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.ColumnOrSuperColumn;
 import org.apache.cassandra.thrift.Deletion;
 import org.apache.cassandra.thrift.Mutation;
 import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.db.filter.QueryPath;
-import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.concurrent.StageManager;
 
 public class RowMutation
 {
@@ -224,7 +220,7 @@ public class RowMutation
 
     public static RowMutation getRowMutationFromMutations(String keyspace, String key, Map<String, List<Mutation>> cfmap)
     {
-        RowMutation rm = new RowMutation(keyspace, key.trim());
+        RowMutation rm = new RowMutation(keyspace, key);
         for (Map.Entry<String, List<Mutation>> entry : cfmap.entrySet())
         {
             String cfName = entry.getKey();
@@ -245,7 +241,7 @@ public class RowMutation
     
     public static RowMutation getRowMutation(String table, String key, Map<String, List<ColumnOrSuperColumn>> cfmap)
     {
-        RowMutation rm = new RowMutation(table, key.trim());
+        RowMutation rm = new RowMutation(table, key);
         for (Map.Entry<String, List<ColumnOrSuperColumn>> entry : cfmap.entrySet())
         {
             String cfName = entry.getKey();

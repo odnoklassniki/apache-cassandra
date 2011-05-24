@@ -61,10 +61,14 @@ except ImportError:
 parser = OptionParser()
 parser.add_option('-n', '--num-keys', type="int", dest="numkeys",
                   help="Number of keys", default=1000**2)
+parser.add_option('-N', '--skip-keys', type="float", dest="skipkeys",
+                  help="Fraction of keys to skip initially", default=0)
 parser.add_option('-t', '--threads', type="int", dest="threads",
                   help="Number of threads/procs to use", default=50)
 parser.add_option('-c', '--columns', type="int", dest="columns",
                   help="Number of columns per key", default=5)
+parser.add_option('-S', '--column-size', type="int", dest="column_size",
+                  help="Size of column values in bytes", default=32)
 parser.add_option('-d', '--nodes', type="string", dest="nodes",
                   help="Host nodes (comma separated)", default="localhost")
 parser.add_option('-s', '--stdev', type="float", dest="stdev", default=0.1,
@@ -145,7 +149,8 @@ class Operation(Thread):
     def __init__(self, i, counts, latencies):
         Thread.__init__(self)
         # generator of the keys to be used
-        self.range = xrange(keys_per_thread * i, keys_per_thread * (i + 1))
+        self.range = xrange(int(keys_per_thread * (i + options.skipkeys)), 
+                            keys_per_thread * (i + 1))
         # we can't use a local counter, since that won't be visible to the parent
         # under multiprocessing.  instead, the parent passes a "counts" array
         # and an index that is our assigned counter.
@@ -163,10 +168,11 @@ class Operation(Thread):
 class Inserter(Operation):
     def run(self):
         data = md5(str(get_ident())).hexdigest()
-        columns = [Column(chr(ord('A') + j), data, 0) for j in xrange(columns_per_key)]
+        data = data * int(options.column_size/len(data)) + data[:options.column_size % len(data)]
+        columns = [Column('C' + str(j), data, 0) for j in xrange(columns_per_key)]
         fmt = '%0' + str(len(str(total_keys))) + 'd'
         if 'super' == options.cftype:
-            supers = [SuperColumn(chr(ord('A') + j), columns) for j in xrange(supers_per_key)]
+            supers = [SuperColumn('S' + str(j), columns) for j in xrange(supers_per_key)]
         for i in self.range:
             key = fmt % i
             if 'super' == options.cftype:
@@ -194,7 +200,7 @@ class Reader(Operation):
             for i in xrange(keys_per_thread):
                 key = key_generator()
                 for j in xrange(supers_per_key):
-                    parent = ColumnParent('Super1', chr(ord('A') + j))
+                    parent = ColumnParent('Super1', 'S' + str(j))
                     start = time.time()
                     try:
                         r = self.cclient.get_slice('Keyspace1', key, parent, p, ConsistencyLevel.ONE)
@@ -240,7 +246,7 @@ class RangeSlicer(Operation):
                 finish = fmt % last
                 res = []
                 for j in xrange(supers_per_key):
-                    parent = ColumnParent('Super1', chr(ord('A') + j)) 
+                    parent = ColumnParent('Super1', 'S' + str(j)) 
                     begin = time.time()
                     try:
                         res = self.cclient.get_range_slice('Keyspace1', parent, p, start,finish, options.rangecount, ConsistencyLevel.ONE)

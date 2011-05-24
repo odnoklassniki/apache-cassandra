@@ -21,6 +21,7 @@ package org.apache.cassandra.net;
  */
 
 
+import java.io.BufferedOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -29,10 +30,10 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.utils.FBUtilities;
 
 public class OutboundTcpConnection extends Thread
 {
@@ -41,16 +42,14 @@ public class OutboundTcpConnection extends Thread
     private static final ByteBuffer CLOSE_SENTINEL = ByteBuffer.allocate(0);
     private static final int OPEN_RETRY_DELAY = 100; // ms between retries
 
-    private final OutboundTcpConnectionPool pool;
     private final InetAddress endpoint;
     private final BlockingQueue<ByteBuffer> queue = new LinkedBlockingQueue<ByteBuffer>();
     private DataOutputStream output;
     private Socket socket;
 
-    public OutboundTcpConnection(final OutboundTcpConnectionPool pool, final InetAddress remoteEp)
+    public OutboundTcpConnection(InetAddress remoteEp)
     {
         super("WRITE-" + remoteEp);
-        this.pool = pool;
         this.endpoint = remoteEp;
     }
 
@@ -150,8 +149,9 @@ public class OutboundTcpConnection extends Thread
             {
                 // zero means 'bind on any available port.'
                 socket = new Socket(endpoint, DatabaseDescriptor.getStoragePort(), FBUtilities.getLocalAddress(), 0);
+                socket.setKeepAlive(true);
                 socket.setTcpNoDelay(true);
-                output = new DataOutputStream(socket.getOutputStream());
+                output = new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(), 4096));
                 return true;
             }
             catch (IOException e)

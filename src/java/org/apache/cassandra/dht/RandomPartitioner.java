@@ -18,11 +18,13 @@
 
 package org.apache.cassandra.dht;
 
+import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.Comparator;
-import java.util.regex.Pattern;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
-import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.GuidGenerator;
@@ -33,9 +35,8 @@ import org.apache.cassandra.utils.Pair;
  */
 public class RandomPartitioner implements IPartitioner<BigIntegerToken>
 {
-    public static final BigInteger TWO = new BigInteger("2");
-
-    public static final BigIntegerToken MINIMUM = new BigIntegerToken("0");
+    public static final BigInteger ZERO = new BigInteger("0");
+    public static final BigIntegerToken MINIMUM = new BigIntegerToken("-1");
 
     private static final String DELIMITER = ":";
 
@@ -60,7 +61,10 @@ public class RandomPartitioner implements IPartitioner<BigIntegerToken>
 
     public BigIntegerToken midpoint(BigIntegerToken ltoken, BigIntegerToken rtoken)
     {
-        Pair<BigInteger,Boolean> midpair = FBUtilities.midpoint(ltoken.token, rtoken.token, 127);
+        // the symbolic MINIMUM token should act as ZERO: the empty bit array
+        BigInteger left = ltoken.equals(MINIMUM) ? ZERO : ltoken.token;
+        BigInteger right = rtoken.equals(MINIMUM) ? ZERO : rtoken.token;
+        Pair<BigInteger,Boolean> midpair = FBUtilities.midpoint(left, right, 127);
         // discard the remainder
         return new BigIntegerToken(midpair.left);
     }
@@ -116,5 +120,37 @@ public class RandomPartitioner implements IPartitioner<BigIntegerToken>
         if (key.isEmpty())
             return MINIMUM;
         return new BigIntegerToken(FBUtilities.hash(key));
+    }
+
+    public Map<Token, Float> describeOwnership(List<Token> sortedTokens)
+    {
+        Map<Token, Float> ownerships = new HashMap<Token, Float>();
+        Iterator i = sortedTokens.iterator();
+
+        // 0-case
+        if (!i.hasNext()) { throw new RuntimeException("No nodes present in the cluster. How did you call this?"); }
+        // 1-case
+        if (sortedTokens.size() == 1) {
+            ownerships.put((Token)i.next(), new Float(1.0));
+        }
+        // n-case
+        else {
+            // NOTE: All divisions must take place in BigDecimals, and all modulo operators must take place in BigIntegers.
+            final BigInteger ri = new BigInteger("2").pow(127);                             //  (used for addition later)
+            final BigDecimal r  = new BigDecimal(ri);                                       // The entire range, 2**127
+            Token start = (Token)i.next(); BigInteger ti = ((BigIntegerToken)start).token;  // The first token and its value
+            Token t; BigInteger tim1 = ti;                                                  // The last token and its value (after loop)
+            while (i.hasNext()) {
+                t = (Token)i.next(); ti = ((BigIntegerToken)t).token;                       // The next token and its value
+                float x = new BigDecimal(ti.subtract(tim1)).divide(r).floatValue();         // %age = T(i) - T(i-1) / R
+                ownerships.put(t, x);                                                       // save (T(i) -> %age)
+                tim1 = ti;                                                                  // -> advance loop
+            }
+            // The start token's range extends backward to the last token, which is why both were saved
+            //  above. The simple calculation for this is: T(start) - T(end) + r % r / r.
+            //  (In the 1-case, this produces 0% instead of 100%.)
+            ownerships.put(start, new BigDecimal(((BigIntegerToken)start).token.subtract(ti).add(ri).mod(ri)).divide(r).floatValue());
+        }
+        return ownerships;
     }
 }

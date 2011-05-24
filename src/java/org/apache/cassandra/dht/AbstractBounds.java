@@ -25,13 +25,13 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.Serializable;
-import java.util.List;
-import java.util.Set;
 
 import org.apache.cassandra.io.ICompactSerializer2;
+import org.apache.cassandra.utils.Pair;
 
 public abstract class AbstractBounds implements Serializable
 {
+    private static final long serialVersionUID = 1L;
     private static AbstractBoundsSerializer serializer = new AbstractBoundsSerializer();
 
     public static ICompactSerializer2<AbstractBounds> serializer()
@@ -57,6 +57,21 @@ public abstract class AbstractBounds implements Serializable
         this.partitioner = partitioner;
     }
 
+    /**
+     * Given token T and AbstractBounds ?L,R], returns Pair(?L,T], ?T,R])
+     * (where ? means that the same type of Bounds is returned -- Range or Bounds -- as the original.)
+     * The original AbstractBounds must contain the token T.
+     * If the split would cause one of the left or right side to be empty, it will be null in the result pair.
+     */
+    public Pair<AbstractBounds,AbstractBounds> split(Token token)
+    {
+        assert left.equals(token) || contains(token);
+        AbstractBounds lb = createFrom(token);
+        // we contain this token, so only one of the left or right can be empty
+        AbstractBounds rb = lb != null && token.equals(right) ? null : new Range(token, right);
+        return new Pair<AbstractBounds,AbstractBounds>(lb, rb);                                   
+    }
+
     @Override
     public int hashCode()
     {
@@ -68,9 +83,8 @@ public abstract class AbstractBounds implements Serializable
 
     public abstract boolean contains(Token start);
 
-    public abstract Set<AbstractBounds> restrictTo(Range range);
-
-    public abstract List<AbstractBounds> unwrap();
+    /** @return A clone of this AbstractBounds with a new right Token, or null if an identical range would be created. */
+    public abstract AbstractBounds createFrom(Token right);
 
     private static class AbstractBoundsSerializer implements ICompactSerializer2<AbstractBounds>
     {

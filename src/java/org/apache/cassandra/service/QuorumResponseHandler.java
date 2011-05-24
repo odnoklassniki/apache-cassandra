@@ -18,22 +18,19 @@
 
 package org.apache.cassandra.service;
 
+import java.io.IOException;
 import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.io.IOException;
+
+import org.apache.log4j.Logger;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.net.IAsyncCallback;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.SimpleCondition;
-
-import org.apache.log4j.Logger;
 
 public class QuorumResponseHandler<T> implements IAsyncCallback
 {
@@ -52,35 +49,25 @@ public class QuorumResponseHandler<T> implements IAsyncCallback
     
     public T get() throws TimeoutException, DigestMismatchException, IOException
     {
+        long timeout = DatabaseDescriptor.getRpcTimeout() - (System.currentTimeMillis() - startTime);
+        boolean success;
         try
         {
-            long timeout = DatabaseDescriptor.getRpcTimeout() - (System.currentTimeMillis() - startTime);
-            boolean success;
-            try
-            {
-                success = condition.await(timeout, TimeUnit.MILLISECONDS);
-            }
-            catch (InterruptedException ex)
-            {
-                throw new AssertionError(ex);
-            }
-
-            if (!success)
-            {
-                StringBuilder sb = new StringBuilder("");
-                for (Message message : responses)
-                {
-                    sb.append(message.getFrom());
-                }
-                throw new TimeoutException("Operation timed out - received only " + responses.size() + " responses from " + sb.toString() + " .");
-            }
+            success = condition.await(timeout, TimeUnit.MILLISECONDS);
         }
-        finally
+        catch (InterruptedException ex)
         {
-            for (Message response : responses)
+            throw new AssertionError(ex);
+        }
+
+        if (!success)
+        {
+            StringBuilder sb = new StringBuilder("");
+            for (Message message : responses)
             {
-                MessagingService.removeRegisteredCallback(response.getMessageId());
+                sb.append(message.getFrom());
             }
+            throw new TimeoutException("Operation timed out - received only " + responses.size() + " responses from " + sb.toString() + " .");
         }
 
         return responseResolver.resolve(responses);
@@ -89,6 +76,7 @@ public class QuorumResponseHandler<T> implements IAsyncCallback
     public void response(Message message)
     {
         responses.add(message);
+        responseResolver.preprocess(message);
         if (responseResolver.isDataPresent(responses))
         {
             condition.signal();

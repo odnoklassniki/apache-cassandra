@@ -21,18 +21,15 @@ package org.apache.cassandra.db;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
-import java.util.List;
 
-import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.log4j.Logger;
+
 import org.apache.cassandra.io.util.DataOutputBuffer;
-import java.net.InetAddress;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
-
-import org.apache.log4j.Logger;
 
 public class ReadVerbHandler implements IVerbHandler
 {
@@ -92,14 +89,6 @@ public class ReadVerbHandler implements IVerbHandler
             if (logger_.isDebugEnabled())
               logger_.debug("Read key " + command.key + "; sending response to " + message.getMessageId() + "@" + message.getFrom());
             MessagingService.instance.sendOneWay(response, message.getFrom());
-
-            /* Do read repair if header of the message says so */
-            if (message.getHeader(ReadCommand.DO_REPAIR) != null)
-            {
-                List<InetAddress> endpoints = StorageService.instance.getLiveNaturalEndpoints(command.table, command.key);
-                if (endpoints.size() > 1)
-                    StorageService.instance.doConsistencyCheck(row, endpoints, command);
-            }
         }
         catch (IOException ex)
         {

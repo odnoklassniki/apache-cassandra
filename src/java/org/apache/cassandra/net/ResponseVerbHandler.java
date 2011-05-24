@@ -18,31 +18,38 @@
 
 package org.apache.cassandra.net;
 
+import java.net.InetAddress;
+
 import org.apache.log4j.Logger;
+
+import org.apache.cassandra.utils.Pair;
 
 public class ResponseVerbHandler implements IVerbHandler
 {
     private static final Logger logger_ = Logger.getLogger( ResponseVerbHandler.class );
-    
+
     public void doVerb(Message message)
     {     
-        String messageId = message.getMessageId();        
-        IAsyncCallback cb = MessagingService.getRegisteredCallback(messageId);
-        if (cb != null)
+        String messageId = message.getMessageId();
+        double age = System.currentTimeMillis() - MessagingService.getRegisteredCallbackAge(messageId);
+        Pair<InetAddress, IMessageCallback> pair = MessagingService.removeRegisteredCallback(messageId);
+        if (pair == null)
+            return;
+
+        IMessageCallback cb = pair.right;
+        MessagingService.instance.maybeAddLatency(cb, message.getFrom(), age);
+
+        if (cb instanceof IAsyncCallback)
         {
             if (logger_.isDebugEnabled())
                 logger_.debug("Processing response on a callback from " + message.getMessageId() + "@" + message.getFrom());
-            cb.response(message);
+            ((IAsyncCallback) cb).response(message);
         }
         else
         {
-            IAsyncResult ar = MessagingService.getAsyncResult(messageId);
-            if (ar != null)
-            {
-                if (logger_.isDebugEnabled())
-                    logger_.debug("Processing response on an async result from " + message.getMessageId() + "@" + message.getFrom());
-                ar.result(message);
-            }
+            if (logger_.isDebugEnabled())
+                logger_.debug("Processing response on an async result from " + message.getMessageId() + "@" + message.getFrom());
+            ((IAsyncResult) cb).result(message);
         }
     }
 }

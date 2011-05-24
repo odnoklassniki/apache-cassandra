@@ -19,22 +19,20 @@
 package org.apache.cassandra.gms;
 
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.IOError;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.net.InetAddress;
 import java.util.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import org.apache.log4j.Logger;
 import org.apache.commons.lang.StringUtils;
 
-import java.net.InetAddress;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.utils.BoundedStatsDeque;
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.log4j.Logger;
+import org.apache.cassandra.utils.BoundedStatsDeque;
+import org.apache.cassandra.utils.FBUtilities;
 
 /**
  * This FailureDetector is an implementation of the paper titled
@@ -125,14 +123,16 @@ public class FailureDetector implements IFailureDetector, FailureDetectorMBean
     
     public boolean isAlive(InetAddress ep)
     {
-       /* If the endpoint in question is the local endpoint return true. */
-        InetAddress localHost = FBUtilities.getLocalAddress();
-        if (localHost.equals(ep))
+        if (ep.equals(FBUtilities.getLocalAddress()))
             return true;
 
-    	/* Incoming port is assumed to be the Storage port. We need to change it to the control port */
         EndPointState epState = Gossiper.instance.getEndPointStateForEndPoint(ep);
-        return epState.isAlive();
+        // we could assert not-null, but having isAlive fail screws a node over so badly that
+        // it's worth being defensive here so minor bugs don't cause disproportionate
+        // badness.  (See CASSANDRA-1463 for an example).
+        if (epState == null)
+            logger_.error("unknown endpoint " + ep);
+        return epState != null && epState.isAlive();
     }
     
     public void report(InetAddress ep)

@@ -20,31 +20,34 @@ package org.apache.cassandra.thrift;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.cassandra.db.SystemTable;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
+import org.apache.cassandra.concurrent.DebuggableThreadPoolExecutor;
+import org.apache.cassandra.config.ConfigurationException;
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.CompactionManager;
+import org.apache.cassandra.db.SystemTable;
+import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.CLibrary;
+import org.apache.cassandra.utils.FBUtilities;
+import org.apache.thrift.TProcessorFactory;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.server.TServer;
+import org.apache.thrift.transport.TFramedTransport;
 import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.thrift.transport.TTransportFactory;
-import org.apache.thrift.transport.TFramedTransport;
-import org.apache.thrift.TProcessorFactory;
-import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.cassandra.db.Table;
-import org.apache.cassandra.db.CompactionManager;
 
 /**
  * This class supports two methods for creating a Cassandra node daemon, 
@@ -62,6 +65,8 @@ public class CassandraDaemon
 
     private void setup() throws IOException, TTransportException
     {
+        CLibrary.tryMlockall();
+        
         // log4j
         String file = System.getProperty("storage-config") + File.separator + "log4j.properties";
         PropertyConfigurator.configure(file);
@@ -112,8 +117,17 @@ public class CassandraDaemon
         CompactionManager.instance.checkAllColumnFamilies();
 
         // start server internals
-        StorageService.instance.initServer();
-        
+        try
+        {
+            StorageService.instance.initServer();
+        }
+        catch (ConfigurationException e)
+        {
+            logger.error("Fatal error: " + e.getMessage());
+            System.err.println("Bad configuration; unable to start server");
+            System.exit(1);
+        }
+
         // now we start listening for clients
         final CassandraServer cassandraServer = new CassandraServer();
         Cassandra.Processor processor = new Cassandra.Processor(cassandraServer);
@@ -157,6 +171,7 @@ public class CassandraDaemon
             protected void afterExecute(Runnable r, Throwable t)
             {
                 super.afterExecute(r, t);
+                DebuggableThreadPoolExecutor.logExceptionsAfterExecute(r, t);
                 cassandraServer.logout();
             }
         };

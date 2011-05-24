@@ -18,8 +18,8 @@
 */
 package org.apache.cassandra.utils;
 
-import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 public class EstimatedHistogram
 {
@@ -73,5 +73,10 @@ public class EstimatedHistogram
                 buckets.set(i, 0L);
 
         return rv;
+    }
+
+    public static long[] getBucketOffsets()
+    {
+        return bucketOffsets;
     }
 }

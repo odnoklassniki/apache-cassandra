@@ -25,25 +25,20 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.management.MemoryUsage;
 import java.net.InetAddress;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.text.DecimalFormat;
+import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
+
+import org.apache.commons.cli.*;
 
 import org.apache.cassandra.cache.JMXInstrumentedCacheMBean;
 import org.apache.cassandra.concurrent.IExecutorMBean;
 import org.apache.cassandra.db.ColumnFamilyStoreMBean;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.dht.Range;
-
-import org.apache.commons.cli.*;
-import org.apache.commons.lang.StringUtils;
+import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.utils.EstimatedHistogram;
 
 public class NodeCmd {
     private static final String HOST_OPT_LONG = "host";
@@ -75,19 +70,31 @@ public class NodeCmd {
     private static void printUsage()
     {
         HelpFormatter hf = new HelpFormatter();
-        String header = String.format(
-                "%nAvailable commands: ring, info, cleanup, compact, cfstats, snapshot [snapshotname], clearsnapshot, " +
-                "tpstats, flush, drain, repair, decommission, move, loadbalance, removetoken, " +
-                "setcachecapacity <keyspace> <cfname> <keycachecapacity> <rowcachecapacity>, " +
-                "getcompactionthreshold, setcompactionthreshold [minthreshold] ([maxthreshold])" +
-                "streams [host]");
+        String header = String.format("%nAvailable commands:%n"
+                                      + "ring%n"
+                                      + "snapshot [snapshotname]%n"
+                                      + "info%n"
+                                      + "cfstats%n"
+                                      + "tpstats%n"
+                                      + "drain%n"
+                                      + "decommission%n"
+                                      + "move <new token>%n"
+                                      + "loadbalance%n"
+                                      + "removetoken <token>%n"
+                                      + "flush|repair <keyspace> [columnfamilies]%n"
+                                      + "cleanup|compact [keyspace] [columfamilies]%n"
+                                      + "setcachecapacity <keyspace> <cfname> <keycachecapacity> <rowcachecapacity>%n"
+                                      + "getcompactionthreshold%n"
+                                      + "setcompactionthreshold [minthreshold] ([maxthreshold])%n"
+                                      + "streams [host]%n"
+                                      + "cfhistograms <keyspace> <column_family>%n");
         String usage = String.format("java %s --host <arg> <command>%n", NodeCmd.class.getName());
         hf.printHelp(usage, "", options, header);
     }
-    
+
     /**
      * Write a textual representation of the Cassandra ring.
-     * 
+     *
      * @param outs the stream to write to
      */
     public void printRing(PrintStream outs)
@@ -98,18 +105,20 @@ public class NodeCmd {
         Set<String> liveNodes = probe.getLiveNodes();
         Set<String> deadNodes = probe.getUnreachableNodes();
         Map<String, String> loadMap = probe.getLoadMap();
+        Map<Token, Float> ownerships = probe.getOwnership();
 
         // Print range-to-endpoint mapping
         int counter = 0;
         outs.print(String.format("%-14s", "Address"));
         outs.print(String.format("%-11s", "Status"));
         outs.print(String.format("%-14s", "Load"));
+        outs.print(String.format("%-8s", "Owns"));
         outs.print(String.format("%-43s", "Range"));
         outs.println("Ring");
         // emphasize that we're showing the right part of each range
         if (ranges.size() > 1)
         {
-            outs.println(String.format("%-14s%-11s%-14s%-43s", "", "", "", ranges.get(0).left));
+            outs.println(String.format("%-14s%-11s%-14s%-8s%-43s", "", "", "", "", ranges.get(0).left));
         }
         // normal range & node info
         for (Range range : ranges) {
@@ -127,6 +136,9 @@ public class NodeCmd {
 
             String load = loadMap.containsKey(primaryEndpoint) ? loadMap.get(primaryEndpoint) : "?";
             outs.print(String.format("%-14s", load));
+
+            DecimalFormat df = new DecimalFormat("##0.00%");
+            outs.print(String.format("%-8s", df.format(ownerships.get(range.right))));
 
             outs.print(String.format("%-43s", range.right));
 
@@ -149,11 +161,11 @@ public class NodeCmd {
                     asciiRingArt = "|   |";
             }
             outs.println(asciiRingArt);
-            
+
             counter++;
         }
     }
-    
+
     public void printThreadPoolStats(PrintStream outs)
     {
         outs.print(String.format("%-25s", "Pool Name"));
@@ -161,9 +173,9 @@ public class NodeCmd {
         outs.print(String.format("%10s", "Pending"));
         outs.print(String.format("%15s", "Completed"));
         outs.println();
-        
+
         Iterator<Map.Entry<String, IExecutorMBean>> threads = probe.getThreadPoolMBeanProxies();
-        
+
         for (; threads.hasNext();)
         {
             Map.Entry<String, IExecutorMBean> thread = threads.next();
@@ -179,7 +191,7 @@ public class NodeCmd {
 
     /**
      * Write node information.
-     * 
+     *
      * @param outs the stream to write to
      */
     public void printInfo(PrintStream outs)
@@ -187,7 +199,7 @@ public class NodeCmd {
         outs.println(probe.getToken());
         outs.println(String.format("%-17s: %s", "Load", probe.getLoadString()));
         outs.println(String.format("%-17s: %s", "Generation No", probe.getCurrentGenerationNumber()));
-        
+
         // Uptime
         long secondsUp = probe.getUptime() / 1000;
         outs.println(String.format("%-17s: %d", "Uptime (seconds)", secondsUp));
@@ -254,7 +266,7 @@ public class NodeCmd {
             }
         }
     }
-    
+
     public void printColumnFamilyStats(PrintStream outs)
     {
         Map <String, List <ColumnFamilyStoreMBean>> cfstoreMap = new HashMap <String, List <ColumnFamilyStoreMBean>>();
@@ -368,6 +380,23 @@ public class NodeCmd {
             outs.println("----------------");
         }
     }
+
+    private void printCfHistograms(String keySpace, String columnFamily, PrintStream output)
+    {
+        ColumnFamilyStoreMBean store = this.probe.getColumnFamilyStoreMBean(keySpace, columnFamily);
+
+        long[] offsets = EstimatedHistogram.getBucketOffsets();
+
+        long[] rrlh = store.getRecentReadLatencyHistogramMicros();
+        long[] rwlh = store.getRecentWriteLatencyHistogramMicros();
+
+        output.println(String.format("%s/%s read/write latency histogram:", keySpace, columnFamily));
+        output.println(String.format("%-10s%18s%18s", "Bucket", "Read", "Write"));
+        for (int i = 0; i < offsets.length; i++)
+        {
+            output.println(String.format("%-10d%18d%18d", offsets[i], rrlh[i], rwlh[i]));
+        }
+    }
     
     public static void main(String[] args) throws IOException, InterruptedException, ParseException
     {
@@ -435,11 +464,37 @@ public class NodeCmd {
         }
         else if (cmdName.equals("cleanup"))
         {
-            probe.forceTableCleanup();
+            if (arguments.length > 1)
+                probe.forceTableCleanup(arguments[1]);
+            else
+                probe.forceTableCleanup();
         }
-        else if (cmdName.equals("compact"))
+        else if (cmdName.equals("compact") || cmdName.equals("cleanup"))
         {
-            probe.forceTableCompaction();
+            if (arguments.length == 1)
+            {
+                if (cmdName.equals("compact"))
+                    probe.forceTableCompaction();
+                else
+                    probe.forceTableCleanup();
+            }
+            else
+            {
+                String[] columnFamilies = new String[cmd.getArgs().length - 2];
+                for (int i = 0; i < columnFamilies.length; i++)
+                {
+                    columnFamilies[i] = cmd.getArgs()[i + 2];
+                }
+
+                if (cmdName.equals("compact"))
+                {
+                    probe.forceTableCompaction(arguments[1],columnFamilies);
+                }
+                else
+                {
+                    probe.forceTableCleanup(arguments[1],columnFamilies);
+                }
+            }
         }
         else if (cmdName.equals("cfstats"))
         {
@@ -567,6 +622,16 @@ public class NodeCmd {
         {
             String otherHost = arguments.length > 1 ? arguments[1] : null;
             nodeCmd.printStreamInfo(otherHost == null ? null : InetAddress.getByName(otherHost), System.out);
+        }
+        else if (cmdName.equals("cfhistograms"))
+        {
+            if (arguments.length < 3)
+            {
+                System.err.println("Usage of cfhistograms: <keyspace> <column_family>.");
+                System.exit(1);
+            }
+
+            nodeCmd.printCfHistograms(arguments[1], arguments[2], System.out);
         }
         else
         {

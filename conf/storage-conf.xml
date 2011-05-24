@@ -51,6 +51,15 @@
   <HintedHandoffEnabled>true</HintedHandoffEnabled>
 
   <!--
+   ~ The Index Interval determines the rate of sampling of row keys
+   ~ is for a given SSTable: 1/IndexInterval keys are held in memory
+   ~ for the lifetime of the sstable for use during key lookup.
+   ~ (This is separate from the KeyCache.)  Larger intervals will result
+   ~ in lower memory usage at the cost of slower row lookup at read time.
+  -->
+  <IndexInterval>128</IndexInterval>
+
+  <!--
    ~ Keyspaces and ColumnFamilies:
    ~ A ColumnFamily is the Cassandra concept closest to a relational
    ~ table.  Keyspaces are separate groups of ColumnFamilies.  Except in
@@ -101,11 +110,19 @@
        ~ ratios. Specify a fraction (value less than 1), a percentage (ending in
        ~ a % sign) or an absolute number of rows to cache. 
        ~ RowsCached defaults to 0, i.e., row cache is off by default.
+       ~ 
+       ~ Row and key caches may also be saved periodically; if so, the last-
+       ~ saved cache will be loaded in at server start.  By default, cache
+       ~ saving is off.
        ~
        ~ Remember, when using caches as a percentage, they WILL grow with
        ~ your data set!
       -->
-      <ColumnFamily Name="Standard1" CompareWith="BytesType"/>
+      <ColumnFamily Name="Standard1" CompareWith="BytesType"
+                    KeysCached="1000"
+                    RowsCached="100"
+                    RowCacheSavePeriodInSeconds="0"
+                    KeyCacheSavePeriodInSeconds="3600"/>
       <ColumnFamily Name="Standard2" 
                     CompareWith="UTF8Type"
                     KeysCached="100%"/>
@@ -123,8 +140,8 @@
                     Comment="A column family with supercolumns, whose column and subcolumn names are UTF8 strings"/>
 
       <!--
-       ~ Strategy: Setting this to the class that implements
-       ~ IReplicaPlacementStrategy will change the way the node picker works.
+       ~ Strategy: The class that extends AbstractReplicationStrategy 
+       ~ determines how replicas are placed around the token ring.
        ~ Out of the box, Cassandra provides
        ~ org.apache.cassandra.locator.RackUnawareStrategy and
        ~ org.apache.cassandra.locator.RackAwareStrategy (place one replica in
@@ -177,16 +194,16 @@
   <Partitioner>org.apache.cassandra.dht.RandomPartitioner</Partitioner>
 
   <!--
-   ~ If you are using an order-preserving partitioner and you know your key
-   ~ distribution, you can specify the token for this node to use. (Keys
-   ~ are sent to the node with the "closest" token, so distributing your
-   ~ tokens equally along the key distribution space will spread keys
-   ~ evenly across your cluster.)  This setting is only checked the first
-   ~ time a node is started. 
-
-   ~ This can also be useful with RandomPartitioner to force equal spacing
-   ~ of tokens around the hash space, especially for clusters with a small
-   ~ number of nodes.
+   ~ You should always specify InitialToken when setting up a production
+   ~ cluster for the first time, and often when adding capacity later.
+   ~ The principle is that each node should be given an equal slice of
+   ~ the token ring; see http://wiki.apache.org/cassandra/Operations
+   ~ for more details.
+   ~
+   ~ If blank, Cassandra will request a token bisecting the range of
+   ~ the heaviest-loaded existing node.  If there is no load information
+   ~ available, such as is the case with a new cluster, it will pick
+   ~ a random token, which will lead to hot spots.
   -->
   <InitialToken></InitialToken>
 
@@ -195,6 +212,7 @@
    ~ disk.  Keep the data disks and the CommitLog disks separate for best
    ~ performance
   -->
+  <SavedCachesDirectory>/var/lib/cassandra/saved_caches</SavedCachesDirectory>
   <CommitLogDirectory>/var/lib/cassandra/commitlog</CommitLogDirectory>
   <DataFileDirectories>
       <DataFileDirectory>/var/lib/cassandra/data</DataFileDirectory>
@@ -273,12 +291,13 @@
   <DiskAccessMode>auto</DiskAccessMode>
 
   <!--
-   ~ Size of compacted row above which to log a warning.  (If compacted
-   ~ rows do not fit in memory, Cassandra will crash.  This is explained
+   ~ Size of compacted row above which to log a warning.  If compacted
+   ~ rows do not fit in memory, Cassandra will crash.  (This is explained
    ~ in http://wiki.apache.org/cassandra/CassandraLimitations and is
-   ~ scheduled to be fixed in 0.7.)
+   ~ scheduled to be fixed in 0.7.)  Large rows can also be a problem
+   ~ when row caching is enabled.
   -->
-  <RowWarningThresholdInMB>512</RowWarningThresholdInMB>
+  <RowWarningThresholdInMB>64</RowWarningThresholdInMB>
 
   <!--
    ~ Buffer size to use when performing contiguous column slices. Increase
@@ -385,4 +404,10 @@
    ~ ten days.
   -->
   <GCGraceSeconds>864000</GCGraceSeconds>
+
+  <!--
+   ~ Enables or disables Read Repair.
+   ~ See http://wiki.apache.org/cassandra/ReadRepair
+  -->
+  <DoConsistencyChecksBoolean>true</DoConsistencyChecksBoolean>
 </Storage>

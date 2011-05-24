@@ -30,19 +30,16 @@ import java.util.concurrent.TimeoutException;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import com.google.common.collect.Multimap;
 import org.apache.log4j.Logger;
 import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
-
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.Multimap;
 
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.dht.AbstractBounds;
+import org.apache.cassandra.dht.Bounds;
 import org.apache.cassandra.dht.IPartitioner;
-import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.TokenMetadata;
@@ -54,6 +51,7 @@ import org.apache.cassandra.thrift.InvalidRequestException;
 import org.apache.cassandra.thrift.UnavailableException;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.LatencyTracker;
+import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.WrappedRunnable;
 
 
@@ -65,6 +63,7 @@ public class StorageProxy implements StorageProxyMBean
     private static final LatencyTracker readStats = new LatencyTracker();
     private static final LatencyTracker rangeStats = new LatencyTracker();
     private static final LatencyTracker writeStats = new LatencyTracker();
+    private static boolean hintedHandoffEnabled = DatabaseDescriptor.hintedHandoffEnabled();
 
     private StorageProxy() {}
     static
@@ -80,7 +79,7 @@ public class StorageProxy implements StorageProxyMBean
         }
     }
 
-    private static final Comparator<String> keyComparator = new Comparator<String>()
+    public static final Comparator<String> keyComparator = new Comparator<String>()
     {
         public int compare(String o1, String o2)
         {
@@ -211,7 +210,6 @@ public class StorageProxy implements StorageProxyMBean
                 // send out the writes, as in mutate() above, but this time with a callback that tracks responses
                 final WriteResponseHandler responseHandler = ss.getWriteResponseHandler(blockFor, consistency_level, table);
                 responseHandlers.add(responseHandler);
-                Message unhintedMessage = null;
                 for (Map.Entry<InetAddress, Collection<InetAddress>> entry : hintedEndpoints.asMap().entrySet())
                 {
                     InetAddress destination = entry.getKey();
@@ -227,14 +225,10 @@ public class StorageProxy implements StorageProxyMBean
                         else
                         {
                             // belongs on a different server.  send it there.
-                            if (unhintedMessage == null)
-                            {
-                                unhintedMessage = rm.makeRowMutationMessage();
-                                MessagingService.instance.addCallback(responseHandler, unhintedMessage.getMessageId());
-                            }
+                            Message unhintedMessage = rm.makeRowMutationMessage();
                             if (logger.isDebugEnabled())
                                 logger.debug("insert writing key " + rm.key() + " to " + unhintedMessage.getMessageId() + "@" + destination);
-                            MessagingService.instance.sendOneWay(unhintedMessage, destination);
+                            MessagingService.instance.sendRR(unhintedMessage, destination, responseHandler);
                         }
                     }
                     else
@@ -252,8 +246,9 @@ public class StorageProxy implements StorageProxyMBean
                         }
                         // (non-destination hints are part of the callback and count towards consistency only under CL.ANY)
                         if (writeEndpoints.contains(destination) || consistency_level == ConsistencyLevel.ANY)
-                            MessagingService.instance.addCallback(responseHandler, hintedMessage.getMessageId());
-                        MessagingService.instance.sendOneWay(hintedMessage, destination);
+                            MessagingService.instance.sendRR(hintedMessage, destination, responseHandler);
+                        else
+                            MessagingService.instance.sendOneWay(hintedMessage, destination);
                     }
                 }
             }
@@ -343,7 +338,7 @@ public class StorageProxy implements StorageProxyMBean
             throws IOException, UnavailableException, TimeoutException, InvalidRequestException
     {
         if (StorageService.instance.isBootstrapMode())
-            throw new InvalidRequestException("This node cannot accept reads until it has bootstrapped");
+            throw new UnavailableException();
         long startTime = System.nanoTime();
 
         List<Row> rows;
@@ -367,7 +362,7 @@ public class StorageProxy implements StorageProxyMBean
 
         // send off all the commands asynchronously
         List<Future<Object>> localFutures = null;
-        List<IAsyncResult> remoteResults = null;
+        HashMap<ReadCommand, IAsyncResult> remoteResults = null;
         for (ReadCommand command: commands)
         {
             InetAddress endPoint = StorageService.instance.findSuitableEndPoint(command.table, command.key);
@@ -384,13 +379,11 @@ public class StorageProxy implements StorageProxyMBean
             else
             {
                 if (remoteResults == null)
-                    remoteResults = new ArrayList<IAsyncResult>();
+                    remoteResults = new HashMap<ReadCommand, IAsyncResult>();
                 Message message = command.makeReadMessage();
                 if (logger.isDebugEnabled())
                     logger.debug("weakread reading " + command + " from " + message.getMessageId() + "@" + endPoint);
-                if (DatabaseDescriptor.getConsistencyCheck())
-                    message.setHeader(ReadCommand.DO_REPAIR, ReadCommand.DO_REPAIR.getBytes());
-                remoteResults.add(MessagingService.instance.sendRR(message, endPoint));
+                remoteResults.put(command, MessagingService.instance.sendRR(message, endPoint));
             }
         }
 
@@ -413,14 +406,16 @@ public class StorageProxy implements StorageProxyMBean
         }
         if (remoteResults != null)
         {
-            for (IAsyncResult iar: remoteResults)
+            for (Map.Entry<ReadCommand, IAsyncResult> entry : remoteResults.entrySet())
             {
+                IAsyncResult iar = entry.getValue();
                 byte[] body;
                 body = iar.get(DatabaseDescriptor.getRpcTimeout(), TimeUnit.MILLISECONDS);
                 ByteArrayInputStream bufIn = new ByteArrayInputStream(body);
                 ReadResponse response = ReadResponse.serializer().deserialize(new DataInputStream(bufIn));
-                if (response.row() != null)
-                    rows.add(response.row());
+                assert response.row() != null;
+                rows.add(response.row());
+                StorageService.instance.doConsistencyCheck(response.row(), entry.getKey(), iar.getFrom());
             }
         }
 
@@ -442,17 +437,15 @@ public class StorageProxy implements StorageProxyMBean
     private static List<Row> strongRead(List<ReadCommand> commands, ConsistencyLevel consistency_level) throws IOException, UnavailableException, TimeoutException
     {
         List<QuorumResponseHandler<Row>> quorumResponseHandlers = new ArrayList<QuorumResponseHandler<Row>>();
-        List<InetAddress[]> commandEndPoints = new ArrayList<InetAddress[]>();
+        List<List<InetAddress>> commandEndPoints = new ArrayList<List<InetAddress>>();
         List<Row> rows = new ArrayList<Row>();
 
         // send out read requests
         for (ReadCommand command: commands)
         {
             assert !command.isDigestQuery();
-            ReadCommand readMessageDigestOnly = command.copy();
-            readMessageDigestOnly.setDigestQuery(true);
-            Message message = command.makeReadMessage();
-            Message messageDigestOnly = readMessageDigestOnly.makeReadMessage();
+            ReadCommand digestCommand = command.copy();
+            digestCommand.setDigestQuery(true);
 
             InetAddress dataPoint = StorageService.instance.findSuitableEndPoint(command.table, command.key);
             List<InetAddress> endpointList = StorageService.instance.getLiveNaturalEndpoints(command.table, command.key);
@@ -461,23 +454,19 @@ public class StorageProxy implements StorageProxyMBean
             if (endpointList.size() < responseCount)
                 throw new UnavailableException();
 
-            InetAddress[] endPoints = new InetAddress[endpointList.size()];
-            Message messages[] = new Message[endpointList.size()];
+            ReadResponseResolver resolver = new ReadResponseResolver(command.table, command.key, responseCount);
+            QuorumResponseHandler<Row> quorumResponseHandler = new QuorumResponseHandler<Row>(responseCount, resolver);
             // data-request message is sent to dataPoint, the node that will actually get
             // the data for us. The other replicas are only sent a digest query.
-            int n = 0;
             for (InetAddress endpoint : endpointList)
             {
-                Message m = endpoint.equals(dataPoint) ? message : messageDigestOnly;
-                endPoints[n] = endpoint;
-                messages[n++] = m;
+                Message m = endpoint.equals(dataPoint) ? command.makeReadMessage() : digestCommand.makeReadMessage();
                 if (logger.isDebugEnabled())
-                    logger.debug("strongread reading " + (m == message ? "data" : "digest") + " for " + command + " from " + m.getMessageId() + "@" + endpoint);
+                    logger.debug("strongread reading " + (endpoint.equals(dataPoint) ? "data" : "digest") + " for " + command + " from " + m.getMessageId() + "@" + endpoint);
+                MessagingService.instance.sendRR(m, endpoint, quorumResponseHandler);
             }
-            QuorumResponseHandler<Row> quorumResponseHandler = new QuorumResponseHandler<Row>(responseCount, new ReadResponseResolver(command.table, responseCount));
-            MessagingService.instance.sendRR(messages, endPoints, quorumResponseHandler);
             quorumResponseHandlers.add(quorumResponseHandler);
-            commandEndPoints.add(endPoints);
+            commandEndPoints.add(endpointList);
         }
 
         // read results and make a second pass for any digest mismatches
@@ -505,9 +494,13 @@ public class StorageProxy implements StorageProxyMBean
                     if (logger.isDebugEnabled())
                         logger.debug("Digest mismatch:", ex);
                     int responseCount = determineBlockFor(DatabaseDescriptor.getReplicationFactor(command.table), consistency_level);
-                    QuorumResponseHandler<Row> qrhRepair = new QuorumResponseHandler<Row>(responseCount, new ReadResponseResolver(command.table, responseCount));
-                    Message messageRepair = command.makeReadMessage();
-                    MessagingService.instance.sendRR(messageRepair, commandEndPoints.get(i), qrhRepair);
+                    ReadResponseResolver resolver = new ReadResponseResolver(command.table, command.key, responseCount);
+                    QuorumResponseHandler<Row> qrhRepair = new QuorumResponseHandler<Row>(responseCount, resolver);
+                    for (InetAddress endPoint : commandEndPoints.get(i))
+                    {
+                        Message messageRepair = command.makeReadMessage();
+                        MessagingService.instance.sendRR(messageRepair, endPoint, qrhRepair);
+                    }
                     if (repairResponseHandlers == null)
                         repairResponseHandlers = new ArrayList<QuorumResponseHandler<Row>>();
                     repairResponseHandlers.add(qrhRepair);
@@ -554,7 +547,7 @@ public class StorageProxy implements StorageProxyMBean
 
         // now scan until we have enough results
         List<Row> rows = new ArrayList<Row>(command.max_keys);
-        for (AbstractBounds range : getRangeIterator(ranges, command.range.left))
+        for (AbstractBounds range : ranges)
         {
             List<InetAddress> liveEndpoints = StorageService.instance.getLiveNaturalEndpoints(command.keyspace, range.right);
             if (liveEndpoints.size() < responseCount)
@@ -563,14 +556,14 @@ public class StorageProxy implements StorageProxyMBean
             List<InetAddress> endpoints = liveEndpoints.subList(0, responseCount);
 
             RangeSliceCommand c2 = new RangeSliceCommand(command.keyspace, command.column_family, command.super_column, command.predicate, range, command.max_keys);
-            Message message = c2.getMessage();
 
             // collect replies and resolve according to consistency level
-            RangeSliceResponseResolver resolver = new RangeSliceResponseResolver(command.keyspace, endpoints);
+            RangeSliceResponseResolver resolver = new RangeSliceResponseResolver(command.keyspace, endpoints, StorageService.getPartitioner());
             QuorumResponseHandler<List<Row>> handler = new QuorumResponseHandler<List<Row>>(responseCount, resolver);
 
             for (InetAddress endpoint : endpoints)
             {
+                Message message = c2.getMessage();
                 MessagingService.instance.sendRR(message, endpoint, handler);
                 if (logger.isDebugEnabled())
                     logger.debug("reading " + c2 + " from " + message.getMessageId() + "@" + endpoint);
@@ -602,99 +595,40 @@ public class StorageProxy implements StorageProxyMBean
     }
 
     /**
-     * returns an iterator that will return ranges in ring order, starting with the one that contains the start token
+     * Compute all ranges we're going to query, in sorted order. Nodes can be replica destinations for many ranges,
+     * so we need to restrict each scan to the specific range we want, or else we'd get duplicate results.
      */
-    private static Iterable<AbstractBounds> getRangeIterator(final List<AbstractBounds> ranges, Token start)
+    static List<AbstractBounds> getRestrictedRanges(final AbstractBounds queryRange)
     {
-        // find the one to start with
-        int i;
-        for (i = 0; i < ranges.size(); i++)
+        // special case for bounds containing exactly 1 (non-minimum) token
+        if (queryRange instanceof Bounds && queryRange.left.equals(queryRange.right) && !queryRange.left.equals(StorageService.getPartitioner().getMinimumToken()))
         {
-            AbstractBounds range = ranges.get(i);
-            if (range.contains(start) || range.left.equals(start))
-                break;
+            if (logger.isDebugEnabled())
+                logger.debug("restricted single token match for query " + queryRange);
+            return Collections.singletonList(queryRange);
         }
-        AbstractBounds range = ranges.get(i);
-        assert range.contains(start) || range.left.equals(start); // make sure the loop didn't just end b/c ranges were exhausted
 
-        // return an iterable that starts w/ the correct range and iterates the rest in ring order
-        final int begin = i;
-        return new Iterable<AbstractBounds>()
-        {
-            public Iterator<AbstractBounds> iterator()
-            {
-                return new AbstractIterator<AbstractBounds>()
-                {
-                    int n = 0;
-
-                    protected AbstractBounds computeNext()
-                    {
-                        if (n == ranges.size())
-                            return endOfData();
-                        return ranges.get((begin + n++) % ranges.size());
-                    }
-                };
-            }
-        };
-    }
-
-    /**
-     * compute all ranges we're going to query, in sorted order, so that we get the correct results back.
-     *  1) computing range intersections is necessary because nodes can be replica destinations for many ranges,
-     *     so if we do not restrict each scan to the specific range we want we will get duplicate results.
-     *  2) sorting the intersection ranges is necessary because wraparound node ranges can be discontiguous.
-     *     Consider a 2-node ring, (D, T] and (T, D]. A query for [A, Z] will intersect the 2nd node twice,
-     *     at [A, D] and (T, Z]. We need to scan the (D, T] range in between those, or we will skip those
-     *     results entirely if the limit is low enough.
-     *  3) we unwrap the intersection ranges because otherwise we get results in the wrong order.
-     *     Consider a 2-node ring, (D, T] and (T, D].  A query for [D, Z] will get results in the wrong
-     *     order if we use (T, D] directly -- we need to start with that range, because our query starts with
-     *     D, but we don't want any other results from it until after the (D, T] range.  Unwrapping so that
-     *     the ranges we consider are (D, T], (T, MIN], (MIN, D] fixes this.
-     */
-    private static List<AbstractBounds> getRestrictedRanges(final AbstractBounds queryRange)
-    {
         TokenMetadata tokenMetadata = StorageService.instance.getTokenMetadata();
 
-        if (logger.isDebugEnabled())
-            logger.debug("computing restricted ranges for query " + queryRange);
-
         List<AbstractBounds> ranges = new ArrayList<AbstractBounds>();
-        // for each node, compute its intersection with the query range, and add its unwrapped components to our list
-        for (Token nodeToken : tokenMetadata.sortedTokens())
+        // divide the queryRange into pieces delimited by the ring and minimum tokens
+        Iterator<Token> ringIter = TokenMetadata.ringIterator(tokenMetadata.sortedTokens(), queryRange.left, true);
+        AbstractBounds remainder = queryRange;
+        while (ringIter.hasNext())
         {
-            Range nodeRange = new Range(tokenMetadata.getPredecessor(nodeToken), nodeToken);
-            for (AbstractBounds range : queryRange.restrictTo(nodeRange))
-            {
-                for (AbstractBounds unwrapped : range.unwrap())
-                {
-                    if (logger.isDebugEnabled())
-                        logger.debug("Adding to restricted ranges " + unwrapped + " for " + nodeRange);
-                    ranges.add(unwrapped);
-                }
-            }
+            Token token = ringIter.next();
+            if (remainder == null || !(remainder.left.equals(token) || remainder.contains(token)))
+                // no more splits
+                break;
+            Pair<AbstractBounds,AbstractBounds> splits = remainder.split(token);
+            if (splits.left != null)
+                ranges.add(splits.left);
+            remainder = splits.right;
         }
-
-        // re-sort ranges in ring order, post-unwrapping
-        Comparator<AbstractBounds> comparator = new Comparator<AbstractBounds>()
-        {
-            // no restricted ranges will overlap so we don't need to worry about inclusive vs exclusive left,
-            // just sort by raw token position.
-            public int compare(AbstractBounds o1, AbstractBounds o2)
-            {
-                // sort in order that the original query range would see them.
-                int queryOrder1 = queryRange.left.compareTo(o1.left);
-                int queryOrder2 = queryRange.left.compareTo(o2.left);
-                if (queryOrder1 < queryOrder2)
-                    return -1; // o1 comes after query start, o2 wraps to after
-                if (queryOrder1 > queryOrder2)
-                    return 1; // o2 comes after query start, o1 wraps to after
-                return o1.left.compareTo(o2.left); // o1 and o2 are on the same side of query start
-            }
-        };
-        Collections.sort(ranges, comparator);
+        if (remainder != null)
+            ranges.add(remainder);
         if (logger.isDebugEnabled())
-            logger.debug("Sorted ranges are [" + StringUtils.join(ranges, ", ") + "]");
+            logger.debug("restricted ranges for query " + queryRange + " are " + ranges);
 
         return ranges;
     }
@@ -744,9 +678,25 @@ public class StorageProxy implements StorageProxyMBean
         return writeStats.getRecentLatencyMicros();
     }
 
+    public boolean getHintedHandoffEnabled()
+    {
+        return hintedHandoffEnabled;
+    }
+
+    public void setHintedHandoffEnabled(boolean b)
+    {
+        hintedHandoffEnabled = b;
+    }
+
+    public static boolean isHintedHandoffEnabled()
+    {
+        return hintedHandoffEnabled;
+    }
+
     static class weakReadLocalCallable implements Callable<Object>
     {
-        private ReadCommand command;
+        private final ReadCommand command;
+        private final long start = System.currentTimeMillis();
 
         weakReadLocalCallable(ReadCommand command)
         {
@@ -760,15 +710,9 @@ public class StorageProxy implements StorageProxyMBean
 
             Table table = Table.open(command.table);
             Row row = command.getRow(table);
+            StorageService.instance.doConsistencyCheck(row, command, FBUtilities.getLocalAddress());
 
-            // Do the consistency checks in the background
-            if (DatabaseDescriptor.getConsistencyCheck())
-            {
-                List<InetAddress> endpoints = StorageService.instance.getLiveNaturalEndpoints(command.table, command.key);
-                if (endpoints.size() > 1)
-                    StorageService.instance.doConsistencyCheck(row, endpoints, command);
-            }
-
+            MessagingService.instance.addLatency(FBUtilities.getLocalAddress(), System.currentTimeMillis() - start);
             return row;
         }
     }

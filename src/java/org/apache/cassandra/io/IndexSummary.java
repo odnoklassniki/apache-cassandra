@@ -31,10 +31,7 @@ import org.apache.cassandra.db.DecoratedKey;
 
 public class IndexSummary
 {
-    /** Every 128th index entry is loaded into memory so we know where to start looking for the actual key w/o seeking */
-    public static final int INDEX_INTERVAL = 128;/* Required extension for temporary files created during compactions. */
-
-    private ArrayList<KeyPosition> indexPositions;
+    private ArrayList<KeyPosition> indexPositions = new ArrayList<KeyPosition>();
     private Map<KeyPosition, SSTable.PositionSize> spannedIndexDataPositions;
     private Map<Long, KeyPosition> spannedIndexPositions;
     private int keysWritten = 0;
@@ -44,12 +41,8 @@ public class IndexSummary
     {
         boolean spannedIndexEntry = DatabaseDescriptor.getIndexAccessMode() == DatabaseDescriptor.DiskAccessMode.mmap
                                     && SSTableReader.bufferIndex(indexPosition) != SSTableReader.bufferIndex(nextIndexPosition);
-        if ((keysWritten++ % INDEX_INTERVAL == 0) || spannedIndexEntry)
+        if ((keysWritten++ % DatabaseDescriptor.getIndexInterval() == 0) || spannedIndexEntry)
         {
-            if (indexPositions == null)
-            {
-                indexPositions  = new ArrayList<KeyPosition>();
-            }
             KeyPosition info = new KeyPosition(decoratedKey, indexPosition);
             indexPositions.add(info);
 
