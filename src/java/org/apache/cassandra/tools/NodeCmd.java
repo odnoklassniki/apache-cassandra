@@ -197,6 +197,8 @@ public class NodeCmd {
         double memUsed = (double)heapUsage.getUsed() / (1024 * 1024);
         double memMax = (double)heapUsage.getMax() / (1024 * 1024);
         outs.println(String.format("%-17s: %.2f / %.2f", "Heap Memory (MB)", memUsed, memMax));
+        outs.println(String.format("%-17s: %s", "Compaction", probe.getCompactionStatus()));
+        
     }
 
     public void printStreamInfo(final InetAddress addr, PrintStream outs)

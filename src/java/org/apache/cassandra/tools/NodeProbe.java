@@ -386,6 +386,26 @@ public class NodeProbe
              mcmProxy.setMaximumCompactionThreshold(maximumCompactionThreshold);
         }
     }
+    
+    /**
+     * Dumps compaction status
+     * 
+     * @return compacton status readable string 
+     */
+    public String getCompactionStatus()
+    {
+        String cf=mcmProxy.getColumnFamilyInProgress();
+        
+        if (cf!=null)
+        {
+            return "Compacting "+cf+", progress "+mcmProxy.getBytesCompacted()+"/"+mcmProxy.getBytesTotalInProgress();
+            
+        } else
+        {
+            return "Not active";
+        }
+        
+    }
 
     public void setCacheCapacities(String tableName, String cfName, int keyCacheCapacity, int rowCacheCapacity)
     {
