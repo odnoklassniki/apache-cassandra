@@ -70,6 +70,6 @@ public class CommitLogTest extends CleanupHelper
         OutputStream out = new FileOutputStream(tmpFile);
         out.write(new byte[6]);
         //statics make it annoying to test things correctly
-        CommitLog.instance().recover(new File[] {tmpFile}); //CASSANDRA-1119 throws on failure
+        CommitLog.instance().recover(new File[] {tmpFile},false); //CASSANDRA-1119 throws on failure
     }
 }

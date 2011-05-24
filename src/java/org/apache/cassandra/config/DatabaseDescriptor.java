@@ -81,6 +81,9 @@ public class DatabaseDescriptor
     /* Current index into the above list of directories */
     private static int currentIndex = 0;
     private static String logFileDirectory;
+    /** MM: where to ship commit logs **/
+    private static String logFileShipDestination;
+
     private static int consistencyThreads = 4; // not configurable
     private static int concurrentReaders = 8;
     private static int concurrentWriters = 32;
@@ -476,6 +479,17 @@ public class DatabaseDescriptor
                     throw new ConfigurationException("CommitLogDirectory must not be the same as any DataFileDirectory");
             }
 
+            logFileShipDestination = xmlUtils.getNodeValue("/Storage/CommitLogShippingDirectory");
+
+            if (logFileShipDestination!=null)
+            {
+                for (String datadir : dataFileDirectories)
+                {
+                    if (datadir.equals(logFileShipDestination))
+                        throw new ConfigurationException("CommitLogShippingDirectory must not be the same as any DataFileDirectory");
+                }
+            }
+            
             /* threshold after which commit log should be rotated. */
             String value = xmlUtils.getNodeValue("/Storage/CommitLogRotationThresholdInMB");
             if ( value != null)
@@ -787,13 +801,20 @@ public class DatabaseDescriptor
             {
                 throw new ConfigurationException("At least one DataFileDirectory must be specified");
             }
+            
             for ( String dataFileDirectory : dataFileDirectories )
                 FileUtils.createDirectory(dataFileDirectory);
+            
             if (logFileDirectory == null)
             {
                 throw new ConfigurationException("CommitLogDirectory must be specified");
             }
             FileUtils.createDirectory(logFileDirectory);
+            
+            if (logFileShipDestination !=null )
+            {
+                FileUtils.createDirectory(logFileDirectory);
+            }   
         }
         catch (ConfigurationException ex) {
             logger.error("Fatal error: " + ex.getMessage());
@@ -1040,6 +1061,16 @@ public class DatabaseDescriptor
     public static String getLogFileLocation()
     {
         return logFileDirectory;
+    }
+    
+    public static String getLogShipDestination()
+    {
+        return logFileShipDestination;
+    }
+    
+    public static boolean isLogShipingActive()
+    {
+        return logFileShipDestination != null;
     }
 
     public static Set<InetAddress> getSeeds()

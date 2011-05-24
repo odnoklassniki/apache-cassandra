@@ -25,6 +25,8 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import javax.management.*;
 
 import org.apache.log4j.Logger;
@@ -556,6 +558,17 @@ public class CompactionManager implements CompactionManagerMBean
         for (ColumnFamilyStore cfs : ColumnFamilyStore.all())
         {
             submitMinorIfNeeded(cfs);
+        }
+    }
+    
+    public boolean waitForCompletion(int timeoutSecs)
+    {
+        try {
+            executor.awaitTermination(timeoutSecs, TimeUnit.SECONDS);
+            return executor.getActiveCount()==0;
+        } catch (InterruptedException e) 
+        {
+            return true;
         }
     }
 

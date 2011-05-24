@@ -170,13 +170,42 @@ public class CommitLog
 
         Arrays.sort(files, new FileUtils.FileComparator());
         logger.info("Replaying " + StringUtils.join(files, ", "));
-        recover(files);
+        recover(files,false);
         FileUtils.delete(files);
         logger.info("Log replay complete");
     }
 
+    /**
+     * This is forced version of log replay. It is needed when data files 
+     * are not in sync with commit log files headers, e.g. when youre replaying
+     * shipped logs using file copies restored from backups.
+     * 
+     * @throws IOException
+     */
+    public static void forcedRecover() throws IOException
+    {
+        String directory = DatabaseDescriptor.getLogFileLocation();
+        File file = new File(directory);
+        File[] files = file.listFiles(new FilenameFilter()
+        {
+            public boolean accept(File dir, String name)
+            {
+                // throw out anything that starts with dot.
+                return !name.matches("\\..*");
+            }
+        });
+        if (files.length == 0)
+            return;
 
-    public static void recover(File[] clogs) throws IOException
+        Arrays.sort(files, new FileUtils.FileComparator());
+        logger.info("Forced replay " + StringUtils.join(files, ", "));
+        recover(files,true);
+        FileUtils.delete(files);
+        logger.info("Forced Log replay complete");
+    }
+    
+
+    public static void recover(File[] clogs, boolean forced) throws IOException
     {
         Set<Table> tablesRecovered = new HashSet<Table>();
         List<Future<?>> futures = new ArrayList<Future<?>>();
@@ -196,14 +225,18 @@ public class CommitLog
                 continue;
             }
 
-            /* seek to the lowest position where any CF has non-flushed data */
-            int lowPos = CommitLogHeader.getLowestPosition(clHeader);
+            /* seek to the lowest position where any CF has non-flushed data 
+             * if replay was forced - reading all records, regardless of commit log header 
+             */
+            int lowPos = forced ? (int)reader.getFilePointer() : CommitLogHeader.getLowestPosition(clHeader);
             if (lowPos == 0)
                 continue;
 
             reader.seek(lowPos);
-            if (logger.isDebugEnabled())
+            if (logger.isDebugEnabled() && !forced)
                 logger.debug("Replaying " + file + " starting at " + lowPos);
+            if (forced)
+                logger.info("Replaying " + file + " starting at " + lowPos);
 
             /* read the logs populate RowMutation and apply */
             while (!reader.isEOF())
@@ -246,25 +279,41 @@ public class CommitLog
                 tablesRecovered.add(table);
                 final Collection<ColumnFamily> columnFamilies = new ArrayList<ColumnFamily>(rm.getColumnFamilies());
                 final long entryLocation = reader.getFilePointer();
-                Runnable runnable = new WrappedRunnable()
+                Runnable runnable;
+
+                if (forced)
                 {
-                    public void runMayThrow() throws IOException
+                    runnable = new WrappedRunnable()
                     {
-                        /* remove column families that have already been flushed before applying the rest */
-                        for (ColumnFamily columnFamily : columnFamilies)
+                        public void runMayThrow() throws IOException
                         {
-                            int id = table.getColumnFamilyId(columnFamily.name());
-                            if (!clHeader.isDirty(id) || entryLocation < clHeader.getPosition(id))
+                            if (!rm.isEmpty())
                             {
-                                rm.removeColumnFamily(columnFamily);
+                                Table.open(rm.getTable()).apply(rm, null, false);
                             }
                         }
-                        if (!rm.isEmpty())
+                    };
+                } else {
+                    runnable = new WrappedRunnable()
+                    {
+                        public void runMayThrow() throws IOException
                         {
-                            Table.open(rm.getTable()).apply(rm, null, false);
+                            /* remove column families that have already been flushed before applying the rest */
+                            for (ColumnFamily columnFamily : columnFamilies)
+                            {
+                                int id = table.getColumnFamilyId(columnFamily.name());
+                                if (!clHeader.isDirty(id) || entryLocation < clHeader.getPosition(id))
+                                {
+                                    rm.removeColumnFamily(columnFamily);
+                                }
+                            }
+                            if (!rm.isEmpty())
+                            {
+                                Table.open(rm.getTable()).apply(rm, null, false);
+                            }
                         }
-                    }
-                };
+                    };
+                }
                 futures.add(StageManager.getStage(StageManager.MUTATION_STAGE).submit(runnable));
                 if (futures.size() > MAX_OUTSTANDING_REPLAY_COUNT)
                 {
