@@ -81,8 +81,8 @@ public class DatabaseDescriptor
     /* Current index into the above list of directories */
     private static int currentIndex = 0;
     private static String logFileDirectory;
-    /** MM: where to ship commit logs **/
-    private static String logFileShipDestination;
+    /** MM: where to ship commit logs for backup **/
+    private static String logFileArchiveDestination;
 
     private static int consistencyThreads = 4; // not configurable
     private static int concurrentReaders = 8;
@@ -479,14 +479,15 @@ public class DatabaseDescriptor
                     throw new ConfigurationException("CommitLogDirectory must not be the same as any DataFileDirectory");
             }
 
-            logFileShipDestination = xmlUtils.getNodeValue("/Storage/CommitLogShippingDirectory");
+            String activateShipping = xmlUtils.getNodeValue("/Storage/CommitLogArchive");
 
-            if (logFileShipDestination!=null)
+            if (activateShipping !=null)
             {
-                for (String datadir : dataFileDirectories)
+                if (Boolean.valueOf(activateShipping))
                 {
-                    if (datadir.equals(logFileShipDestination))
-                        throw new ConfigurationException("CommitLogShippingDirectory must not be the same as any DataFileDirectory");
+                    logFileArchiveDestination = logFileDirectory+File.separator+".archived";
+                    
+                    logger.warn("Commit logs archiving activated to "+logFileArchiveDestination+". You must backup them to archive location and remove by yourself to prevent commit log disk overflow");
                 }
             }
             
@@ -811,9 +812,9 @@ public class DatabaseDescriptor
             }
             FileUtils.createDirectory(logFileDirectory);
             
-            if (logFileShipDestination !=null )
+            if (logFileArchiveDestination !=null )
             {
-                FileUtils.createDirectory(logFileDirectory);
+                FileUtils.createDirectory(logFileArchiveDestination);
             }   
         }
         catch (ConfigurationException ex) {
@@ -1065,12 +1066,12 @@ public class DatabaseDescriptor
     
     public static String getLogShipDestination()
     {
-        return logFileShipDestination;
+        return logFileArchiveDestination;
     }
     
     public static boolean isLogShipingActive()
     {
-        return logFileShipDestination != null;
+        return logFileArchiveDestination != null;
     }
 
     public static Set<InetAddress> getSeeds()

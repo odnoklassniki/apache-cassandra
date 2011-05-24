@@ -21,6 +21,7 @@ package org.apache.cassandra.db.commitlog;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.io.DeletionService;
@@ -200,6 +201,7 @@ public class CommitLog
         Arrays.sort(files, new FileUtils.FileComparator());
         logger.info("Forced replay " + StringUtils.join(files, ", "));
         recover(files,true);
+        
         FileUtils.delete(files);
         logger.info("Forced Log replay complete");
     }

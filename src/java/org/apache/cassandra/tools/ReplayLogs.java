@@ -9,10 +9,13 @@ import java.io.File;
 import java.io.IOException;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLog;
-import org.apache.cassandra.thrift.CassandraDaemon;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Options;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
@@ -24,12 +27,12 @@ import org.apache.log4j.PropertyConfigurator;
  *  normal - will do not ignore dirty information from commit log file headers. 
  *  This is useful when you want to replay logs normally in a healthy node. 
  * 
- * @author Oleg Anastasyev<oa@one.lv>
+ * @author Oleg Anastasyev<oa@hq.one.lv>
  *
  */
 public class ReplayLogs
 {
-    private static Logger logger = Logger.getLogger(ReplayLogs.class);
+    private static final Logger logger = Logger.getLogger(ReplayLogs.class);
 
     public static void main(String[] args)
     {
@@ -37,12 +40,26 @@ public class ReplayLogs
         String file = System.getProperty("storage-config") + File.separator + "log4j.properties";
         PropertyConfigurator.configure(file);
         
+        if (args.length<1)
+        {
+            printUsage();
+            System.exit(1);
+        }
+        
         boolean forcedMode=false;
-        if ( "forced".equals(args[0]) )
+        boolean compact = false;
+        
+        if ( "-forced".equals(args[0]) )
             forcedMode=true;
         else
-            if (!"normal".equalsIgnoreCase(args[0]))
-                throw new IllegalArgumentException("You must specify either forced or normal as 1st argument");
+            if ( "-forcedcompact".equals(args[0]) )
+            {
+                forcedMode=true;
+                compact = true;
+            }
+            else
+                if (!"-normal".equalsIgnoreCase(args[0]))
+                    throw new IllegalArgumentException("You must specify either -forced or -normal as 1st argument");
         
         // initialize keyspaces
         try {
@@ -52,6 +69,21 @@ public class ReplayLogs
                     logger.debug("opening keyspace " + table);
                 Table.open(table);
             }
+            
+            Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
+            {
+                
+                @Override
+                public void uncaughtException(Thread t, Throwable e)
+                {
+                    logger.error("Unexpected error",e);
+                }
+            });
+            
+            // anyway will check for compaction after logs replay applied. So this is to speedup log application.
+            int maximumCompactionThreshold = CompactionManager.instance.getMaximumCompactionThreshold();
+            int minimumCompactionThreshold = CompactionManager.instance.getMinimumCompactionThreshold();
+            CompactionManager.instance.disableAutoCompaction();
 
             // replay the log if necessary and check for compaction candidates
             if (forcedMode)
@@ -59,17 +91,47 @@ public class ReplayLogs
             else
                 CommitLog.recover();
 
-            CompactionManager.instance.checkAllColumnFamilies();
-            
+            if (compact)
+            {
+                for (ColumnFamilyStore cf : ColumnFamilyStore.all()) 
+                {
+                    CompactionManager.instance.submitMajor(cf);
+                    logger.info("Started major compaction of "+cf.getColumnFamilyName());
+                }
+            } else 
+            {
+                // restoring autocompact values
+                CompactionManager.instance.setMaximumCompactionThreshold(maximumCompactionThreshold);
+                CompactionManager.instance.setMinimumCompactionThreshold(minimumCompactionThreshold);
+                CompactionManager.instance.checkAllColumnFamilies();
+                logger.info("Invoking minor compactions if needed...");
+            }
+
             while (!CompactionManager.instance.waitForCompletion(60))
             {
-                logger.info("... waiting for compaction manager completion");
+                logger.info("... waiting for compaction manager completion. Compacted so far/total: "+CompactionManager.instance.getBytesCompacted()+"/"+CompactionManager.instance.getBytesTotalInProgress());
             }
             
+            System.gc();
+
+            logger.info("Log replay completed. All replayed log files were removed from "+DatabaseDescriptor.getLogFileLocation()+".");
             System.exit(0);
         } 
         catch (IOException e) {
             logger.error("",e);
         }
+    }
+
+    /**
+     * 
+     */
+    private static void printUsage()
+    {
+        HelpFormatter hf = new HelpFormatter();
+        
+        hf.printHelp("logreplay <option>",new Options()
+                .addOption("forced", false, "Replay all logs. Used to restore by rolling all logs to previously snap shotted data files")
+                .addOption("forcedcompact", false, "Replay all logs, like -forced do and do a major compaction. ")
+                .addOption("normal", false, "Apply commit logs to datafiles like cassandra does normally on startup and exit."));
     }
 }
