@@ -499,8 +499,9 @@ public class StorageProxy implements StorageProxyMBean
             }
             catch (DigestMismatchException ex)
             {
-                if (DatabaseDescriptor.getConsistencyCheck())
-                {
+// do repair on strong reads regardless of doConsistenyChecks flag                
+//                if (DatabaseDescriptor.getConsistencyCheck())
+//                {
                     if (logger.isDebugEnabled())
                         logger.debug("Digest mismatch:", ex);
                     int responseCount = determineBlockFor(DatabaseDescriptor.getReplicationFactor(command.table), consistency_level);
@@ -510,7 +511,7 @@ public class StorageProxy implements StorageProxyMBean
                     if (repairResponseHandlers == null)
                         repairResponseHandlers = new ArrayList<QuorumResponseHandler<Row>>();
                     repairResponseHandlers.add(qrhRepair);
-                }
+//                }
             }
         }
 
