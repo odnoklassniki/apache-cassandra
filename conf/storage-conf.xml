@@ -214,6 +214,13 @@
   -->
   <SavedCachesDirectory>/var/lib/cassandra/saved_caches</SavedCachesDirectory>
   <CommitLogDirectory>/var/lib/cassandra/commitlog</CommitLogDirectory>
+  <!--
+	MM: Activate commit log archiving mode. 
+	Unneeded commit logs will be hardlinked to the CommitLogDirectory/.archive 
+	directory.
+    Off by default.
+  -->
+  <CommitLogArchive>false</CommitLogArchive>
   <DataFileDirectories>
       <DataFileDirectory>/var/lib/cassandra/data</DataFileDirectory>
   </DataFileDirectories>
