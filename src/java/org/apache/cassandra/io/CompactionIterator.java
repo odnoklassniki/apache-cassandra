@@ -77,7 +77,7 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
         CollatingIterator iter = FBUtilities.<IteratingRow>getCollatingIterator();
         for (SSTableReader sstable : sstables)
         {
-            iter.addIterator(sstable.getScanner(FILE_BUFFER_SIZE));
+            iter.addIterator(sstable.getDirectScanner(FILE_BUFFER_SIZE));
         }
         return iter;
     }

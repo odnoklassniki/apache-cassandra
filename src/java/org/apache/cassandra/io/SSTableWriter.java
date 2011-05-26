@@ -50,6 +50,7 @@ public class SSTableWriter extends SSTable
         super(filename, partitioner);
         indexSummary = new IndexSummary();
         dataFile = new BufferedRandomAccessFile(path, "rw", (int)(DatabaseDescriptor.getFlushDataBufferSizeInMB() * 1024 * 1024));
+        dataFile.setSkipCache(true);
         indexFile = new BufferedRandomAccessFile(indexFilename(), "rw", (int)(DatabaseDescriptor.getFlushIndexBufferSizeInMB() * 1024 * 1024));
         bf = BloomFilter.getFilter(keyCount, 15);
     }

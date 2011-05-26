@@ -40,7 +40,7 @@ public class BufferedRandomAccessFileTest
 
         // write a chunk smaller then our buffer, so will not be flushed
         // to disk
-        byte[] lessThenBuffer = new byte[BufferedRandomAccessFile.BuffSz_ / 2];
+        byte[] lessThenBuffer = new byte[BufferedRandomAccessFile.DEFAULT_BUFFER_SIZE / 2];
         rw.write(lessThenBuffer);
         assertEquals(lessThenBuffer.length, rw.length());
 
@@ -49,7 +49,7 @@ public class BufferedRandomAccessFileTest
         assertEquals(lessThenBuffer.length, rw.length());
 
         // write more then the buffer can hold and check length
-        byte[] biggerThenBuffer = new byte[BufferedRandomAccessFile.BuffSz_ * 2];
+        byte[] biggerThenBuffer = new byte[BufferedRandomAccessFile.DEFAULT_BUFFER_SIZE * 2];
         rw.write(biggerThenBuffer);
         assertEquals(biggerThenBuffer.length + lessThenBuffer.length, rw.length());
 

@@ -552,6 +552,17 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         return new SSTableScanner(this, bufferSize);
     }
 
+    /**
+     * Direct I/O SSTableScanner
+     * @param bufferSize Buffer size in bytes for this Scanner.
+     * @return A Scanner for seeking over the rows of the SSTable.
+     * @throws IOException when I/O operation fails
+     */
+    public SSTableScanner getDirectScanner(int bufferSize) throws IOException
+    {
+        return new SSTableScanner(this, bufferSize).skipPageCache(true);
+    }
+
     public FileDataInput getFileDataInput(DecoratedKey decoratedKey, int bufferSize) throws IOException
     {
         PositionSize info = getPosition(decoratedKey);

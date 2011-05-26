@@ -49,6 +49,12 @@ public class SSTableScanner implements Iterator<IteratingRow>, Closeable
         this.sstable = sstable;
     }
 
+    public SSTableScanner skipPageCache(boolean shouldSkip)
+    {
+        this.file.setSkipCache(shouldSkip);
+        return this;
+    }
+
     public void close() throws IOException
     {
         file.close();

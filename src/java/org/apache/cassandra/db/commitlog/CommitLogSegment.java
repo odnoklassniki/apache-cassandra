@@ -51,6 +51,8 @@ public class CommitLogSegment
         try
         {
             logWriter = createWriter(logFile);
+            logWriter.setSkipCache(true);
+            
             writeCommitLogHeader(header.toByteArray());
         }
         catch (IOException e)
