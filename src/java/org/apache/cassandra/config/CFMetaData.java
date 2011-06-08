@@ -36,8 +36,12 @@ public final class CFMetaData
     public final double keyCacheSize; // default 0.01
     public final int rowCacheSavePeriodInSeconds; //default 0 (off)
     public final int keyCacheSavePeriodInSeconds; //default 0 (off)
+    
+    /** MM: do we want column to be checked against bloom filter **/
+    public final boolean bloomColumns ;
 
     CFMetaData(String tableName, String cfName, String columnType, AbstractType comparator, AbstractType subcolumnComparator,
+               boolean bloomColumns,
                String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds)
     {
         this.tableName = tableName;
@@ -45,6 +49,7 @@ public final class CFMetaData
         this.columnType = columnType;
         this.comparator = comparator;
         this.subcolumnComparator = subcolumnComparator;
+        this.bloomColumns = bloomColumns;
         this.comment = comment;
         this.rowCacheSize = rowCacheSize;
         this.keyCacheSize = keyCacheSize;
@@ -70,6 +75,7 @@ public final class CFMetaData
                 && other.columnType.equals(columnType)
                 && other.comparator.equals(comparator)
                 && FBUtilities.equals(other.subcolumnComparator, subcolumnComparator)
+                && other.bloomColumns==bloomColumns
                 && FBUtilities.equals(other.comment, comment)
                 && other.rowCacheSize == rowCacheSize
                 && other.keyCacheSize == keyCacheSize

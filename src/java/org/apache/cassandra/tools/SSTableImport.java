@@ -30,6 +30,7 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.SuperColumn;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.io.BloomFilterWriter;
 import org.apache.cassandra.io.SSTableWriter;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.json.simple.JSONArray;
@@ -146,6 +147,8 @@ public class SSTableImport
             
             SSTableWriter writer = new SSTableWriter(ssTablePath, json.size(), partitioner);
             List<DecoratedKey<?>> decoratedKeys = new ArrayList<DecoratedKey<?>>();
+            BloomFilterWriter bfw = writer.getBloomFilterWriter();
+            boolean bloomColumns = bfw.isBloomColumns();
             
             for (String key : (Set<String>)json.keySet())
                 decoratedKeys.add(partitioner.decorateKey(key));
@@ -160,6 +163,9 @@ public class SSTableImport
                            
                 ColumnFamily.serializer().serializeWithIndexes(cfamily, dob);
                 writer.append(rowKey, dob);
+                if (bloomColumns)
+                    bfw.add(rowKey, cfamily);
+                
                 dob.reset();
                 cfamily.clear();
             }

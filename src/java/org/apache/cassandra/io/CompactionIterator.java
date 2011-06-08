@@ -22,6 +22,7 @@ package org.apache.cassandra.io;
 
 
 import java.io.Closeable;
+import java.io.DataInput;
 import java.io.IOError;
 import java.io.IOException;
 import java.util.*;
@@ -32,6 +33,8 @@ import org.apache.commons.collections.iterators.CollatingIterator;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.ObservingColumnFamilyDeserializer;
+import org.apache.cassandra.io.util.DataInputBuffer;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.ReducingIterator;
@@ -46,10 +49,17 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     private final ColumnFamilyStore cfs;
     private final int gcBefore;
     private final boolean major;
+    
+    // MM:listens for all column names seen by this iterator
+    private IColumnNameObserver columnNameObserver;
+    private ObservingColumnFamilyDeserializer observingDeserializer;
+    private CompactedRow currentRow;
 
     private long totalBytes;
     private long bytesRead;
     private long row;
+
+    private DataOutputBuffer buffer = new DataOutputBuffer();
 
     public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
     {
@@ -96,7 +106,7 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     protected CompactedRow getReduced()
     {
         assert rows.size() > 0;
-        DataOutputBuffer buffer = new DataOutputBuffer();
+        buffer.reset();
         DecoratedKey key = rows.get(0).getKey();
 
         Set<SSTable> sstables = new HashSet<SSTable>();
@@ -134,6 +144,9 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                 if (cfPurged == null)
                     return null;
                 ColumnFamily.serializer().serializeWithIndexes(cfPurged, buffer);
+
+                if (columnNameObserver!=null)
+                    columnNameObserver.add(key,cfPurged);
             }
             else
             {
@@ -141,6 +154,11 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                 try
                 {
                     rows.get(0).echoData(buffer);
+                    
+                    if (columnNameObserver!=null)
+                    {
+                        observingDeserializer.deserialize(key, new DataInputBuffer(buffer));
+                    }
                 }
                 catch (IOException e)
                 {
@@ -160,7 +178,7 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                 }
             }
         }
-        return new CompactedRow(key, buffer);
+        return currentRow=new CompactedRow(key, buffer);
     }
 
     public void close() throws IOException
@@ -174,6 +192,27 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     protected Iterable<SSTableScanner> getScanners()
     {
         return ((CollatingIterator)source).getIterators();
+    }
+    
+    /**
+     * @param columnNameObserver the columnNameObserver to set
+     */
+    public void setColumnNameObserver(IColumnNameObserver columnNameObserver)
+    {
+
+        this.columnNameObserver = columnNameObserver;
+        this.observingDeserializer = new ObservingColumnFamilyDeserializer(columnNameObserver);
+        
+        // very 1st row already was processed, so we push it to name observer here
+        if (currentRow!=null)
+        {
+            try {
+                observingDeserializer.deserialize(currentRow.key, new DataInputBuffer(currentRow.buffer));
+            } catch (IOException e) 
+            {
+                throw new IOError(e);
+            }
+        }
     }
 
     public long getTotalBytes()

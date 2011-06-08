@@ -1373,6 +1373,104 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return falseCount.doubleValue() / (trueCount.doubleValue() + falseCount.doubleValue());
     }
 
+    public long getRecentBloomFilterNegatives()
+    {
+        long count = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            count += sstable.getBloomFilterTracker().getRecentNegativeCount();
+        }
+        return count;
+    }
+    
+    public long getBloomFilterNegatives()
+    {
+        long count = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            count += sstable.getBloomFilterTracker().getNegativeCount();
+        }
+        return count;
+    }
+
+    @Override
+    public double getRecentBloomFilterNegativeRatio()
+    {
+        long posCount = 0L;
+        long negCount = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            posCount += sstable.getRecentBloomFilterFalsePositiveCount() + sstable.getRecentBloomFilterTruePositiveCount();
+            negCount += sstable.getBloomFilterTracker().getRecentNegativeCount();
+        }
+        
+        if ( posCount== 0L && negCount== 0L )
+            return 0d;
+        
+        return posCount / ( (double) negCount + posCount);
+    }
+
+    @Override
+    public long getBloomFilterColumnNegatives()
+    {
+        long count = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            count += sstable.getBloomFilterTracker().getColumnNegativeCount();
+        }
+        return count;
+    }
+
+    @Override
+    public long getRecentBloomFilterColumnNegatives()
+    {
+        long count = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            count += sstable.getBloomFilterTracker().getRecentColumnNegativeCount();
+        }
+        return count;
+    }
+
+    @Override
+    public long getBloomFilterColumnReads()
+    {
+        long count = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            count += sstable.getBloomFilterTracker().getColumnReadsCount();
+        }
+        return count;
+    }
+
+    @Override
+    public long getRecentBloomFilterColumnReads()
+    {
+        long count = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            count += sstable.getBloomFilterTracker().getRecentColumnReadsCount();
+        }
+        return count;
+    }
+
+    @Override
+    public double getRecentBloomFilterColumnNegativeRatio()
+    {
+        long posCount = 0L;
+        long negCount = 0L;
+        for (SSTableReader sstable: getSSTables())
+        {
+            posCount += sstable.getBloomFilterTracker().getRecentColumnReadsCount();
+            negCount += sstable.getBloomFilterTracker().getRecentColumnNegativeCount();
+        }
+        
+        if ( posCount== 0L && negCount== 0L )
+            return 0d;
+        
+        return posCount / ( (double) negCount + posCount);
+    }
+
     public long estimateKeys()
     {
         return ssTables_.estimatedKeys();

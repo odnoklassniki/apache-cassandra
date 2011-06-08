@@ -20,7 +20,7 @@ package org.apache.cassandra.utils;
 
 import java.nio.ByteBuffer;
 
-import org.apache.cassandra.io.ICompactSerializer;
+import org.apache.cassandra.io.ICompactSerializer2;
 
 public abstract class Filter
 {
@@ -50,7 +50,7 @@ public abstract class Filter
      * @return 
      * @return
      */
-    public static ICompactSerializer<BloomFilter> getSerializer()
+    public static ICompactSerializer2<BloomFilter> getSerializer()
     {
         return BloomFilter.serializer();
     }

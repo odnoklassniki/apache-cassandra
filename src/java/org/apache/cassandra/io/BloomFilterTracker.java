@@ -23,12 +23,35 @@ package org.apache.cassandra.io;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+// TODO stats about column bloom
+// TODO add bloomed out/passed ratio (see SSTable#getPosition)
 public class BloomFilterTracker
 {
+    private AtomicLong columnReadsCount = new AtomicLong(0);
+    private AtomicLong columnNegativeCount = new AtomicLong(0);
+    private AtomicLong negativeCount = new AtomicLong(0);
     private AtomicLong falsePositiveCount = new AtomicLong(0);
     private AtomicLong truePositiveCount = new AtomicLong(0);
     private long lastFalsePositiveCount = 0L;
     private long lastTruePositiveCount = 0L;
+    private long lastNegativeCount = 0L;
+    private long lastColumnNegativeCount = 0L;
+    private long lastColumnReadsCount = 0L;
+
+    public void addNegativeCount()
+    {
+        negativeCount.incrementAndGet();
+    }
+    
+    public void addColumnNegativeCount()
+    {
+        columnNegativeCount.incrementAndGet();
+    }
+    
+    public void addColumnReadsCount()
+    {
+        columnReadsCount.incrementAndGet();
+    }
 
     public void addFalsePositive()
     {
@@ -38,6 +61,60 @@ public class BloomFilterTracker
     public void addTruePositive()
     {
         truePositiveCount.incrementAndGet();
+    }
+    
+    public long getNegativeCount()
+    {
+        return negativeCount.get();
+    }
+
+    public long getRecentNegativeCount()
+    {
+        long fpc = getNegativeCount();
+        try
+        {
+            return (fpc - lastNegativeCount);
+        }
+        finally
+        {
+            lastNegativeCount = fpc;
+        }
+    }
+
+    public long getColumnNegativeCount()
+    {
+        return columnNegativeCount.get();
+    }
+
+    public long getRecentColumnNegativeCount()
+    {
+        long fpc = getColumnNegativeCount();
+        try
+        {
+            return (fpc - lastColumnNegativeCount);
+        }
+        finally
+        {
+            lastColumnNegativeCount = fpc;
+        }
+    }
+
+    public long getColumnReadsCount()
+    {
+        return columnReadsCount.get();
+    }
+
+    public long getRecentColumnReadsCount()
+    {
+        long fpc = getColumnReadsCount();
+        try
+        {
+            return (fpc - lastColumnReadsCount);
+        }
+        finally
+        {
+            lastColumnReadsCount = fpc;
+        }
     }
 
     public long getFalsePositiveCount()

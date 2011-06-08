@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import org.apache.cassandra.io.ICompactSerializer;
+import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.utils.obs.OpenBitSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,11 +32,13 @@ public class BloomFilter extends Filter
 
     private static final Logger logger = LoggerFactory.getLogger(BloomFilter.class);
     private static final int EXCESS = 20;
-    static ICompactSerializer<BloomFilter> serializer_ = new BloomFilterSerializer();
+    static ICompactSerializer2<BloomFilter> serializer_ = new BloomFilterSerializer();
 
     public OpenBitSet bitset;
     
     private ByteBuffer strBuffer;
+    
+    private long elementCount;
 
     BloomFilter(int hashes, OpenBitSet bs)
     {
@@ -43,7 +46,14 @@ public class BloomFilter extends Filter
         bitset = bs;
     }
 
-    public static ICompactSerializer<BloomFilter> serializer()
+    BloomFilter(int hashes, OpenBitSet bs, long elementCount)
+    {
+        hashCount = hashes;
+        bitset = bs;
+        this.elementCount = elementCount;
+    }
+
+    public static ICompactSerializer2<BloomFilter> serializer()
     {
         return serializer_;
     }
@@ -113,17 +123,27 @@ public class BloomFilter extends Filter
 
     static long[] getHashBuckets(String key, int hashCount, long max)
     {
-        return getHashBuckets(toByteBuffer(key), hashCount, max);
+        return getHashBuckets(toByteBuffer(key, null), hashCount, max);
     }
     
     public void add(ByteBuffer key)
     {
+        elementCount++;
+        
         for (long bucketIndex : getHashBuckets(key))
         {
             bitset.set(bucketIndex);
         }
     }
 
+    /**
+     * @return the elementCount of this bloom filter
+     */
+    public long getElementCount()
+    {
+        return elementCount;
+    }
+    
     public boolean isPresent(ByteBuffer key)
     {
       for (long bucketIndex : getHashBuckets(key))
@@ -156,62 +176,41 @@ public class BloomFilter extends Filter
      */
     public boolean isPresent(String key)
     {
-        return isPresent(toBB(key));
+        // cannot use shared byte buffer here, because calls here are highly concurrent
+        return isPresent(toByteBuffer(key,null));
     }
     
     private ByteBuffer toBB(String s)
     {
-        int strLen=s.length()*2;
-        if (strBuffer==null || strBuffer.capacity()<strLen)
-        {
-            strBuffer=ByteBuffer.allocate( Math.max(strLen*2,512) );
-        }
-        else
-            strBuffer.clear();
-        
-        byte[] b = new byte[s.length()*2];
-        
-        for (int i=s.length(),j=b.length;i-->0;)
-        {
-            char c = s.charAt(i);
-            
-            byte b1 = (byte) (c & 0xFF);
-            strBuffer.put(--j,b1);
-            byte b2 = (byte) ( (c & 0xFF00) >>8);
-            strBuffer.put(--j,b2);
-            
-//            System.out.println("2BB: "+c+"-> "+Integer.toHexString(b1)+' '+Integer.toHexString(b2));
-        }
-        
-//        System.out.println("2BB: "+Arrays.toString(b));
-        strBuffer.limit(strLen).position(0);
-        
-        assert Arrays.equals( Arrays.copyOf(strBuffer.array(),strLen), toByteBuffer(s).array());
-        
-        return strBuffer;
-    }
-
-    private static ByteBuffer toByteBuffer(String s)
-    {
-        byte[] b = new byte[s.length()*2];
-        
-        for (int i=s.length(),j=b.length;i-->0;)
-        {
-            char c = s.charAt(i);
-            
-            byte b1 = (byte) (c & 0xFF);
-            b[--j]=b1;
-            byte b2 = (byte) ( (c & 0xFF00) >>8);
-            b[--j]=b2;
-            
-//            System.out.println("2BB: "+c+"-> "+Integer.toHexString(b1)+' '+Integer.toHexString(b2));
-        }
-        
-//        System.out.println("2BB: "+Arrays.toString(b));
-        
-        return ByteBuffer.wrap(b);
+        return this.strBuffer=toByteBuffer(s,strBuffer);
     }
     
+    public static ByteBuffer toByteBuffer(String s, ByteBuffer byteBuffer)
+    {
+        int strLen=s.length()*2;
+        if (byteBuffer==null || byteBuffer.capacity()<strLen)
+        {
+            byteBuffer=ByteBuffer.allocate( Math.max(strLen*2,512) );
+        }
+        else
+            byteBuffer.clear();
+        
+        for (int i=s.length(),j=strLen;i-->0;)
+        {
+            char c = s.charAt(i);
+            
+            byte b1 = (byte) (c & 0xFF);
+            byteBuffer.put(--j,b1);
+            byte b2 = (byte) ( (c & 0xFF00) >>8);
+            byteBuffer.put(--j,b2);
+            
+        }
+        
+        byteBuffer.limit(strLen).position(0);
+        
+        return byteBuffer;
+    }
+
     public void clear()
     {
         bitset.clear(0, bitset.size());

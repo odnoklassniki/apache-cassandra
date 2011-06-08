@@ -21,6 +21,7 @@ package org.apache.cassandra.io;
 import java.io.*;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
@@ -85,19 +86,21 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
     // in a perfect world, BUFFER_SIZE would be final, but we need to test with a smaller size to stay sane.
     static long BUFFER_SIZE = Integer.MAX_VALUE;
 
-    public static long getApproximateKeyCount(Iterable<SSTableReader> sstables)
+    public static long getApproximateKeyCount(Iterable<SSTableReader> sstables, boolean columnBloom)
     {
         long count = 0;
+        long countBF = 0;
 
         for (SSTableReader sstable : sstables)
         {
             int indexKeyCount = sstable.getIndexPositions().size();
             count = count + (indexKeyCount + 1) * DatabaseDescriptor.getIndexInterval();
+            countBF += sstable.getBloomFilter().getElementCount();
             if (logger.isDebugEnabled())
-                logger.debug("index size for bloom filter calc for file  : " + sstable.getFilename() + "   : " + count);
+                logger.debug("index size for bloom filter calc for file  : " + sstable.getFilename() + "   : " + count + ", in bloom filter : "+countBF);
         }
 
-        return count;
+        return columnBloom ? countBF : count;
     }
 
     public static SSTableReader open(String dataFileName) throws IOException
@@ -141,6 +144,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
     private InstrumentedCache<Pair<String, DecoratedKey>, PositionSize> keyCache;
 
     private BloomFilterTracker bloomFilterTracker = new BloomFilterTracker();
+    private final boolean columnBloom;
 
     SSTableReader(String filename, IPartitioner partitioner, IndexSummary indexSummary, BloomFilter bloomFilter)
     throws IOException
@@ -183,6 +187,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         }
 
         this.indexSummary = indexSummary;
+        this.columnBloom = DatabaseDescriptor.getBloomColumns(getTableName(), getColumnFamilyName());
         this.bf = bloomFilter;
     }
 
@@ -340,6 +345,41 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
             return keyCache.get(unifiedKey);
         return null;
     }
+    
+    /**
+     * checks in column bloom filter
+     *  
+     * @param key
+     * @param name
+     * 
+     * @return true, if key+column combination MAY present in this file. false - definitely not 
+     */
+    public boolean mayPresent(DecoratedKey key, byte[] name)
+    {
+        if (!columnBloom)
+            return true;
+        
+        int capacity = key.key.length()*2+name.length;
+        ByteBuffer bb = ByteBuffer.allocate(capacity);
+        
+        BloomFilter.toByteBuffer(key.key, bb);
+        
+        bb.position(bb.limit()).limit(capacity);
+        
+        bb.put(name);
+        
+        assert bb.remaining() == 0;
+        
+        return bf.isPresent(bb);
+    }
+    
+    /**
+     * @return the columnBloom
+     */
+    public boolean isColumnBloom()
+    {
+        return columnBloom;
+    }
 
     /**
      * returns the position in the data file to find the given key, or -1 if the key is not present
@@ -347,8 +387,11 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
     public PositionSize getPosition(DecoratedKey decoratedKey) throws IOException
     {
         // first, check bloom filter
-        if (!bf.isPresent(partitioner.convertToDiskFormat(decoratedKey)))
+        if (!bf.isPresent(decoratedKey.key))
+        {
+            bloomFilterTracker.addNegativeCount();
             return null;
+        }
 
         // next, the key cache
         Pair<String, DecoratedKey> unifiedKey = new Pair<String, DecoratedKey>(path, decoratedKey);
@@ -599,6 +642,14 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
                ? Column.serializer()
                : SuperColumn.serializer(getColumnComparator());
     }
+    
+    /**
+     * @return the bloomFilterTracker
+     */
+    public BloomFilterTracker getBloomFilterTracker()
+    {
+        return bloomFilterTracker;
+    }
 
     public long getBloomFilterFalsePositiveCount()
     {
@@ -619,4 +670,5 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
     {
         return bloomFilterTracker.getRecentTruePositiveCount();
     }
+    
 }

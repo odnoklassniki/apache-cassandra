@@ -21,8 +21,6 @@ package org.apache.cassandra.io;
  */
 
 
-import java.io.DataOutputStream;
-import java.io.FileOutputStream;
 import java.io.IOError;
 import java.io.IOException;
 
@@ -33,7 +31,6 @@ import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.DataOutputBuffer;
-import org.apache.cassandra.utils.BloomFilter;
 import org.apache.cassandra.utils.FBUtilities;
 
 public class SSTableWriter extends SSTable
@@ -43,7 +40,9 @@ public class SSTableWriter extends SSTable
     private BufferedRandomAccessFile dataFile;
     private BufferedRandomAccessFile indexFile;
     private DecoratedKey lastWrittenKey;
-    private BloomFilter bf;
+    private BloomFilterWriter bfw;
+    
+    
 
     public SSTableWriter(String filename, long keyCount, IPartitioner partitioner) throws IOException
     {
@@ -52,7 +51,19 @@ public class SSTableWriter extends SSTable
         dataFile = new BufferedRandomAccessFile(path, "rw", (int)(DatabaseDescriptor.getFlushDataBufferSizeInMB() * 1024 * 1024));
         dataFile.setSkipCache(true);
         indexFile = new BufferedRandomAccessFile(indexFilename(), "rw", (int)(DatabaseDescriptor.getFlushIndexBufferSizeInMB() * 1024 * 1024));
-        bf = BloomFilter.getFilter(keyCount, 15);
+        
+        bfw = new BloomFilterWriter(filterFilename(), keyCount, DatabaseDescriptor.getBloomColumns(getTableName(), getColumnFamilyName()));
+    }
+
+    public SSTableWriter(String filename, long keyCount, IPartitioner partitioner, boolean columnBloom) throws IOException
+    {
+        super(filename, partitioner);
+        indexSummary = new IndexSummary();
+        dataFile = new BufferedRandomAccessFile(path, "rw", (int)(DatabaseDescriptor.getFlushDataBufferSizeInMB() * 1024 * 1024));
+        dataFile.setSkipCache(true);
+        indexFile = new BufferedRandomAccessFile(indexFilename(), "rw", (int)(DatabaseDescriptor.getFlushIndexBufferSizeInMB() * 1024 * 1024));
+        
+        bfw = new BloomFilterWriter(filterFilename(), keyCount, columnBloom );
     }
 
     private long beforeAppend(DecoratedKey decoratedKey) throws IOException
@@ -74,7 +85,7 @@ public class SSTableWriter extends SSTable
     private void afterAppend(DecoratedKey decoratedKey, long dataPosition) throws IOException
     {
         String diskKey = partitioner.convertToDiskFormat(decoratedKey);
-        bf.add(diskKey);
+        bfw.add(decoratedKey);
         lastWrittenKey = decoratedKey;
         long indexPosition = indexFile.getFilePointer();
         indexFile.writeUTF(diskKey);
@@ -109,19 +120,19 @@ public class SSTableWriter extends SSTable
         dataFile.write(value);
         afterAppend(decoratedKey, currentPosition);
     }
+    
+    public BloomFilterWriter getBloomFilterWriter()
+    {
+        return bfw;
+    }
 
     /**
      * Renames temporary SSTable files to valid data, index, and bloom filter files
      */
     public void close() throws IOException
     {
-        // bloom filter
-        FileOutputStream fos = new FileOutputStream(filterFilename());
-        DataOutputStream stream = new DataOutputStream(fos);
-        BloomFilter.serializer().serialize(bf, stream);
-        stream.flush();
-        fos.getFD().sync();
-        stream.close();
+        // filter
+        bfw.build();
 
         // index
         indexFile.getChannel().force(true);
@@ -143,7 +154,7 @@ public class SSTableWriter extends SSTable
     public SSTableReader closeAndOpenReader() throws IOException
     {
         this.close();
-        return new SSTableReader(path, partitioner, indexSummary, bf);
+        return new SSTableReader(path, partitioner, indexSummary, bfw.getFilter());
     }
 
     static String rename(String tmpFilename)

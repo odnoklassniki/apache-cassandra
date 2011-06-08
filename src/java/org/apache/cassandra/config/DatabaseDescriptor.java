@@ -574,6 +574,7 @@ public class DatabaseDescriptor
                                                                             "Standard",
                                                                             new BytesType(),
                                                                             null,
+                                                                            false,
                                                                             "persistent metadata for the local node",
                                                                             0.0,
                                                                             0.01,
@@ -585,6 +586,7 @@ public class DatabaseDescriptor
                                                                                     "Super",
                                                                                     new BytesType(),
                                                                                     new BytesType(),
+                                                                                    false,
                                                                                     "hinted handoff data",
                                                                                     0.0,
                                                                                     0.01,
@@ -794,17 +796,33 @@ public class DatabaseDescriptor
                     {
                         rowCacheSize = FBUtilities.parseDoubleOrPercent(value);
                     }
+                    
+                    // MM: parse out bloom columns for this CF
+                    boolean bloomColumns = false;
+                    if ((value = XMLUtils.getAttributeValue(columnFamily, "BloomColumns")) != null)
+                    {
+                        bloomColumns = Boolean.valueOf(value);
+                        if (bloomColumns)
+                        {
+                            if (columnType.equals("Super"))
+                            {
+                                throw new ConfigurationException("bloomColumns mode is not implemented for super columns");
+                            }
+
+                            logger.info("Column level bloom filter in on for "+cfName);
+                        }
+                    }                    
 
                     // Parse out user-specified logical names for the various dimensions
                     // of a the column family from the config.
                     String comment = xmlUtils.getNodeValue(xqlCF + "Comment");
-
+                    
                     // insert it into the table dictionary.
                     String rowCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "RowCacheSavePeriodInSeconds");
                     String keyCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "KeyCacheSavePeriodInSeconds");
                     int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
                     int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
-                    meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
+                    meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
                 }
 
                 tables.put(meta.name, meta);
@@ -1224,6 +1242,12 @@ public class DatabaseDescriptor
     {
         assert tableName != null;
         return getCFMetaData(tableName, cfName).subcolumnComparator;
+    }
+
+    public static boolean getBloomColumns(String tableName, String cfName)
+    {
+        assert tableName != null;
+        return getCFMetaData(tableName, cfName).bloomColumns;
     }
 
     /**

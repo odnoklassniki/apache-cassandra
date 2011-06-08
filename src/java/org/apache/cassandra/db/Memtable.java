@@ -37,6 +37,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.io.BloomFilterWriter;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.SSTableWriter;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -151,6 +152,9 @@ public class Memtable implements Comparable<Memtable>, IFlushable
     {
         logger.info("Writing " + this);
         SSTableWriter writer = new SSTableWriter(cfs.getFlushPath(), columnFamilies.size(), StorageService.getPartitioner());
+        
+        boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
+        BloomFilterWriter bloomFilterWriter = writer.getBloomFilterWriter();
 
         DataOutputBuffer buffer = new DataOutputBuffer();
         for (Map.Entry<DecoratedKey, ColumnFamily> entry : columnFamilies.entrySet())
@@ -160,6 +164,9 @@ public class Memtable implements Comparable<Memtable>, IFlushable
             ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer);
             /* Now write the key and value to disk */
             writer.append(entry.getKey(), buffer);
+            
+            if (bloomColumns)
+                bloomFilterWriter.add(entry.getKey(), entry.getValue());
         }
 
         SSTableReader ssTable = writer.closeAndOpenReader();

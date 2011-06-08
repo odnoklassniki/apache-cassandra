@@ -272,13 +272,16 @@ public class CompactionManager implements CompactionManagerMBean
         long startTime = System.currentTimeMillis();
         long totalkeysWritten = 0;
 
+        boolean columnBloom = DatabaseDescriptor.getBloomColumns(table.name, cfs.getColumnFamilyName());
+        
         // TODO the int cast here is potentially buggy
-        int expectedBloomFilterSize = Math.max(DatabaseDescriptor.getIndexInterval(), (int)SSTableReader.getApproximateKeyCount(sstables));
+        long expectedBloomFilterSize = Math.max(DatabaseDescriptor.getIndexInterval(), SSTableReader.getApproximateKeyCount(sstables, columnBloom));
         if (logger.isDebugEnabled())
           logger.debug("Expected bloom filter size : " + expectedBloomFilterSize);
 
         SSTableWriter writer;
         CompactionIterator ci = new CompactionIterator(cfs, sstables, gcBefore, major); // retain a handle so we can call close()
+        
         Iterator<CompactionIterator.CompactedRow> nni = new FilterIterator(ci, PredicateUtils.notNullPredicate());
         executor.beginCompaction(cfs, ci);
 
@@ -297,7 +300,11 @@ public class CompactionManager implements CompactionManagerMBean
             }
 
             String newFilename = new File(compactionFileLocation, cfs.getTempSSTableFileName()).getAbsolutePath();
-            writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner());
+            writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner(),columnBloom);
+            
+            if (columnBloom)
+                ci.setColumnNameObserver(writer.getBloomFilterWriter());
+            
             while (nni.hasNext())
             {
                 CompactionIterator.CompactedRow row = nni.next();
@@ -362,7 +369,9 @@ public class CompactionManager implements CompactionManagerMBean
         long totalKeysWritten = 0;
         long startTime = System.currentTimeMillis();
 
-        int expectedBloomFilterSize = Math.max(DatabaseDescriptor.getIndexInterval(), (int)(SSTableReader.getApproximateKeyCount(sstables) / 2));
+        boolean columnBloom = DatabaseDescriptor.getBloomColumns(table.name, cfs.getColumnFamilyName());
+        
+        long expectedBloomFilterSize = Math.max(DatabaseDescriptor.getIndexInterval(), (SSTableReader.getApproximateKeyCount(sstables, columnBloom) / 2));
         if (logger.isDebugEnabled())
           logger.debug("Expected bloom filter size : " + expectedBloomFilterSize);
 
@@ -375,13 +384,17 @@ public class CompactionManager implements CompactionManagerMBean
         {
             while (nni.hasNext())
             {
-                CompactionIterator.CompactedRow row = nni.next();
                 if (writer == null)
                 {
                     FileUtils.createDirectory(compactionFileLocation);
                     String newFilename = new File(compactionFileLocation, cfs.getTempSSTableFileName()).getAbsolutePath();
-                    writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner());
+                    writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner(), columnBloom);
+                    
+                    if (columnBloom)
+                        ci.setColumnNameObserver(writer.getBloomFilterWriter());
                 }
+                
+                CompactionIterator.CompactedRow row = nni.next();
                 writer.append(row.key, row.buffer);
                 totalKeysWritten++;
             }

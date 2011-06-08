@@ -165,4 +165,26 @@ public interface ColumnFamilyStoreMBean
     public double getRecentBloomFilterFalseRatio();
 
     public long estimateKeys();
+
+    /**
+     * @return
+     */
+    long getRecentBloomFilterNegatives();
+
+    /**
+     * @return
+     */
+    long getBloomFilterNegatives();
+
+    double getRecentBloomFilterColumnNegativeRatio();
+
+    long getRecentBloomFilterColumnReads();
+
+    long getBloomFilterColumnReads();
+
+    long getRecentBloomFilterColumnNegatives();
+
+    long getBloomFilterColumnNegatives();
+
+    double getRecentBloomFilterNegativeRatio();
 }

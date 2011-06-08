@@ -29,6 +29,7 @@ import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.io.BloomFilterWriter;
 import org.apache.cassandra.io.IndexHelper;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.util.FileDataInput;
@@ -46,6 +47,28 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator
         this.columns = columnNames;
 
         DecoratedKey decoratedKey = ssTable.getPartitioner().decorateKey(key);
+        List<byte[]> filteredColumnNames = new ArrayList<byte[]>(columnNames.size());
+        
+        if (ssTable.isColumnBloom())
+        {
+            // filtering early by key + column bloom filter
+            for (byte[] name : columnNames)
+            {
+                if (ssTable.mayPresent(decoratedKey, name))
+                {
+                    filteredColumnNames.add(name);
+                }
+            }
+            if (filteredColumnNames.isEmpty())
+            {
+                if (!ssTable.mayPresent(decoratedKey, BloomFilterWriter.MARKEDFORDELETE))
+                {
+                    ssTable.getBloomFilterTracker().addColumnNegativeCount();
+                    return;
+                }
+            }
+            ssTable.getBloomFilterTracker().addColumnReadsCount();
+        }
 
         FileDataInput file = ssTable.getFileDataInput(decoratedKey, DatabaseDescriptor.getIndexedReadBufferSizeInKB() * 1024);
         if (file == null)
@@ -57,24 +80,38 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator
                    : String.format("%s != %s in %s", keyInDisk, decoratedKey, file.getPath());
             file.readInt(); // data size
 
-            /* Read the bloom filter and index summarizing the columns */
-            BloomFilter bf = IndexHelper.defreezeBloomFilter(file);
-            List<IndexHelper.IndexInfo> indexList = IndexHelper.deserializeIndex(file);
-
-            cf = ColumnFamily.serializer().deserializeFromSSTableNoColumns(ssTable.makeColumnFamily(), file);
-
-            // we can stop early if bloom filter says none of the columns actually exist -- but,
-            // we can't stop before initializing the cf above, in case there's a relevant tombstone
-            List<byte[]> filteredColumnNames = new ArrayList<byte[]>(columnNames.size());
-            for (byte[] name : columnNames)
+            List<IndexHelper.IndexInfo> indexList;
+            if (ssTable.isColumnBloom())
             {
-                if (bf.isPresent(name))
+                // MM: we dont need column level bloom filter - we already filtered all columns
+                // by ssTable's bloom filter
+                IndexHelper.skipBloomFilter(file);
+                
+                indexList = IndexHelper.deserializeIndex(file);
+
+                cf = ColumnFamily.serializer().deserializeFromSSTableNoColumns(ssTable.makeColumnFamily(), file);
+
+            } else
+            {
+                /* Read the bloom filter and index summarizing the columns */
+                BloomFilter bf = IndexHelper.defreezeBloomFilter(file);
+
+                indexList = IndexHelper.deserializeIndex(file);
+
+                cf = ColumnFamily.serializer().deserializeFromSSTableNoColumns(ssTable.makeColumnFamily(), file);
+                // we can stop early if bloom filter says none of the columns actually exist -- but,
+                // we can't stop before initializing the cf above, in case there's a relevant tombstone
+                for (byte[] name : columnNames)
                 {
-                    filteredColumnNames.add(name);
+                    if (bf.isPresent(name))
+                    {
+                        filteredColumnNames.add(name);
+                    }
                 }
+                if (filteredColumnNames.isEmpty())
+                    return;
             }
-            if (filteredColumnNames.isEmpty())
-                return;
+
 
             file.readInt(); // column count
 
