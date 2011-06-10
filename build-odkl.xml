@@ -1,0 +1,18 @@
+<project name="apache-cassandra-odkl" default="jar" basedir="."
+        xmlns:ivy="antlib:org.apache.ivy.ant">
+
+    <import file="build.xml"/>
+
+    <!-- include user specific build properties -->
+    <property file="${user.home}/one.properties"/>
+    <property file="${user.home}/one/one.properties"/>
+
+    <target name="ivy-publish" depends="jar">
+        <ivy:publish resolver="odkl-publish"
+                     pubrevision="${version}"
+                     overwrite="false"
+                     forcedeliver="true">
+            <artifacts pattern="${build.dir}/${final.name}.jar"/>
+        </ivy:publish>
+    </target>
+</project>

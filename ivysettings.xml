@@ -17,12 +17,24 @@
  ~ under the License.
  -->
 <ivysettings>
+  <property name="repo.default.structure.artifacts"
+            value="[organisation]/[module]/[revision]/[type]s/[artifact]-[revision](-[classifier]).[ext]"/>
+  <property name="repo.default.structure.ivys"
+            value="[organisation]/[module]/[revision]/ivys/ivy-[revision].xml"/>
+  <property name="repo.url.ftp"
+            value="ftp://${repository.login}:${repository.password}@${repository.host}/${repository.dir}/ivy"
+            override="false"/>
+
   <settings defaultResolver="ibiblio"/>
   <resolvers>
     <chain name="chain" dual="true">
       <ibiblio name="java.net2" root="http://download.java.net/maven/2/" m2compatible="true"/>
       <ibiblio name="ibiblio" m2compatible="true" />
     </chain>
+    <vfs name="odkl-publish">
+      <artifact pattern="${repo.url.ftp}/odkl/${repo.default.structure.artifacts}"/>
+      <ivy pattern="${repo.url.ftp}/odkl/${repo.default.structure.ivys}"/>
+    </vfs>
   </resolvers>
   <modules>
     <module organisation="net.java.dev.jna" name="jna" resolver="chain" />
