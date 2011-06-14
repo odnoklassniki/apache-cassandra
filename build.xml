@@ -66,12 +66,14 @@
 
     <!-- 
 	 Add all the dependencies.
-    -->
+        -->
+    <path id="autoivy.ext.classpath"/><!-- Fake reference for compatibility. It has to be redefined by calling script -->
     <path id="autoivy.classpath">
         <fileset dir="${build.dir.lib}">
           <include name="**/*.jar" />
         </fileset>
         <pathelement location="${build.dir}/ivy-${ivy.version}.jar"/>
+        <path refid="autoivy.ext.classpath"/>
     </path>
     <path id="cassandra.classpath">
         <pathelement location="${cobertura.classes.dir}"/>

@@ -1,7 +1,16 @@
 <project name="apache-cassandra-odkl" default="jar" basedir="."
         xmlns:ivy="antlib:org.apache.ivy.ant">
+    <property name="one-deploy.location" location="../one-deploy"/>
 
     <import file="build.xml"/>
+
+    <path id="autoivy.ext.classpath">
+        <fileset dir="${one-deploy.location}/lib/ivy">
+            <include name="commons-vfs-1.*.jar"/>
+            <include name="commons-httpclient-3.*.jar"/>
+            <include name="commons-codec-1.*.jar"/>
+        </fileset>
+    </path>
 
     <!-- include user specific build properties -->
     <property file="${user.home}/one.properties"/>
@@ -10,7 +19,7 @@
     <target name="ivy-publish" depends="jar">
         <ivy:publish resolver="odkl-publish"
                      pubrevision="${version}"
-                     overwrite="false"
+                     overwrite="true"
                      forcedeliver="true">
             <artifacts pattern="${build.dir}/${final.name}.jar"/>
         </ivy:publish>
