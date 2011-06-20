@@ -19,6 +19,10 @@
 <ivy-module version="2.0">
   <info organisation="apache-cassandra" module="cassandra"/>
 
+  <publications>
+      <artifact name="apache-cassandra-odkl"/>
+  </publications>
+
   <dependencies>
     <!-- for Hadoop unit tests -->
     <dependency org="commons-logging" name="commons-logging" rev="1.1.1"/>

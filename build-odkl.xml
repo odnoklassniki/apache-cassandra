@@ -5,11 +5,7 @@
     <import file="build.xml"/>
 
     <path id="autoivy.ext.classpath">
-        <fileset dir="${one-deploy.location}/lib/ivy">
-            <include name="commons-vfs-1.*.jar"/>
-            <include name="commons-httpclient-3.*.jar"/>
-            <include name="commons-codec-1.*.jar"/>
-        </fileset>
+        <fileset dir="${one-deploy.location}/lib/ivy" includes="*.jar"/>
     </path>
 
     <!-- include user specific build properties -->
@@ -21,7 +17,7 @@
                      pubrevision="${version}"
                      overwrite="true"
                      forcedeliver="true">
-            <artifacts pattern="${build.dir}/${final.name}.jar"/>
+            <artifacts pattern="${build.dir}/[artifact]-[revision].[ext]"/>
         </ivy:publish>
     </target>
 </project>
