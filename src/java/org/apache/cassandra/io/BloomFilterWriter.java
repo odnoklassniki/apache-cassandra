@@ -8,12 +8,15 @@ package org.apache.cassandra.io;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.SortedSet;
 
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.utils.BloomFilter;
+import org.apache.cassandra.utils.FBUtilities;
+import org.apache.log4j.Logger;
 
 /**
  * Unifies way of builder key-only and key+column bloom filters.
@@ -23,6 +26,8 @@ import org.apache.cassandra.utils.BloomFilter;
  */
 public class BloomFilterWriter implements IColumnNameObserver
 {
+    private static final Logger logger = Logger.getLogger(BloomFilterWriter.class);
+
     public final static byte[] MARKEDFORDELETE = {'-','d','e','l'};
     
     private final String filterFilename;
@@ -63,6 +68,9 @@ public class BloomFilterWriter implements IColumnNameObserver
         
         bb.put(name).flip();
         
+        if (logger.isDebugEnabled())
+            logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
+        
         bf.add(bb);
         
     }
@@ -81,6 +89,9 @@ public class BloomFilterWriter implements IColumnNameObserver
             ensureRemaining(bs.length);
             
             bb.put(bs).flip();
+            
+            if (logger.isDebugEnabled())
+                logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
             
             bf.add(bb);
             

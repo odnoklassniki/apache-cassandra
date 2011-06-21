@@ -33,10 +33,14 @@ import org.apache.cassandra.io.BloomFilterWriter;
 import org.apache.cassandra.io.IndexHelper;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.util.FileDataInput;
+import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.utils.BloomFilter;
+import org.apache.log4j.Logger;
 
 public class SSTableNamesIterator extends SimpleAbstractColumnIterator
 {
+    private static final Logger logger = Logger.getLogger(StorageProxy.class);
+
     private ColumnFamily cf;
     private Iterator<IColumn> iter;
     public final SortedSet<byte[]> columns;
@@ -63,6 +67,8 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator
             {
                 if (!ssTable.mayPresent(decoratedKey, BloomFilterWriter.MARKEDFORDELETE))
                 {
+                    if (logger.isDebugEnabled())
+                        logger.debug("Read avoided by bloom columns filter from "+ssTable.getFilename());
                     ssTable.getBloomFilterTracker().addColumnNegativeCount();
                     return;
                 }

@@ -370,6 +370,9 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         
         assert bb.remaining() == 0;
         
+        if (logger.isDebugEnabled())
+            logger.debug("Checking bloom column:"+FBUtilities.bytesToHex(bb.array()));
+        
         return bf.isPresent(bb);
     }
     
