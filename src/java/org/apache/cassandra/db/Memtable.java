@@ -155,6 +155,9 @@ public class Memtable implements Comparable<Memtable>, IFlushable
         
         boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
         BloomFilterWriter bloomFilterWriter = writer.getBloomFilterWriter();
+        
+        if (bloomColumns)
+            bloomFilterWriter.setEstimatedColumnCount(getCurrentOperations());
 
         DataOutputBuffer buffer = new DataOutputBuffer();
         for (Map.Entry<DecoratedKey, ColumnFamily> entry : columnFamilies.entrySet())

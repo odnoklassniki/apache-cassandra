@@ -149,6 +149,16 @@ public class SSTableImport
             List<DecoratedKey<?>> decoratedKeys = new ArrayList<DecoratedKey<?>>();
             BloomFilterWriter bfw = writer.getBloomFilterWriter();
             boolean bloomColumns = bfw.isBloomColumns();
+            if (bloomColumns)
+            {
+                long columnCount = 0;
+                for (Object v : json.values())
+                {
+                    columnCount+=((JSONArray)v).size();
+                }
+                    
+                bfw.setEstimatedColumnCount(columnCount);
+            }
             
             for (String key : (Set<String>)json.keySet())
                 decoratedKeys.add(partitioner.decorateKey(key));

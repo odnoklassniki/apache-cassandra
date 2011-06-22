@@ -5,8 +5,9 @@
  */
 package org.apache.cassandra.io.util;
 
-import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
+
+import org.apache.cassandra.utils.ReentrantByteArrayInputStream;
 
 /**
  * @author Oleg Anastasyev<oa@hq.one.lv>
@@ -20,8 +21,12 @@ public class DataInputBuffer extends DataInputStream
      */
     public DataInputBuffer(DataOutputBuffer buffer)
     {
-        super(new ByteArrayInputStream(buffer.getData(), 0, buffer.getLength()));
+        super(new ReentrantByteArrayInputStream(buffer.getData(), 0, buffer.getLength()));
     }
     
+    public void setBuffer(DataOutputBuffer buffer)
+    {
+        ((ReentrantByteArrayInputStream)in).reset(buffer.getData(), 0, buffer.getLength());
+    }
 
 }

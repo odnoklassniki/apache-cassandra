@@ -54,12 +54,14 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     private IColumnNameObserver columnNameObserver;
     private ObservingColumnFamilyDeserializer observingDeserializer;
     private CompactedRow currentRow;
+    private DataInputBuffer din;
 
     private long totalBytes;
     private long bytesRead;
     private long row;
 
     private DataOutputBuffer buffer = new DataOutputBuffer();
+    
 
     public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
     {
@@ -157,7 +159,12 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                     
                     if (columnNameObserver!=null)
                     {
-                        observingDeserializer.deserialize(key, new DataInputBuffer(buffer));
+                        if (din==null)
+                            din=new DataInputBuffer(buffer);
+                        else
+                            din.setBuffer(buffer);
+                        
+                        observingDeserializer.deserialize(key, din);
                     }
                 }
                 catch (IOException e)

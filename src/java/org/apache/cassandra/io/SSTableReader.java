@@ -362,7 +362,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         int capacity = key.key.length()*2+name.length;
         ByteBuffer bb = ByteBuffer.allocate(capacity);
         
-        BloomFilter.toByteBuffer(key.key, bb);
+        bb = BloomFilter.toByteBuffer(key.key, bb);
         
         bb.position(bb.limit()).limit(capacity);
         
@@ -370,10 +370,14 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         
         assert bb.remaining() == 0;
         
-        if (logger.isDebugEnabled())
-            logger.debug("Checking bloom column:"+FBUtilities.bytesToHex(bb.array()));
+        bb.flip();
         
-        return bf.isPresent(bb);
+        boolean present = bf.isPresent(bb);
+
+        if (logger.isDebugEnabled())
+            logger.debug("Checking bloom column of "+getFilename()+":"+FBUtilities.bytesToHex(bb.array())+'='+present+", stats: "+getBloomFilterTracker());
+        
+        return present;
     }
     
     /**

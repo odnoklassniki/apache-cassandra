@@ -18,6 +18,8 @@
 
 package org.apache.cassandra.db;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +38,7 @@ import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.SSTableWriter;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.ReentrantByteArrayInputStream;
 import org.apache.cassandra.utils.WrappedRunnable;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
@@ -124,12 +127,31 @@ public class BinaryMemtable implements IFlushable
         logger.info("Writing " + this);
         String path = cfs.getFlushPath();
         SSTableWriter writer = new SSTableWriter(path, sortedKeys.size(), StorageService.getPartitioner());
+        
+        boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
+        ObservingColumnFamilyDeserializer observer=null;
+        DataInputStream din = null;
+        ReentrantByteArrayInputStream bin = null;
+        
+        if (bloomColumns)
+        {
+            writer.getBloomFilterWriter().setEstimatedColumnCount(sortedKeys.size()*10);
+            observer = new ObservingColumnFamilyDeserializer(writer.getBloomFilterWriter());
+            
+            bin = new ReentrantByteArrayInputStream(new byte[0]);
+            din = new DataInputStream(bin);
+        }
 
         for (DecoratedKey key : sortedKeys)
         {
             byte[] bytes = columnFamilies.get(key);
             assert bytes.length > 0;
             writer.append(key, bytes);
+            if (observer!=null)
+            {
+                bin.reset(bytes);
+                observer.deserialize(key, din );
+            }
         }
         SSTableReader sstable = writer.closeAndOpenReader();
         logger.info("Completed flushing " + writer.getFilename());

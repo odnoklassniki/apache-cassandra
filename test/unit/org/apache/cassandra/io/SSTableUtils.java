@@ -97,6 +97,9 @@ public class SSTableUtils
     {
         File f = tempSSTableFile(tablename, cfname);
         SSTableWriter writer = new SSTableWriter(f.getAbsolutePath(), entries.size(), StorageService.getPartitioner());
+
+        assert !writer.getBloomFilterWriter().isBloomColumns();
+        
         for (Map.Entry<String, byte[]> entry : entries.entrySet())
             writer.append(writer.partitioner.decorateKey(entry.getKey()),
                           entry.getValue());

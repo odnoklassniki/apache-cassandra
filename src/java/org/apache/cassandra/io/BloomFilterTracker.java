@@ -152,4 +152,9 @@ public class BloomFilterTracker
             lastTruePositiveCount = tpc;
         }
     }
+    
+    public String toString()
+    {
+        return "CR/N "+getColumnReadsCount()+'/'+getColumnNegativeCount()+"; FP/TP/TN "+getFalsePositiveCount()+'/'+getTruePositiveCount()+'/'+getNegativeCount(); 
+    }
 }

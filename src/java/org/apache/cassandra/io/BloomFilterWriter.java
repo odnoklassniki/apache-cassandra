@@ -34,7 +34,8 @@ public class BloomFilterWriter implements IColumnNameObserver
     private BloomFilter bf;
     private ByteBuffer bb;
     private final boolean bloomColumns;
-    private int keyCount;
+    private long keyCount;
+    private long estimatedKeyCount;
     
     /**
      * @throws IOException 
@@ -45,9 +46,25 @@ public class BloomFilterWriter implements IColumnNameObserver
         this.filterFilename = filterFilename;
         this.bloomColumns = bloomColumns;
         
-        this.bf = BloomFilter.getFilter(keyCount, bloomColumns ? 20 : 15);
         this.bb = ByteBuffer.allocate(512);
+        this.estimatedKeyCount = keyCount;
         
+    }
+    
+    public void setEstimatedColumnCount(long columnCount)
+    {
+        estimatedKeyCount+=columnCount;
+    }
+
+    /**
+     * @return the bf
+     */
+    private BloomFilter bf()
+    {
+        if (this.bf==null)
+            this.bf = BloomFilter.getFilter(estimatedKeyCount, bloomColumns ? 20 : 15);
+        
+        return bf;
     }
 
     /* (non-Javadoc)
@@ -68,10 +85,11 @@ public class BloomFilterWriter implements IColumnNameObserver
         
         bb.put(name).flip();
         
-        if (logger.isDebugEnabled())
-            logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
+        bf().add(bb);
         
-        bf.add(bb);
+        if (logger.isDebugEnabled()) {
+            logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
+        }
         
     }
     
@@ -90,11 +108,13 @@ public class BloomFilterWriter implements IColumnNameObserver
             
             bb.put(bs).flip();
             
+            
+            bf().add(bb);
+            
             if (logger.isDebugEnabled())
+            {
                 logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
-            
-            bf.add(bb);
-            
+            }
         }
         
         if (cf.isMarkedForDelete())
@@ -111,7 +131,7 @@ public class BloomFilterWriter implements IColumnNameObserver
 
     public void add(DecoratedKey<?> key)
     {
-        bf.add(key.key);
+        bf().add(key.key);
         
         keyCount++;
     }
@@ -129,7 +149,7 @@ public class BloomFilterWriter implements IColumnNameObserver
      */
     public BloomFilter getFilter()
     {
-        return bf;
+        return bf();
     }
 
     /**
@@ -140,14 +160,17 @@ public class BloomFilterWriter implements IColumnNameObserver
      */
     public BloomFilter build() throws IOException
     {
-        assert !bloomColumns || keyCount<=1 || keyCount<bf.getElementCount() : "FilterWriter is in bloomColumns mode, but no columns were actually placed to it"; 
+        assert !bloomColumns || keyCount<=1 || keyCount<bf().getElementCount() : "FilterWriter is in bloomColumns mode, but no columns were actually placed to it"; 
         
         // bloom filter
         BufferedRandomAccessFile file = new BufferedRandomAccessFile(filterFilename, "rw", 128*1024);
         file.setSkipCache(true);
-        BloomFilter.serializer().serialize(bf, file);
+        BloomFilter.serializer().serialize(bf(), file);
         file.close();
         
-        return bf;
+        if (logger.isInfoEnabled())
+            logger.info("Written filter "+filterFilename+", with actual elements (estimated elements) counts: "+this.bf().getElementCount()+'('+estimatedKeyCount+')');
+        
+        return bf();
     }
 }
