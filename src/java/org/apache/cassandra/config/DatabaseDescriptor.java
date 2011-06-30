@@ -1247,7 +1247,8 @@ public class DatabaseDescriptor
     public static boolean getBloomColumns(String tableName, String cfName)
     {
         assert tableName != null;
-        return getCFMetaData(tableName, cfName).bloomColumns;
+        CFMetaData cfMetaData = getCFMetaData(tableName, cfName);
+        return cfMetaData==null ? false : cfMetaData.bloomColumns;
     }
 
     /**
