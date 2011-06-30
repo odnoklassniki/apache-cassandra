@@ -78,7 +78,7 @@ public class BloomFilter extends Filter
             desiredNumBits++;
         }
         
-        return new OpenBitSet(desiredNumBits);
+        return new OpenBitSet( Math.max(128,desiredNumBits) );
     }
 
     /**
