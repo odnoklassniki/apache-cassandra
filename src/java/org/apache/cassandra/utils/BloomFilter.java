@@ -60,7 +60,25 @@ public class BloomFilter extends Filter
 
     private static OpenBitSet bucketsFor(long numElements, int bucketsPer)
     {
-        return new OpenBitSet(numElements * bucketsPer + EXCESS);
+        long desiredNumBits = numElements * bucketsPer + EXCESS;
+        
+        // adjusting desired bits to the closest power of 2 to reduce heap fragmentation and
+        // chance of PromotionFailed CMS failure
+        
+        if ( (desiredNumBits & (desiredNumBits-1)) !=0 ) // only if it is not power of 2 yet
+        {
+            // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+            desiredNumBits--;
+            desiredNumBits |= desiredNumBits >> 1;
+            desiredNumBits |= desiredNumBits >> 2;
+            desiredNumBits |= desiredNumBits >> 4;
+            desiredNumBits |= desiredNumBits >> 8;
+            desiredNumBits |= desiredNumBits >> 16;
+            desiredNumBits |= desiredNumBits >> 32;
+            desiredNumBits++;
+        }
+        
+        return new OpenBitSet(desiredNumBits);
     }
 
     /**
