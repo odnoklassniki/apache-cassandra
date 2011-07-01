@@ -34,6 +34,9 @@ public class FreshTimestampType extends BytesType
     @Override
     public String getString(byte[] bytes)
     {
+        if (bytes.length==0)
+            return "-any-";
+        
         long time = toLong(bytes, 0, 8);
         
         return new Timestamp(time/1000).toString()+time%1000+'-'+toLong(bytes, 8, 8);
@@ -45,5 +48,19 @@ public class FreshTimestampType extends BytesType
             l |= ((long)b[offset+i]&0xff)<<((size-i-1)<<3);
         return l;
     }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.db.marshal.AbstractType#validate(byte[])
+     */
+    @Override
+    public void validate(byte[] bytes)
+    {
+        if (bytes.length==0)
+            return; // 0 length array is special kind of 'any'
+        
+        if (bytes.length<16)
+            throw new MarshalException("FreshTimestamp column name must be min 16 bytes length");
+    }
+    
     
 }
