@@ -27,9 +27,11 @@ import java.util.List;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.io.IndexHelper;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.utils.BloomFilter;
+import org.apache.cassandra.utils.BloomFilterSerializer;
 
 
 /**
@@ -43,22 +45,30 @@ public class ColumnIndexer
 	 * column index for the column family, and subsequently writes it to disk.
 	 * @param columnFamily Column family to create index for
 	 * @param dos data output stream
+	 * @param skipBloom true to skip bloom filter write for this column family when not needed 
+	 *         (if columnBloom mode is activated, for example, or. say, you dont have SSTableNamesIterator queries)
 	 * @throws IOException
 	 */
-    public static void serialize(ColumnFamily columnFamily, DataOutput dos)
+    public static void serialize(ColumnFamily columnFamily, DataOutput dos, boolean skipBloom)
 	{
         Collection<IColumn> columns = columnFamily.getSortedColumns();
-        BloomFilter bf = createColumnBloomFilter(columns);                    
-        /* Write out the bloom filter. */
-        DataOutputBuffer bufOut = new DataOutputBuffer();
         try
         {
-            BloomFilter.serializer().serialize(bf, bufOut);
-            /* write the length of the serialized bloom filter. */
-            dos.writeInt(bufOut.getLength());
-            /* write out the serialized bytes. */
-            dos.write(bufOut.getData(), 0, bufOut.getLength());
+            if (skipBloom)
+            {
+                dos.writeInt(0);
+            } else
+            {
+                BloomFilter bf = createColumnBloomFilter(columns);                    
+                BloomFilterSerializer serializer = (BloomFilterSerializer) BloomFilter.serializer();
 
+                /* write the length of the serialized bloom filter. */
+                dos.writeInt((int) serializer.serializeSize(bf));
+                /* write out the serialized bytes. */
+                serializer.serialize(bf, dos);
+            }
+            
+            
             /* Do the indexing */
             doIndexing(columnFamily.getComparator(), columns, dos);
         }

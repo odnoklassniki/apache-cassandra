@@ -93,9 +93,9 @@ public class ColumnFamilySerializer implements ICompactSerializer2<ColumnFamily>
         }
     }
 
-    public void serializeWithIndexes(ColumnFamily columnFamily, DataOutput dos)
+    public void serializeWithIndexes(ColumnFamily columnFamily, DataOutput dos, boolean skipBloom)
     {
-        ColumnIndexer.serialize(columnFamily, dos);
+        ColumnIndexer.serialize(columnFamily, dos,skipBloom);
         serializeForSSTable(columnFamily, dos);
     }
 

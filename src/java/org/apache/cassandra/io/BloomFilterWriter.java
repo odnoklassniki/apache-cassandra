@@ -165,7 +165,7 @@ public class BloomFilterWriter implements IColumnNameObserver
         // bloom filter
         BufferedRandomAccessFile file = new BufferedRandomAccessFile(filterFilename, "rw", 128*1024);
         file.setSkipCache(true);
-        BloomFilter.serializer().serialize(bf(), file);
+        BloomFilter.serializerForSSTable().serialize(bf(), file);
         file.close();
         
         if (logger.isInfoEnabled())

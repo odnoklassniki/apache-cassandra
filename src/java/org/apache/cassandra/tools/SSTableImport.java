@@ -171,7 +171,7 @@ public class SSTableImport
                 else
                     addToStandardCF((JSONArray)json.get(rowKey.key), cfamily);
                            
-                ColumnFamily.serializer().serializeWithIndexes(cfamily, dob);
+                ColumnFamily.serializer().serializeWithIndexes(cfamily, dob, bloomColumns);
                 writer.append(rowKey, dob);
                 if (bloomColumns)
                     bfw.add(rowKey, cfamily);

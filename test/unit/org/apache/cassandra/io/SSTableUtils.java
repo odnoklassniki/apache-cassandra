@@ -87,7 +87,7 @@ public class SSTableUtils
         for (Map.Entry<String, ColumnFamily> entry : entries.entrySet())
         {
             DataOutputBuffer buffer = new DataOutputBuffer();
-            ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer);
+            ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer, false);
             map.put(entry.getKey(), buffer.getData());
         }
         return writeRawSSTable(TABLENAME, CFNAME, map);

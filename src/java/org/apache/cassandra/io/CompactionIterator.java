@@ -55,6 +55,7 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     private ObservingColumnFamilyDeserializer observingDeserializer;
     private CompactedRow currentRow;
     private DataInputBuffer din;
+    private boolean skipBloom;
 
     private long totalBytes;
     private long bytesRead;
@@ -66,6 +67,8 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
     {
         this(cfs, getCollatingIterator(sstables), gcBefore, major);
+        
+        this.skipBloom = false;
     }
 
     @SuppressWarnings("unchecked")
@@ -145,7 +148,7 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                 ColumnFamily cfPurged = shouldPurge ? ColumnFamilyStore.removeDeleted(cf, gcBefore) : cf;
                 if (cfPurged == null)
                     return null;
-                ColumnFamily.serializer().serializeWithIndexes(cfPurged, buffer);
+                ColumnFamily.serializer().serializeWithIndexes(cfPurged, buffer, skipBloom);
 
                 if (columnNameObserver!=null)
                     columnNameObserver.add(key,cfPurged);
@@ -220,6 +223,14 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                 throw new IOError(e);
             }
         }
+    }
+    
+    /**
+     * @param skipBloom the skipBloom to set
+     */
+    public void setSkipBloom(boolean skipBloom)
+    {
+        this.skipBloom = skipBloom;
     }
 
     public long getTotalBytes()

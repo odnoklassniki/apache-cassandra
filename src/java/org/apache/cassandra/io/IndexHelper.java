@@ -46,6 +46,8 @@ public class IndexHelper
     {
         /* size of the bloom filter */
         int size = in.readInt();
+        if (size==0)
+            return;
         /* skip the serialized bloom filter */
         int skipped = in.skipBytes(size);
         if (skipped != size)
@@ -94,6 +96,10 @@ public class IndexHelper
     public static BloomFilter defreezeBloomFilter(FileDataInput file) throws IOException
     {
         int size = file.readInt();
+        
+        if (size==0)
+            return BloomFilter.alwaysMatchingBloomFilter();
+        
         byte[] bytes = new byte[size];
         file.readFully(bytes);
         

@@ -303,7 +303,10 @@ public class CompactionManager implements CompactionManagerMBean
             writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner(),columnBloom);
             
             if (columnBloom)
+            {
                 ci.setColumnNameObserver(writer.getBloomFilterWriter());
+                ci.setSkipBloom(true);
+            }
             
             while (nni.hasNext())
             {
@@ -391,7 +394,10 @@ public class CompactionManager implements CompactionManagerMBean
                     writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner(), columnBloom);
                     
                     if (columnBloom)
+                    {
                         ci.setColumnNameObserver(writer.getBloomFilterWriter());
+                        ci.setSkipBloom(true);
+                    }
                 }
                 
                 CompactionIterator.CompactedRow row = nni.next();

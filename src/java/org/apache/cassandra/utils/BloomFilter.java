@@ -18,10 +18,9 @@
 
 package org.apache.cassandra.utils;
 
-import java.nio.ByteBuffer;
-import java.util.Arrays;
 
-import org.apache.cassandra.io.ICompactSerializer;
+import java.nio.ByteBuffer;
+
 import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.utils.obs.OpenBitSet;
 import org.slf4j.Logger;
@@ -29,10 +28,10 @@ import org.slf4j.LoggerFactory;
 
 public class BloomFilter extends Filter
 {
-
     private static final Logger logger = LoggerFactory.getLogger(BloomFilter.class);
     private static final int EXCESS = 20;
     static ICompactSerializer2<BloomFilter> serializer_ = new BloomFilterSerializer();
+    static ICompactSerializer2<BloomFilter> serializerWithEC_ = new BloomFilterWithElementCountSerializer();
 
     public OpenBitSet bitset;
     
@@ -52,33 +51,65 @@ public class BloomFilter extends Filter
         bitset = bs;
         this.elementCount = elementCount;
     }
+    
+    /**
+     * @param elementCount the elementCount to set
+     */
+    void setElementCount(long elementCount)
+    {
+        this.elementCount = elementCount;
+    }
 
     public static ICompactSerializer2<BloomFilter> serializer()
     {
         return serializer_;
     }
 
+    public static ICompactSerializer2<BloomFilter> serializerForSSTable()
+    {
+        return serializerWithEC_;
+    }
+
     private static OpenBitSet bucketsFor(long numElements, int bucketsPer)
     {
-        long desiredNumBits = numElements * bucketsPer + EXCESS;
+        long l = numElements * bucketsPer + EXCESS;
         
-        // adjusting desired bits to the closest power of 2 to reduce heap fragmentation and
-        // chance of PromotionFailed CMS failure
+        long desiredNumBits = l/16;
         
-        if ( (desiredNumBits & (desiredNumBits-1)) !=0 ) // only if it is not power of 2 yet
-        {
-            // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-            desiredNumBits--;
-            desiredNumBits |= desiredNumBits >> 1;
-            desiredNumBits |= desiredNumBits >> 2;
-            desiredNumBits |= desiredNumBits >> 4;
-            desiredNumBits |= desiredNumBits >> 8;
-            desiredNumBits |= desiredNumBits >> 16;
-            desiredNumBits |= desiredNumBits >> 32;
-            desiredNumBits++;
+        try {
+            // adjusting desired bits to the closest power of 2 to reduce heap fragmentation and
+            // chance of PromotionFailed CMS failure
+            if ( (desiredNumBits & (desiredNumBits-1)) !=0 ) // only if it is not power of 2 yet
+            {
+                // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+                desiredNumBits--;
+                desiredNumBits |= desiredNumBits >> 1;
+                desiredNumBits |= desiredNumBits >> 2;
+                desiredNumBits |= desiredNumBits >> 4;
+                desiredNumBits |= desiredNumBits >> 8;
+                desiredNumBits |= desiredNumBits >> 16;
+                desiredNumBits |= desiredNumBits >> 32;
+                desiredNumBits++;
+            }
+            
+            if (desiredNumBits>0)
+            {
+                long adjustedNumBits=l - (l & (desiredNumBits-1) ) + desiredNumBits;
+
+                if (bucketsPer>4) // dont print it for every column
+                    logger.info("Adjusting filter size from "+l+" to "+adjustedNumBits+", applying 1/16 roundup of "+desiredNumBits);
+
+                return new OpenBitSet( Math.max(128,adjustedNumBits) );
+            }
+            
+            if (bucketsPer>4) // dont print it for every column
+                logger.info("Bloom size adjustment is 0 for "+l);
+
+        } catch (Exception e) {
+            logger.error("Cannot make bloom adjust for "+numElements+","+bucketsPer,e);
         }
         
-        return new OpenBitSet( Math.max(128,desiredNumBits) );
+        return new OpenBitSet( l );
     }
 
     /**
@@ -234,11 +265,18 @@ public class BloomFilter extends Filter
         bitset.clear(0, bitset.size());
     }
     
+    private static final BloomFilter always;
+    static {
+        OpenBitSet set = new OpenBitSet(64);
+        set.set(0, 64);
+        always=new BloomFilter(1, set);
+        
+    }
+    
     /** @return a BloomFilter that always returns a positive match, for testing */
     public static BloomFilter alwaysMatchingBloomFilter()
     {
-        OpenBitSet set = new OpenBitSet(64);
-        set.set(0, 64);
-        return new BloomFilter(1, set);
-    }    
+        return always;
+    }
+    
 }

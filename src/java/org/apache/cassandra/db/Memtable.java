@@ -164,7 +164,7 @@ public class Memtable implements Comparable<Memtable>, IFlushable
         {
             buffer.reset();
             /* serialize the cf with column indexes */
-            ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer);
+            ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer, bloomColumns);
             /* Now write the key and value to disk */
             writer.append(entry.getKey(), buffer);
             

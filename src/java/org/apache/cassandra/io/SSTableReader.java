@@ -41,6 +41,8 @@ import org.apache.cassandra.utils.BloomFilter;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 
+import com.sun.corba.se.spi.legacy.connection.GetEndPointInfoAgainException;
+
 /**
  * SSTableReaders are open()ed by Table.onStart; after that they are created by SSTableWriter.renameAndOpen.
  * Do not re-call open() on existing SSTable files; use the references kept by ColumnFamilyStore post-start instead.
@@ -93,7 +95,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 
         for (SSTableReader sstable : sstables)
         {
-            int indexKeyCount = sstable.getIndexPositions().size();
+            long indexKeyCount = sstable.getIndexPositions().size();
             count = count + (indexKeyCount + 1) * DatabaseDescriptor.getIndexInterval();
             countBF += sstable.getBloomFilter().getElementCount();
             if (logger.isDebugEnabled())
@@ -245,7 +247,8 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         DataInputStream stream = new DataInputStream(new FileInputStream(filterFilename()));
         try
         {
-            bf = BloomFilter.serializer().deserialize(stream);
+            bf = BloomFilter.serializerForSSTable().deserialize(stream);
+            assert bf.getElementCount()>0;
         }
         finally
         {
