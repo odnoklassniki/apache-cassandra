@@ -143,9 +143,9 @@ public class BloomFilter extends Filter
         return new BloomFilter(spec.K, bucketsFor(numElements, spec.bucketsPerElement));
     }
 
-    public int buckets()
+    public long buckets()
     {
-      return (int) bitset.size();
+      return bitset.size();
     }
 
     private long[] getHashBuckets(ByteBuffer key)
