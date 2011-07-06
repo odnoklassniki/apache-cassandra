@@ -116,7 +116,7 @@ public class OpenBitSet implements Cloneable, Serializable {
   }
 
   /** Returns the current capacity in bits (1 greater than the index of the last bit) */
-  public long capacity() { return bits.length << 6; }
+  public long capacity() { return ((long)bits.length) << 6; }
 
  /**
   * Returns the current capacity of this set.  Included for
