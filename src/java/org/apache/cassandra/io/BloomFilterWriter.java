@@ -62,7 +62,7 @@ public class BloomFilterWriter implements IColumnNameObserver
     private BloomFilter bf()
     {
         if (this.bf==null)
-            this.bf = BloomFilter.getFilter(estimatedKeyCount, bloomColumns ? 20 : 15);
+            this.bf = BloomFilter.getFilter(estimatedKeyCount, 15);
         
         return bf;
     }
