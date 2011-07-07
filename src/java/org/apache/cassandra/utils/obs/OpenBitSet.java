@@ -73,41 +73,60 @@ Test system: AMD Opteron, 64 bit linux, Sun Java 1.5_06 -server -Xbatch -Xmx64M
 </table>
  */
 
-public class OpenBitSet implements Cloneable, Serializable {
-  protected long[] bits;
+public class OpenBitSet implements Serializable {
+  protected long[][] bits;
   protected int wlen;   // number of words (elements) used in the array
+  protected int pageSize; // length of bits[][] page in long[] elements. Both dimensions are equal.
 
   /** Constructs an OpenBitSet large enough to hold numBits.
    *
    * @param numBits
    */
-  public OpenBitSet(long numBits) {
-    bits = new long[bits2words(numBits)];
-    wlen = bits.length;
+  public OpenBitSet(long numBits) 
+  {
+      this(numBits,true);
+  }
+  
+  public OpenBitSet(long numBits, boolean allocatePages) 
+  {
+    wlen= bits2words(numBits);    
+    pageSize = pageSize(wlen);
+    
+    bits = new long[pageSize][];
+    
+    if (allocatePages)
+    {
+        for (int allocated=0,i=0;allocated<wlen;allocated+=pageSize,i++)
+            bits[i]=new long[pageSize];
+    }
   }
 
   public OpenBitSet() {
     this(64);
   }
 
-  /** Constructs an OpenBitSet from an existing long[].
-   * <br/>
-   * The first 64 bits are in long[0],
-   * with bit index 0 at the least significant bit, and bit index 63 at the most significant.
-   * Given a bit index,
-   * the word containing it is long[index/64], and it is at bit number index%64 within that word.
-   * <p>
-   * numWords are the number of elements in the array that contain
-   * set bits (non-zero longs).
-   * numWords should be &lt= bits.length, and
-   * any existing words in the array at position &gt= numWords should be zero.
-   *
+  /**
+   * @return the pageSize
    */
-  public OpenBitSet(long[] bits, int numWords) {
-    this.bits = bits;
-    this.wlen = numWords;
+  public int getPageSize()
+  {
+      return pageSize;
+  }
+  
+  public int getPageCount()
+  {
+      return wlen / pageSize + 1;
   }
 
+  public long[] getPage(int pageIdx)
+  {
+      return bits[pageIdx];
+  }
+  
+  public void setPage(int pageIdx, long[] page)
+  {
+      bits[pageIdx] = page;
+  }
 
   /** Contructs an OpenBitset from a BitSet
   */
@@ -116,7 +135,7 @@ public class OpenBitSet implements Cloneable, Serializable {
   }
 
   /** Returns the current capacity in bits (1 greater than the index of the last bit) */
-  public long capacity() { return ((long)bits.length) << 6; }
+  public long capacity() { return ((long)wlen) << 6; }
 
  /**
   * Returns the current capacity of this set.  Included for
@@ -127,24 +146,24 @@ public class OpenBitSet implements Cloneable, Serializable {
   }
 
   // @Override -- not until Java 1.6
-  public int length() {
-    return bits.length << 6;
+  public long length() {
+    return capacity();
   }
 
   /** Returns true if there are no set bits */
   public boolean isEmpty() { return cardinality()==0; }
 
   /** Expert: returns the long[] storing the bits */
-  public long[] getBits() { return bits; }
+//  public long[] getBits() { return bits; }
 
   /** Expert: sets a new long[] to use as the bit storage */
-  public void setBits(long[] bits) { this.bits = bits; }
+//  public void setBits(long[] bits) { this.bits = bits; }
 
   /** Expert: gets the number of longs in the array that are in use */
   public int getNumWords() { return wlen; }
 
   /** Expert: sets the number of longs in the array that are in use */
-  public void setNumWords(int nWords) { this.wlen=nWords; }
+//  public void setNumWords(int nWords) { this.wlen=nWords; }
 
 
 
@@ -153,11 +172,12 @@ public class OpenBitSet implements Cloneable, Serializable {
     int i = index >> 6;               // div 64
     // signed shift will keep a negative index and force an
     // array-index-out-of-bounds-exception, removing the need for an explicit check.
-    if (i>=bits.length) return false;
+    if (i>=wlen) return false;
 
     int bit = index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
-    return (bits[i] & bitmask) != 0;
+    // TODO perfectionist one can implement this using bit operations
+    return (bits[i / pageSize ][i % pageSize] & bitmask) != 0;
   }
 
 
@@ -170,7 +190,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     // array-index-out-of-bounds-exception, removing the need for an explicit check.
     int bit = index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
-    return (bits[i] & bitmask) != 0;
+    // TODO perfectionist one can implement this using bit operations
+    return (bits[i / pageSize][i % pageSize ] & bitmask) != 0;
   }
 
 
@@ -179,10 +200,11 @@ public class OpenBitSet implements Cloneable, Serializable {
   */
   public boolean get(long index) {
     int i = (int)(index >> 6);             // div 64
-    if (i>=bits.length) return false;
+    if (i>=wlen) return false;
     int bit = (int)index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
-    return (bits[i] & bitmask) != 0;
+    // TODO perfectionist one can implement this using bit operations
+    return (bits[i / pageSize][i % pageSize ] & bitmask) != 0;
   }
 
   /** Returns true or false for the specified bit index.
@@ -192,7 +214,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     int i = (int)(index >> 6);               // div 64
     int bit = (int)index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
-    return (bits[i] & bitmask) != 0;
+    // TODO perfectionist one can implement this using bit operations
+    return (bits[i / pageSize][i % pageSize ] & bitmask) != 0;
   }
 
   /*
@@ -214,7 +237,7 @@ public class OpenBitSet implements Cloneable, Serializable {
   public int getBit(int index) {
     int i = index >> 6;                // div 64
     int bit = index & 0x3f;            // mod 64
-    return ((int)(bits[i]>>>bit)) & 0x01;
+    return ((int)(bits[i / pageSize][i % pageSize ]>>>bit)) & 0x01;
   }
 
 
@@ -232,7 +255,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = expandingWordNum(index);
     int bit = (int)index & 0x3f;
     long bitmask = 1L << bit;
-    bits[wordNum] |= bitmask;
+    bits[ wordNum / pageSize ][ wordNum % pageSize ] |= bitmask;
   }
 
 
@@ -243,7 +266,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] |= bitmask;
+    bits[ wordNum / pageSize ][ wordNum % pageSize ] |= bitmask;
   }
 
  /** Sets the bit at the specified index.
@@ -253,7 +276,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = (int)(index >> 6);
     int bit = (int)index & 0x3f;
     long bitmask = 1L << bit;
-    bits[wordNum] |= bitmask;
+    bits[ wordNum / pageSize ][ wordNum % pageSize ] |= bitmask;
   }
 
   /** Sets a range of bits, expanding the set size if necessary
@@ -274,13 +297,15 @@ public class OpenBitSet implements Cloneable, Serializable {
     long endmask = -1L >>> -endIndex;  // 64-(endIndex&0x3f) is the same as -endIndex due to wrap
 
     if (startWord == endWord) {
-      bits[startWord] |= (startmask & endmask);
+      bits[startWord / pageSize][startWord % pageSize] |= (startmask & endmask);
       return;
     }
 
-    bits[startWord] |= startmask;
-    Arrays.fill(bits, startWord+1, endWord, -1L);
-    bits[endWord] |= endmask;
+    assert startWord / pageSize == endWord / pageSize : "cross page sets not suppotred at all - they are not used";
+
+    bits[startWord / pageSize][startWord % pageSize] |= startmask;
+    Arrays.fill(bits[ startWord / pageSize], (startWord+1) % pageSize , endWord % pageSize , -1L);
+    bits[endWord / pageSize][endWord % pageSize] |= endmask;
   }
 
 
@@ -302,7 +327,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = index >> 6;
     int bit = index & 0x03f;
     long bitmask = 1L << bit;
-    bits[wordNum] &= ~bitmask;
+    bits[wordNum / pageSize][wordNum % pageSize] &= ~bitmask;
     // hmmm, it takes one more instruction to clear than it does to set... any
     // way to work around this?  If there were only 63 bits per word, we could
     // use a right shift of 10111111...111 in binary to position the 0 in the
@@ -319,7 +344,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = (int)(index >> 6); // div 64
     int bit = (int)index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] &= ~bitmask;
+    bits[wordNum / pageSize][wordNum % pageSize] &= ~bitmask;
   }
 
   /** clears a bit, allowing access beyond the current set size without changing the size.*/
@@ -328,7 +353,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     if (wordNum>=wlen) return;
     int bit = (int)index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] &= ~bitmask;
+    bits[wordNum / pageSize][wordNum % pageSize] &= ~bitmask;
   }
 
   /** Clears a range of bits.  Clearing past the end does not change the size of the set.
@@ -354,16 +379,24 @@ public class OpenBitSet implements Cloneable, Serializable {
     endmask = ~endmask;
 
     if (startWord == endWord) {
-      bits[startWord] &= (startmask | endmask);
+      bits[startWord / pageSize][startWord % pageSize] &= (startmask | endmask);
       return;
     }
+    
 
-    bits[startWord] &= startmask;
+    bits[startWord / pageSize][startWord % pageSize]  &= startmask;
 
     int middle = Math.min(wlen, endWord);
-    Arrays.fill(bits, startWord+1, middle, 0L);
+    if (startWord / pageSize == middle / pageSize)
+    {
+        Arrays.fill(bits[startWord/pageSize], (startWord+1) % pageSize, middle % pageSize, 0L);
+    } else
+    {
+        while (++startWord<middle)
+            bits[startWord / pageSize][startWord % pageSize] = 0L;
+    }
     if (endWord < wlen) {
-      bits[endWord] &= endmask;
+      bits[endWord / pageSize][endWord % pageSize] &= endmask;
     }
   }
 
@@ -391,16 +424,23 @@ public class OpenBitSet implements Cloneable, Serializable {
     endmask = ~endmask;
 
     if (startWord == endWord) {
-      bits[startWord] &= (startmask | endmask);
-      return;
+        bits[startWord / pageSize][startWord % pageSize] &= (startmask | endmask);
+        return;
     }
 
-    bits[startWord] &= startmask;
+    bits[startWord / pageSize][startWord % pageSize]  &= startmask;
 
     int middle = Math.min(wlen, endWord);
-    Arrays.fill(bits, startWord+1, middle, 0L);
+    if (startWord / pageSize == middle / pageSize)
+    {
+        Arrays.fill(bits[startWord/pageSize], (startWord+1) % pageSize, middle % pageSize, 0L);
+    } else
+    {
+        while (++startWord<middle)
+            bits[startWord / pageSize][startWord % pageSize] = 0L;
+    }
     if (endWord < wlen) {
-      bits[endWord] &= endmask;
+        bits[endWord / pageSize][endWord % pageSize] &= endmask;
     }
   }
 
@@ -413,8 +453,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    boolean val = (bits[wordNum] & bitmask) != 0;
-    bits[wordNum] |= bitmask;
+    boolean val = (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
+    bits[wordNum / pageSize][wordNum % pageSize] |= bitmask;
     return val;
   }
 
@@ -425,8 +465,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = (int)(index >> 6);      // div 64
     int bit = (int)index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    boolean val = (bits[wordNum] & bitmask) != 0;
-    bits[wordNum] |= bitmask;
+    boolean val = (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
+    bits[wordNum / pageSize][wordNum % pageSize] |= bitmask;
     return val;
   }
 
@@ -437,7 +477,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] ^= bitmask;
+    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
   }
 
   /** flips a bit.
@@ -447,7 +487,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = (int)(index >> 6);   // div 64
     int bit = (int)index & 0x3f;       // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] ^= bitmask;
+    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
   }
 
   /** flips a bit, expanding the set size if necessary */
@@ -455,7 +495,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = expandingWordNum(index);
     int bit = (int)index & 0x3f;       // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] ^= bitmask;
+    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
   }
 
   /** flips a bit and returns the resulting bit value.
@@ -465,8 +505,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] ^= bitmask;
-    return (bits[wordNum] & bitmask) != 0;
+    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
+    return (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
   }
 
   /** flips a bit and returns the resulting bit value.
@@ -476,8 +516,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     int wordNum = (int)(index >> 6);   // div 64
     int bit = (int)index & 0x3f;       // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum] ^= bitmask;
-    return (bits[wordNum] & bitmask) != 0;
+    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
+    return (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
   }
 
   /** Flips a range of bits, expanding the set size if necessary
@@ -504,17 +544,17 @@ public class OpenBitSet implements Cloneable, Serializable {
     long endmask = -1L >>> -endIndex;  // 64-(endIndex&0x3f) is the same as -endIndex due to wrap
 
     if (startWord == endWord) {
-      bits[startWord] ^= (startmask & endmask);
+      bits[startWord / pageSize][startWord % pageSize] ^= (startmask & endmask);
       return;
     }
 
-    bits[startWord] ^= startmask;
+    bits[startWord / pageSize][startWord % pageSize] ^= startmask;
 
     for (int i=startWord+1; i<endWord; i++) {
-      bits[i] = ~bits[i];
+      bits[i / pageSize][ i % pageSize] = ~bits[i / pageSize][ i % pageSize];
     }
 
-    bits[endWord] ^= endmask;
+    bits[endWord / pageSize][endWord % pageSize] ^= endmask;
   }
 
 
@@ -542,20 +582,29 @@ public class OpenBitSet implements Cloneable, Serializable {
 
 
   /** @return the number of set bits */
-  public long cardinality() {
-    return BitUtil.pop_array(bits,0,wlen);
+  public long cardinality() 
+  {
+    long bitCount = 0L;
+    for (int i=getPageCount();i-->0;)
+        bitCount+=BitUtil.pop_array(bits[i],0,wlen);
+    
+    return bitCount;
   }
 
  /** Returns the popcount or cardinality of the intersection of the two sets.
    * Neither set is modified.
    */
-  public static long intersectionCount(OpenBitSet a, OpenBitSet b) {
+  /*
+  public static long intersectionCount(OpenBitSet a, OpenBitSet b) 
+  {
     return BitUtil.pop_intersect(a.bits, b.bits, 0, Math.min(a.wlen, b.wlen));
- }
+  }
+  */
 
   /** Returns the popcount or cardinality of the union of the two sets.
     * Neither set is modified.
     */
+  /*
   public static long unionCount(OpenBitSet a, OpenBitSet b) {
     long tot = BitUtil.pop_union(a.bits, b.bits, 0, Math.min(a.wlen, b.wlen));
     if (a.wlen < b.wlen) {
@@ -565,11 +614,13 @@ public class OpenBitSet implements Cloneable, Serializable {
     }
     return tot;
   }
+  */
 
   /** Returns the popcount or cardinality of "a and not b"
    * or "intersection(a, not(b))".
    * Neither set is modified.
    */
+  /*
   public static long andNotCount(OpenBitSet a, OpenBitSet b) {
     long tot = BitUtil.pop_andnot(a.bits, b.bits, 0, Math.min(a.wlen, b.wlen));
     if (a.wlen > b.wlen) {
@@ -577,10 +628,11 @@ public class OpenBitSet implements Cloneable, Serializable {
     }
     return tot;
   }
-
+  */
  /** Returns the popcount or cardinality of the exclusive-or of the two sets.
   * Neither set is modified.
   */
+  /*
   public static long xorCount(OpenBitSet a, OpenBitSet b) {
     long tot = BitUtil.pop_xor(a.bits, b.bits, 0, Math.min(a.wlen, b.wlen));
     if (a.wlen < b.wlen) {
@@ -590,7 +642,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     }
     return tot;
   }
-
+  */
 
   /** Returns the index of the first set bit starting at the index specified.
    *  -1 is returned if there are no more set bits.
@@ -599,14 +651,14 @@ public class OpenBitSet implements Cloneable, Serializable {
     int i = index>>6;
     if (i>=wlen) return -1;
     int subIndex = index & 0x3f;      // index within the word
-    long word = bits[i] >> subIndex;  // skip all the bits to the right of index
+    long word = bits[i / pageSize][ i % pageSize] >> subIndex;  // skip all the bits to the right of index
 
     if (word!=0) {
       return (i<<6) + subIndex + BitUtil.ntz(word);
     }
 
     while(++i < wlen) {
-      word = bits[i];
+      word = bits[i / pageSize][i % pageSize];
       if (word!=0) return (i<<6) + BitUtil.ntz(word);
     }
 
@@ -620,14 +672,14 @@ public class OpenBitSet implements Cloneable, Serializable {
     int i = (int)(index>>>6);
     if (i>=wlen) return -1;
     int subIndex = (int)index & 0x3f; // index within the word
-    long word = bits[i] >>> subIndex;  // skip all the bits to the right of index
+    long word = bits[i / pageSize][i % pageSize] >>> subIndex;  // skip all the bits to the right of index
 
     if (word!=0) {
       return (((long)i)<<6) + (subIndex + BitUtil.ntz(word));
     }
 
     while(++i < wlen) {
-      word = bits[i];
+      word = bits[i / pageSize][i % pageSize];
       if (word!=0) return (((long)i)<<6) + BitUtil.ntz(word);
     }
 
@@ -636,7 +688,7 @@ public class OpenBitSet implements Cloneable, Serializable {
 
 
 
-
+/*
   @Override
   public Object clone() {
     try {
@@ -647,25 +699,31 @@ public class OpenBitSet implements Cloneable, Serializable {
       throw new RuntimeException(e);
     }
   }
+  */
 
   /** this = this AND other */
   public void intersect(OpenBitSet other) {
     int newLen= Math.min(this.wlen,other.wlen);
-    long[] thisArr = this.bits;
-    long[] otherArr = other.bits;
+    long[][] thisArr = this.bits;
+    long[][] otherArr = other.bits;
+    int thisPageSize = this.pageSize;
+    int otherPageSize = other.pageSize;
     // testing against zero can be more efficient
     int pos=newLen;
     while(--pos>=0) {
-      thisArr[pos] &= otherArr[pos];
+      thisArr[pos / thisPageSize][ pos % thisPageSize] &= otherArr[pos / otherPageSize][pos % otherPageSize];
     }
+    
     if (this.wlen > newLen) {
       // fill zeros from the new shorter length to the old length
-      Arrays.fill(bits,newLen,this.wlen,0);
+      for (pos=wlen;pos-->newLen;)
+          thisArr[pos / thisPageSize][ pos % thisPageSize] =0;
     }
     this.wlen = newLen;
   }
 
   /** this = this OR other */
+  /*
   public void union(OpenBitSet other) {
     int newLen = Math.max(wlen,other.wlen);
     ensureCapacityWords(newLen);
@@ -681,9 +739,10 @@ public class OpenBitSet implements Cloneable, Serializable {
     }
     this.wlen = newLen;
   }
-
+  */
 
   /** Remove all elements set in other. this = this AND_NOT other */
+  /*
   public void remove(OpenBitSet other) {
     int idx = Math.min(wlen,other.wlen);
     long[] thisArr = this.bits;
@@ -692,8 +751,10 @@ public class OpenBitSet implements Cloneable, Serializable {
       thisArr[idx] &= ~otherArr[idx];
     }
   }
+  */
 
   /** this = this XOR other */
+  /*
   public void xor(OpenBitSet other) {
     int newLen = Math.max(wlen,other.wlen);
     ensureCapacityWords(newLen);
@@ -709,7 +770,7 @@ public class OpenBitSet implements Cloneable, Serializable {
     }
     this.wlen = newLen;
   }
-
+  */
 
   // some BitSet compatability methods
 
@@ -719,16 +780,21 @@ public class OpenBitSet implements Cloneable, Serializable {
   }
 
   //** see {@link union} */
+  /*
   public void or(OpenBitSet other) {
     union(other);
   }
+  */
 
   //** see {@link andNot} */
+  /*
   public void andNot(OpenBitSet other) {
     remove(other);
   }
+  */
 
   /** returns true if the sets have any elements in common */
+  /*
   public boolean intersects(OpenBitSet other) {
     int pos = Math.min(this.wlen, other.wlen);
     long[] thisArr = this.bits;
@@ -738,16 +804,15 @@ public class OpenBitSet implements Cloneable, Serializable {
     }
     return false;
   }
-
+  */
 
 
   /** Expand the long[] with the size given as a number of words (64 bit longs).
    * getNumWords() is unchanged by this call.
    */
-  public void ensureCapacityWords(int numWords) {
-    if (bits.length < numWords) {
-      bits = ArrayUtil.grow(bits, numWords);
-    }
+  public void ensureCapacityWords(int numWords) 
+  {
+    assert numWords<=wlen : "Growing of paged bitset is not supported"; 
   }
 
   /** Ensure that the long[] is big enough to hold numBits, expanding it if necessary.
@@ -762,7 +827,7 @@ public class OpenBitSet implements Cloneable, Serializable {
    */
   public void trimTrailingZeros() {
     int idx = wlen-1;
-    while (idx>=0 && bits[idx]==0) idx--;
+    while (idx>=0 && bits[idx / pageSize][idx % pageSize]==0) idx--;
     wlen = idx+1;
   }
 
@@ -771,6 +836,39 @@ public class OpenBitSet implements Cloneable, Serializable {
    return (int)(((numBits-1)>>>6)+1);
   }
 
+  /**
+   * Decides what should be page size of this bitset matrix. 
+   * Because long and pointer are both 64 bit we want to have equal
+   * number of rows and columns, rounded up to nearest power of 2. 
+   * roundup is necessary to lower number of random free continuous memory
+   * lengths and lower heap fragmentation.
+   * 
+   * This way arrays in use for row storage and columns are of equal sizes.
+   * 
+   * @param numWords number of long words 
+   * @return page size, not less than 4K
+   */
+  public static int pageSize(int numWords)
+  {
+      int page=(int) Math.sqrt(numWords);
+      if (page<=4096)
+          return 4096; // dont create very small arrays. so bitset will use 8K minimum
+      
+      // roundup to next power of 2
+      if ( (page & (page-1)) !=0 ) // only if it is not power of 2 yet
+      {
+          // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
+          page--;
+          page |= page >> 1;
+          page |= page >> 2;
+          page |= page >> 4;
+          page |= page >> 8;
+          page |= page >> 16;
+          page++;
+      }
+      
+      return page;
+  }
 
   /** returns true if both sets have the same bits set */
   @Override
@@ -785,14 +883,17 @@ public class OpenBitSet implements Cloneable, Serializable {
     } else {
       a=this;
     }
+    
+    int aPageSize = this.pageSize;
+    int bPageSize = b.pageSize;
 
     // check for any set bits out of the range of b
     for (int i=a.wlen-1; i>=b.wlen; i--) {
-      if (a.bits[i]!=0) return false;
+      if (a.bits[i/aPageSize][i % aPageSize]!=0) return false;
     }
 
     for (int i=b.wlen-1; i>=0; i--) {
-      if (a.bits[i] != b.bits[i]) return false;
+      if (a.bits[i/aPageSize][i % aPageSize] != b.bits[i/bPageSize][i % bPageSize]) return false;
     }
 
     return true;
@@ -804,8 +905,8 @@ public class OpenBitSet implements Cloneable, Serializable {
     // Start with a zero hash and use a mix that results in zero if the input is zero.
     // This effectively truncates trailing zeros without an explicit check.
     long h = 0;
-    for (int i = bits.length; --i>=0;) {
-      h ^= bits[i];
+    for (int i = wlen; --i>=0;) {
+      h ^= bits[i / pageSize][i % pageSize];
       h = (h << 1) | (h >>> 63); // rotate left
     }
     // fold leftmost bits into right and add a constant to prevent

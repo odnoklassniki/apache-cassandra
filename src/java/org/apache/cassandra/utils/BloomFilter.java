@@ -72,44 +72,7 @@ public class BloomFilter extends Filter
 
     private static OpenBitSet bucketsFor(long numElements, int bucketsPer)
     {
-        long l = numElements * bucketsPer + EXCESS;
-        
-        long desiredNumBits = l/16;
-        
-        try {
-            // adjusting desired bits to the closest power of 2 to reduce heap fragmentation and
-            // chance of PromotionFailed CMS failure
-            if ( (desiredNumBits & (desiredNumBits-1)) !=0 ) // only if it is not power of 2 yet
-            {
-                // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-                desiredNumBits--;
-                desiredNumBits |= desiredNumBits >> 1;
-                desiredNumBits |= desiredNumBits >> 2;
-                desiredNumBits |= desiredNumBits >> 4;
-                desiredNumBits |= desiredNumBits >> 8;
-                desiredNumBits |= desiredNumBits >> 16;
-                desiredNumBits |= desiredNumBits >> 32;
-                desiredNumBits++;
-            }
-            
-            if (desiredNumBits>0)
-            {
-                long adjustedNumBits=l - (l & (desiredNumBits-1) ) + desiredNumBits;
-
-                if (bucketsPer>4) // dont print it for every column
-                    logger.info("Adjusting filter size from "+l+" to "+adjustedNumBits+", applying 1/16 roundup of "+desiredNumBits);
-
-                return new OpenBitSet( Math.max(128,adjustedNumBits) );
-            }
-            
-            if (bucketsPer>4) // dont print it for every column
-                logger.info("Bloom size adjustment is 0 for "+l);
-
-        } catch (Exception e) {
-            logger.error("Cannot make bloom adjust for "+numElements+","+bucketsPer,e);
-        }
-        
-        return new OpenBitSet( l );
+        return new OpenBitSet(numElements * bucketsPer + EXCESS);
     }
 
     /**

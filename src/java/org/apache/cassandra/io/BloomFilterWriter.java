@@ -169,7 +169,7 @@ public class BloomFilterWriter implements IColumnNameObserver
         file.close();
         
         if (logger.isInfoEnabled())
-            logger.info("Written filter "+filterFilename+", with actual elements (estimated elements) counts: "+this.bf().getElementCount()+'('+estimatedKeyCount+')');
+            logger.info("Written filter "+filterFilename+", with actual elements (estimated elements) counts: "+this.bf().getElementCount()+'('+estimatedKeyCount+')'+" with page size="+bf().bitset.getPageSize()+", count="+bf().bitset.getPageCount());
         
         return bf();
     }
