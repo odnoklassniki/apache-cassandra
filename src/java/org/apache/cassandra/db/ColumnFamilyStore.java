@@ -90,7 +90,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                                Integer.MAX_VALUE,
                                                TimeUnit.SECONDS,
                                                new LinkedBlockingQueue<Runnable>(DatabaseDescriptor.getAllDataFileLocations().length),
-                                               new NamedThreadFactory("FLUSH-WRITER-POOL"));
+                                               new NamedThreadFactory("FLUSH-WRITER-POOL",DatabaseDescriptor.getCompactionPriority()));
     public static final ExecutorService postFlushExecutor = new JMXEnabledThreadPoolExecutor("MEMTABLE-POST-FLUSHER");
 
     private static final int KEY_RANGE_FILE_BUFFER_SIZE = 256 * 1024;
