@@ -42,6 +42,7 @@ import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.dht.IPartitioner;
+import org.apache.cassandra.dht.OdklDomainPartitioner;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.DynamicEndpointSnitch;
@@ -812,6 +813,25 @@ public class DatabaseDescriptor
                             logger.info("Column level bloom filter in on for "+cfName);
                         }
                     }                    
+                    // MM: parse out domain split for this CF
+                    boolean splitByDomain = false;
+                    if ((value = XMLUtils.getAttributeValue(columnFamily, "SplitByDomain")) != null)
+                    {
+                        splitByDomain = Boolean.valueOf(value);
+                        if (splitByDomain)
+                        {
+                            if (cfName.contains("_"))
+                            {
+                                throw new ConfigurationException("ColumnFamily split by domain names cannot contain underscores");
+                            }
+                            if (! (DatabaseDescriptor.getPartitioner() instanceof OdklDomainPartitioner) )
+                            {
+                                throw new ConfigurationException("SplitByDomain mode is possible only with OdklDomainPartitioner");
+                            }
+
+                            logger.info("Splitting "+cfName+" by domain of keys");
+                        }
+                    }                    
 
                     // Parse out user-specified logical names for the various dimensions
                     // of a the column family from the config.
@@ -822,7 +842,20 @@ public class DatabaseDescriptor
                     String keyCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "KeyCacheSavePeriodInSeconds");
                     int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
                     int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
-                    meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
+                    
+                    if (splitByDomain)
+                    {
+                        // generating CFs postfixed with _{0-255}
+                        for (int domain =0;domain<256;domain++)
+                        {
+                            String postfix='_'+getPartitioner().getToken(Integer.toHexString(domain)).toString();
+                            meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
+                        }
+                    }
+                    else
+                    {
+                        meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
+                    }
                 }
 
                 tables.put(meta.name, meta);

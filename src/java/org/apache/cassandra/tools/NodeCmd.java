@@ -334,6 +334,13 @@ public class NodeCmd {
             // print out column family statistics for this table
             for (ColumnFamilyStoreMBean cfstore : columnFamilies)
             {
+                // MM: avoid printing out all these empty tables split by domain but not used at particular node
+                if (cfstore.getMemtableDataSize()==0 && cfstore.getTotalDiskSpaceUsed()==0)
+                {
+//                    outs.println("\t\tColumn Family: " + cfstore.getColumnFamilyName()+" (empty)");
+                    continue;
+                }
+                
                 outs.println("\t\tColumn Family: " + cfstore.getColumnFamilyName());
                 outs.println("\t\tSSTable count: " + cfstore.getLiveSSTableCount());
                 outs.println("\t\tSpace used (live): " + cfstore.getLiveDiskSpaceUsed());
