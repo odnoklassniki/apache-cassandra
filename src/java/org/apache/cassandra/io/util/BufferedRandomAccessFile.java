@@ -127,14 +127,17 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
         fileLength = (mode.equals("r")) ? this.channel.size() : -1;
         fd = CLibrary.getfd(this.getFD());
     }
-    
+
     public BufferedRandomAccessFile setSkipCache(boolean skip)
     {
         this.skipCache = skip;
         
         return this;
     }
-
+    
+    /**
+     * Flush (flush()) whatever writes are pending, and block until the data has been persistently committed (fsync()).
+     */
     public void sync() throws IOException
     {
         if (syncNeeded)
@@ -157,6 +160,11 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
         }
     }
 
+    /**
+     * If we are dirty, flush dirty contents to the operating system. Does not imply fsync().
+     *
+     * Currently, for implementation reasons, this also invalidates the buffer.
+     */
     public void flush() throws IOException
     {
         if (isDirty)
@@ -188,20 +196,25 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
 
             }
 
+            // Remember that we wrote, so we don't write it again on next flush().
+            resetBuffer();
+
             isDirty = false;
         }
+    }
+
+    private void resetBuffer()
+    {
+        bufferOffset = current;
+        validBufferBytes = 0;
     }
 
     private void reBuffer() throws IOException
     {
         flush(); // synchronizing buffer and file on disk
-
-        bufferOffset = current;
+        resetBuffer();
         if (bufferOffset >= channel.size())
-        {
-            validBufferBytes = 0;
             return;
-        }
 
         if (bufferOffset < minBufferOffset)
             minBufferOffset = bufferOffset;
@@ -373,7 +386,7 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
     {
         return (fileLength == -1) ? Math.max(Math.max(current, channel.size()), bufferOffset + validBufferBytes) : fileLength;
     }
-    
+
     public long getAbsolutePosition()
     {
         return getFilePointer();
@@ -434,6 +447,7 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
     {
         markedPointer = getFilePointer();
     }
+
 
     public static BufferedRandomAccessFile getUncachingReader(String filename) throws IOException
     {
