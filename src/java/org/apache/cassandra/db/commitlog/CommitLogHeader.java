@@ -19,15 +19,27 @@
 package org.apache.cassandra.db.commitlog;
 
 import java.io.*;
+import java.util.Arrays;
 import java.util.BitSet;
 
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.io.ICompactSerializer;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
+import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.BitSetSerializer;
 
 class CommitLogHeader
 {
+    public static String getHeaderPathFromSegment(CommitLogSegment segment)
+    {
+        return getHeaderPathFromSegmentPath(segment.getPath());
+    }
+
+    public static String getHeaderPathFromSegmentPath(String segmentPath)
+    {
+        return segmentPath + ".header";
+    }
+
     private static CommitLogHeaderSerializer serializer = new CommitLogHeaderSerializer();
 
     static CommitLogHeaderSerializer serializer()
@@ -40,7 +52,7 @@ class CommitLogHeader
         int minPosition = Integer.MAX_VALUE;
         for (int position : clHeader.cfDirtiedAt)
         {
-            if ( position < minPosition && position > 0)
+            if ( position < minPosition && position >= 0)
             {
                 minPosition = position;
             }
@@ -58,6 +70,7 @@ class CommitLogHeader
     {
         dirty = new BitSet(size);
         cfDirtiedAt = new int[size];
+        Arrays.fill(cfDirtiedAt, -1);
     }
     
     /*
@@ -90,7 +103,7 @@ class CommitLogHeader
     void turnOff(int index)
     {
         dirty.set(index, false);
-        cfDirtiedAt[index] = 0;
+        cfDirtiedAt[index] = -1;
     }
 
     boolean isSafeToDelete() throws IOException
@@ -98,14 +111,6 @@ class CommitLogHeader
         return dirty.isEmpty();
     }
 
-    byte[] toByteArray() throws IOException
-    {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        DataOutputStream dos = new DataOutputStream(bos);        
-        CommitLogHeader.serializer().serialize(this, dos);
-        return bos.toByteArray();
-    }
-    
     public String toString()
     {
         StringBuilder sb = new StringBuilder("");
@@ -139,14 +144,49 @@ class CommitLogHeader
         return sb.toString();
     }
 
-    static CommitLogHeader readCommitLogHeader(BufferedRandomAccessFile logReader) throws IOException
+    static void writeCommitLogHeader(CommitLogHeader header, String headerFile) throws IOException
     {
-        int size = (int)logReader.readLong();
-        byte[] bytes = new byte[size];
-        logReader.read(bytes);
-        ByteArrayInputStream byteStream = new ByteArrayInputStream(bytes);
-        return serializer().deserialize(new DataInputStream(byteStream));
+        DataOutputStream out = null;
+        try
+        {
+            /*
+             * FileOutputStream doesn't sync on flush/close.
+             * As headers are "optional" now there is no reason to sync it.
+             * This provides nearly double the performance of BRAF, more under heavey load.
+             */
+            out = new DataOutputStream(new FileOutputStream(headerFile));
+            serializer.serialize(header, out);
+        }
+        finally
+        {
+            if (out != null)
+                out.close();
+        }
     }
+
+    static CommitLogHeader readCommitLogHeader(String headerFile) throws IOException
+    {
+        DataInputStream reader = null;
+        try
+        {
+            reader = new DataInputStream(new BufferedInputStream(new FileInputStream(headerFile)));
+            return serializer.deserialize(reader);
+        }
+        finally
+        {
+            if (reader!=null)
+                reader.close();
+        }
+    }
+
+//    static CommitLogHeader readCommitLogHeader(BufferedRandomAccessFile logReader) throws IOException
+//    {
+//        int size = (int)logReader.readLong();
+//        byte[] bytes = new byte[size];
+//        logReader.read(bytes);
+//        ByteArrayInputStream byteStream = new ByteArrayInputStream(bytes);
+//        return serializer().deserialize(new DataInputStream(byteStream));
+//    }
 
     public int getColumnFamilyCount()
     {

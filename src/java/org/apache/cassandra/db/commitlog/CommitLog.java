@@ -220,29 +220,40 @@ public class CommitLog
 
             try
             {
-                final CommitLogHeader clHeader;
-                try
+                CommitLogHeader clHeader = null;
+                int replayPosition = 0;
+                if (!forced)
                 {
-                    clHeader = CommitLogHeader.readCommitLogHeader(reader);
-                }
-                catch (EOFException eofe)
-                {
-                    logger.info("Attempted to recover an incomplete CommitLogHeader.  Everything is ok, don't panic.");
-                    continue;
+                    String headerPath = CommitLogHeader.getHeaderPathFromSegmentPath(file.getAbsolutePath());
+                    try
+                    {
+                        clHeader = CommitLogHeader.readCommitLogHeader(headerPath);
+                        replayPosition = CommitLogHeader.getLowestPosition(clHeader);
+                    }
+                    catch (IOException ioe)
+                    {
+                        logger.info(headerPath + " incomplete, missing or corrupt.  Everything is ok, don't panic.  CommitLog will be replayed from the beginning");
+                        logger.debug("exception was", ioe);
+                    }
+                    
+                    if (replayPosition < 0 || replayPosition > reader.length())
+                    {
+                        // replayPosition > reader.length() can happen if some data gets flushed before it is written to the commitlog
+                        // (see https://issues.apache.org/jira/browse/CASSANDRA-2285)
+                        logger.debug("skipping replay of fully-flushed "+ file);
+                        continue;
+                    }
                 }
 
-            /* seek to the lowest position where any CF has non-flushed data 
-             * if replay was forced - reading all records, regardless of commit log header 
-             */
-            int lowPos = forced ? (int)reader.getFilePointer() : CommitLogHeader.getLowestPosition(clHeader);
-                if (lowPos == 0)
-                    continue;
-
-                reader.seek(lowPos);
+                /* seek to the lowest position where any CF has non-flushed data 
+                 * if replay was forced - reading all records, regardless of commit log header 
+                 */
+                reader.seek(replayPosition);
                 if (logger.isDebugEnabled())
-                    logger.debug("Replaying " + file + " starting at " + lowPos);
-            if (forced)
-                logger.info("Replaying " + file + " starting at " + lowPos);
+                    logger.debug("Replaying " + file + " starting at " + replayPosition);
+
+                if (forced)
+                    logger.info("Replaying " + file + " starting at " + replayPosition);
 
                 /* read the logs populate RowMutation and apply */
                 while (!reader.isEOF())
@@ -291,41 +302,42 @@ public class CommitLog
                     tablesRecovered.add(table);
                     final Collection<ColumnFamily> columnFamilies = new ArrayList<ColumnFamily>(rm.getColumnFamilies());
                     final long entryLocation = reader.getFilePointer();
-                Runnable runnable;
+                    Runnable runnable;
 
-                if (forced)
-                {
-                    runnable = new WrappedRunnable()
+                    if (forced || clHeader == null)
                     {
-                        public void runMayThrow() throws IOException
+                        runnable = new WrappedRunnable()
                         {
-                            if (!rm.isEmpty())
+                            public void runMayThrow() throws IOException
                             {
-                                Table.open(rm.getTable()).apply(rm, null, false);
-                            }
-                        }
-                    };
-                } else {
-                    runnable = new WrappedRunnable()
-                    {
-                        public void runMayThrow() throws IOException
-                        {
-                            /* remove column families that have already been flushed before applying the rest */
-                            for (ColumnFamily columnFamily : columnFamilies)
-                            {
-                                int id = table.getColumnFamilyId(columnFamily.name());
-                                if (!clHeader.isDirty(id) || entryLocation <= clHeader.getPosition(id))
+                                if (!rm.isEmpty())
                                 {
-                                    rm.removeColumnFamily(columnFamily);
+                                    Table.open(rm.getTable()).apply(rm, null, false);
                                 }
                             }
-                            if (!rm.isEmpty())
+                        };
+                    } else {
+                        final CommitLogHeader finalHeader = clHeader;
+                        runnable = new WrappedRunnable()
+                        {
+                            public void runMayThrow() throws IOException
                             {
-                                Table.open(rm.getTable()).apply(rm, null, false);
+                                /* remove column families that have already been flushed before applying the rest */
+                                for (ColumnFamily columnFamily : columnFamilies)
+                                {
+                                    int id = table.getColumnFamilyId(columnFamily.name());
+                                    if (!finalHeader.isDirty(id) || entryLocation <= finalHeader.getPosition(id))
+                                    {
+                                        rm.removeColumnFamily(columnFamily);
+                                    }
+                                }
+                                if (!rm.isEmpty())
+                                {
+                                    Table.open(rm.getTable()).apply(rm, null, false);
+                                }
                             }
-                        }
-                    };
-                }
+                        };
+                    }
                     futures.add(StageManager.getStage(StageManager.MUTATION_STAGE).submit(runnable));
                     if (futures.size() > MAX_OUTSTANDING_REPLAY_COUNT)
                     {
@@ -477,6 +489,7 @@ public class CommitLog
                     segment.close();
                 }
            
+                DeletionService.submitDelete(segment.getHeaderPath());
                 DeletionService.submitDelete(segment.getPath());
                 // usually this will be the first (remaining) segment, but not always, if segment A contains
                 // writes to a CF that is unflushed but is followed by segment B whose CFs are all flushed.
@@ -502,7 +515,16 @@ public class CommitLog
             }
 
         }
-        FileUtils.delete(files);
+        
+        // MM: we dont archive .headers, because for archived files all CFs are clean
+        // and anyway we'll want to replay all records in archived log
+        for (File f : files)
+        {
+            FileUtils.delete(CommitLogHeader.getHeaderPathFromSegmentPath(f.getAbsolutePath())); // may not actually exist
+            if (!f.delete())
+                logger.error("Unable to remove " + f + "; you should remove it manually or next restart will replay it again (harmless, but time-consuming)");
+        }
+
     }
 
     /**

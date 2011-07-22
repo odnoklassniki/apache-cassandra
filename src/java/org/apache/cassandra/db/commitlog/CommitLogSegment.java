@@ -53,7 +53,7 @@ public class CommitLogSegment
             logWriter = createWriter(logFile);
             logWriter.setSkipCache(true);
             
-            writeCommitLogHeader(header.toByteArray());
+            writeHeader();
         }
         catch (IOException e)
         {
@@ -63,25 +63,7 @@ public class CommitLogSegment
 
     public void writeHeader() throws IOException
     {
-        seekAndWriteCommitLogHeader(header.toByteArray());
-    }
-
-    /** writes header at the beginning of the file, then seeks back to current position */
-    void seekAndWriteCommitLogHeader(byte[] bytes) throws IOException
-    {
-        long currentPos = logWriter.getFilePointer();
-        logWriter.seek(0);
-
-        writeCommitLogHeader(bytes);
-
-        logWriter.seek(currentPos);
-    }
-
-    private void writeCommitLogHeader(byte[] bytes) throws IOException
-    {
-        logWriter.writeLong(bytes.length);
-        logWriter.write(bytes);
-        logWriter.sync();
+        CommitLogHeader.writeCommitLogHeader(header, getHeaderPath() );
     }
 
     private static BufferedRandomAccessFile createWriter(String file) throws IOException
@@ -105,7 +87,7 @@ public class CommitLogSegment
                 if (!header.isDirty(id))
                 {
                     header.turnOn(id, logWriter.getFilePointer());
-                    seekAndWriteCommitLogHeader(header.toByteArray());
+                    writeHeader();
                 }
             }
 
@@ -157,6 +139,11 @@ public class CommitLogSegment
     {
         return logWriter.getPath();
     }
+    
+    public String getHeaderPath()                                                                                                                                                                                 
+    {                                                                                                                                                                                                             
+        return CommitLogHeader.getHeaderPathFromSegment(this);                                                                                                                                                    
+    }                                                                                                                                                                                                             
 
     public long length()
     {
