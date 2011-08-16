@@ -511,10 +511,15 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         binaryMemtable_.get().put(key, buffer);
     }
 
-    public void forceFlushIfExpired() throws IOException
+    public boolean forceFlushIfExpired() throws IOException
     {
         if (memtable_.isExpired())
+        {
             forceFlush();
+            return true;
+        }
+        
+        return false;
     }
 
     public Future<?> forceFlush() throws IOException
