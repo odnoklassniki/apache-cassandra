@@ -61,9 +61,6 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     private long bytesRead;
     private long row;
 
-    private DataOutputBuffer buffer = new DataOutputBuffer();
-    
-
     public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
     {
         this(cfs, getCollatingIterator(sstables), gcBefore, major);
@@ -111,7 +108,8 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     protected CompactedRow getReduced()
     {
         assert rows.size() > 0;
-        buffer.reset();
+        DataOutputBuffer buffer = new DataOutputBuffer();
+        
         DecoratedKey key = rows.get(0).getKey();
 
         Set<SSTable> sstables = new HashSet<SSTable>();
