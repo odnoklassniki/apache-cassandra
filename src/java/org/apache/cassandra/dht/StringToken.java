@@ -20,6 +20,8 @@ package org.apache.cassandra.dht;
 
 public class StringToken extends Token<String>
 {
+    private static final long serialVersionUID = 5464084395277974963l;
+
     public StringToken(String token)
     {
         super(token);
