@@ -19,6 +19,8 @@
 package org.apache.cassandra.config;
 
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.dht.StringToken;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.utils.FBUtilities;
 
 public final class CFMetaData
@@ -39,10 +41,18 @@ public final class CFMetaData
     
     /** MM: do we want column to be checked against bloom filter **/
     public final boolean bloomColumns ;
+    /** MM: is this column family split by domain **/
+    public final boolean domainSplit;
+    /** MM: if split by domain - name of CF without domain postfix **/
+    public final String  domainCFName;
+    /** MM: domain value of the minimum key, if split by domain (domain + NUL char) **/
+    public final Token domainMinToken;
 
     CFMetaData(String tableName, String cfName, String columnType, AbstractType comparator, AbstractType subcolumnComparator,
                boolean bloomColumns,
-               String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds)
+               String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds,
+               boolean domainSplit, String domainCFName, Token domain
+               )
     {
         this.tableName = tableName;
         this.cfName = cfName;
@@ -55,6 +65,9 @@ public final class CFMetaData
         this.keyCacheSize = keyCacheSize;
         this.rowCacheSavePeriodInSeconds = rowCacheSavePeriodInSeconds;
         this.keyCacheSavePeriodInSeconds = keyCacheSavePeriodInSeconds;
+        this.domainSplit = domainSplit;
+        this.domainCFName = domainCFName;
+        this.domainMinToken = domain;
     }
 
     // a quick and dirty pretty printer for describing the column family...
@@ -80,6 +93,9 @@ public final class CFMetaData
                 && other.rowCacheSize == rowCacheSize
                 && other.keyCacheSize == keyCacheSize
                 && other.rowCacheSavePeriodInSeconds == rowCacheSavePeriodInSeconds
-                && other.keyCacheSavePeriodInSeconds == keyCacheSavePeriodInSeconds;
+                && other.keyCacheSavePeriodInSeconds == keyCacheSavePeriodInSeconds
+                && other.domainSplit == domainSplit
+                && other.domainCFName.equals(domainCFName)
+                && other.domainMinToken.compareTo( domainMinToken )==0;
     }
 }

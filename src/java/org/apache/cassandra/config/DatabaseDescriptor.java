@@ -43,6 +43,7 @@ import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.OdklDomainPartitioner;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.DynamicEndpointSnitch;
@@ -580,7 +581,11 @@ public class DatabaseDescriptor
                                                                             0.0,
                                                                             0.01,
                                                                             DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS,
-                                                                            DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS));
+                                                                            DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS,
+                                                                            false, 
+                                                                            SystemTable.STATUS_CF,
+                                                                            null
+                                                                            ));
 
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
                                                                                     HintedHandOffManager.HINTS_CF,
@@ -592,7 +597,11 @@ public class DatabaseDescriptor
                                                                                     0.0,
                                                                                     0.01,
                                                                                     DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS,
-                                                                                    DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS));
+                                                                                    DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS,
+                                                                                    false, 
+                                                                                    HintedHandOffManager.HINTS_CF,
+                                                                                    null
+                                                                                    ));
 
             /* Load the seeds for node contact points */
             String[] seedsxml = xmlUtils.getNodeValues("/Storage/Seeds/Seed");
@@ -848,13 +857,15 @@ public class DatabaseDescriptor
                         // generating CFs postfixed with _{0-255}
                         for (int domain =0;domain<256;domain++)
                         {
-                            String postfix='_'+getPartitioner().getToken(Integer.toHexString(domain)).toString();
-                            meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
+                            Token domainToken = getPartitioner().getToken(Integer.toHexString(domain));
+                            String postfix='_'+domainToken.toString();
+                            domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
+                            meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken));
                         }
                     }
                     else
                     {
-                        meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod));
+                        meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null));
                     }
                 }
 
@@ -1205,6 +1216,11 @@ public class DatabaseDescriptor
     public static String getLogArchiveDestination()
     {
         return logFileArchiveDestination;
+    }
+    
+    public static String getMerkleTreeArchiveDestination()
+    {
+        return logFileDirectory+File.separatorChar+".tmp";
     }
     
     public static boolean isLogArchiveActive()

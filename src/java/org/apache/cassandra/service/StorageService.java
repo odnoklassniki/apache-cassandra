@@ -26,6 +26,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.regex.Pattern;
+
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
@@ -39,6 +41,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.concurrent.StageManager;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
@@ -1114,8 +1117,29 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             ColumnFamilyStore cfStore = table.getColumnFamilyStore(cfName);
             if (cfStore == null)
             {
-                // this means there was a cf passed in that is not recognized in the keyspace. report it and continue.
-                logger_.warn(String.format("Invalid column family specified: %s. Proceeding with others.", cfName));
+                // column family not recognized by exact name, trying wildcard match
+                Pattern cfPattern = Pattern.compile(cfName);
+                boolean matched = false;
+                for (ColumnFamilyStore cfTest : table.getColumnFamilyStores())
+                {
+                    if ( cfPattern.matcher(cfTest.getColumnFamilyName()).matches() )
+                    {
+                        if (!matched)
+                        {
+                            logger_.warn(String.format("Column Family %s interpreted as pattern", cfName));
+                            matched = true;
+                        }
+                        
+                        valid.add ( cfTest );
+                    }
+                }
+                
+                if (!matched)
+                {
+                    // this means there was a cf passed in that is not recognized in the keyspace. report it and continue.
+                    logger_.warn(String.format("Invalid column family specified: %s. Proceeding with others.", cfName));
+                }
+                
                 continue;
             }
             valid.add(cfStore);
@@ -1154,10 +1178,64 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         endpoints.add(FBUtilities.getLocalAddress());
         for (ColumnFamilyStore cfStore : getValidColumnFamilies(tableName, columnFamilies))
         {
-            Message request = TreeRequestVerbHandler.makeVerb(tableName, cfStore.getColumnFamilyName());
-            for (InetAddress endpoint : endpoints)
-                ms.sendOneWay(request, endpoint);
+            if (isInLocalRange(cfStore))
+            {
+                // MM: only ask for repair if column family can have any data for this CF (it is impossible for domain splitted CF, if its domain is out of range)
+                StringBuilder prettyEndpoints = new StringBuilder();
+                Message request = TreeRequestVerbHandler.makeVerb(tableName, cfStore.getColumnFamilyName());
+                for (InetAddress endpoint : endpoints)
+                {
+                    if (isInRemoteRange(cfStore, endpoint))
+                    {
+                        ms.sendOneWay(request, endpoint);
+                        prettyEndpoints.append(endpoint.getHostAddress()).append(' ');
+                    }
+                }
+
+                logger_.info("Repair: requesting tree for "+cfStore.getColumnFamilyName()+" from "+prettyEndpoints);
+            }
+            else
+            {
+                logger_.info("Repair-skip: skipping repair for "+cfStore.getColumnFamilyName()+" - it is out of local nodes range" );
+                
+            }
         }
+    }
+    
+    public boolean isInLocalRange(ColumnFamilyStore cfs)
+    {
+        String table = cfs.getTable().name;
+        CFMetaData cfMetaData = DatabaseDescriptor.getCFMetaData(table, cfs.getColumnFamilyName());
+        
+        if (!cfMetaData.domainSplit)
+            return true;
+        
+        // this is domain split column familily. Determining can possibly it have records of local node's range
+        for (Range range : getLocalRanges(table)) 
+        {
+            if (range.contains( cfMetaData.domainMinToken ))
+                return true;
+        }
+        
+        return false;
+    }
+
+    public boolean isInRemoteRange(ColumnFamilyStore cfs, InetAddress endpoint)
+    {
+        String table = cfs.getTable().name;
+        CFMetaData cfMetaData = DatabaseDescriptor.getCFMetaData(table, cfs.getColumnFamilyName());
+        
+        if (!cfMetaData.domainSplit)
+            return true;
+        
+        // this is domain split column familily. Determining can possibly it have records of local node's range
+        for (Range range : getRangesForEndPoint(table, endpoint)) 
+        {
+            if (range.contains( cfMetaData.domainMinToken ))
+                return true;
+        }
+        
+        return false;
     }
 
     /* End of MBean interface methods */

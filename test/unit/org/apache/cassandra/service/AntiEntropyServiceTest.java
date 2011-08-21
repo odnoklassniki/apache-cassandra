@@ -185,7 +185,7 @@ public class AntiEntropyServiceTest extends CleanupHelper
         
         // confirm that our reference is not equal to the original due
         // to (de)serialization
-        assert tree != aes.getRendezvousPair_TestsOnly(tablename, cfname, REMOTE).left;
+        assert tree != aes.getRendezvousPair_TestsOnly(tablename, cfname, REMOTE).left.get();
     }
 
     @Test
@@ -242,7 +242,7 @@ public class AntiEntropyServiceTest extends CleanupHelper
 
         // difference the trees
         Differencer diff = new Differencer(new CFPair(tablename, cfname),
-                                           LOCAL, LOCAL, ltree, rtree);
+                                           LOCAL, LOCAL, new PersistentMerkleTree(new CFPair(tablename, cfname), LOCAL, ltree), new PersistentMerkleTree(new CFPair(tablename, cfname), REMOTE, rtree));
         diff.run();
         
         // ensure that the changed range was recorded

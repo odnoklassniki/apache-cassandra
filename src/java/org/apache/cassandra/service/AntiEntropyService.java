@@ -19,11 +19,15 @@
 package org.apache.cassandra.service;
 
 import java.io.*;
+import java.lang.ref.SoftReference;
+import java.lang.ref.WeakReference;
 import java.net.InetAddress;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
+
+import javax.imageio.stream.FileImageInputStream;
 
 import org.apache.log4j.Logger;
 
@@ -38,12 +42,15 @@ import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.CompactionIterator.CompactedRow;
 import org.apache.cassandra.io.ICompactSerializer;
 import org.apache.cassandra.io.IndexSummary;
+import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.streaming.StreamOut;
 import org.apache.cassandra.streaming.StreamOutManager;
 import org.apache.cassandra.utils.*;
+
+import com.google.common.base.Function;
 
 /**
  * AntiEntropyService encapsulates "validating" (hashing) individual column families,
@@ -103,6 +110,25 @@ public class AntiEntropyService
     protected AntiEntropyService()
     {
         trees = new HashMap<CFPair, ExpiringMap<InetAddress, TreePair>>();
+        
+        clearTmpDir();
+    }
+
+    /**
+     *  Clears all {@link PersistentMerkleTree} files saved by previous run
+     */
+    private void clearTmpDir()
+    {
+        try {
+            File dir = new File(DatabaseDescriptor.getMerkleTreeArchiveDestination());
+            if (dir.exists())
+            {
+                logger.info("Deleting all files from "+dir);
+                
+                FileUtils.deleteDir(dir);
+            }
+        } catch (IOException e) {
+        }
     }
 
     /**
@@ -117,7 +143,28 @@ public class AntiEntropyService
         ExpiringMap<InetAddress, TreePair> ctrees = trees.get(cf);
         if (ctrees == null)
         {
-            ctrees = new ExpiringMap<InetAddress, TreePair>(REQUEST_TIMEOUT);
+            ctrees = new ExpiringMap<InetAddress, TreePair>(REQUEST_TIMEOUT, new Function<Pair<InetAddress, TreePair>, Object>()
+            {
+                /* (non-Javadoc)
+                 * @see com.google.common.base.Function#apply(java.lang.Object)
+                 */
+                @Override
+                public Object apply(Pair<InetAddress, TreePair> pair)
+                {
+                    TreePair tp = pair.right;
+                    if (tp.left!=null)
+                    {
+                        tp.left.close();
+                    }
+                    
+                    if (tp.right!=null)
+                    {
+                        tp.right.close();
+                    }
+                    
+                    return null;
+                }
+            });
             trees.put(cf, ctrees);
         }
         return ctrees;
@@ -140,6 +187,34 @@ public class AntiEntropyService
         return neighbors;
     }
 
+    public static Set<InetAddress> getNeighbors(CFPair cf)
+    {
+        String table = cf.left;
+        ColumnFamilyStore columnFamilyStore;
+        try {
+            columnFamilyStore = Table.open(table).getColumnFamilyStore(cf.right);
+        } catch (IOException e) {
+            logger.error("Cannot open table "+table, e);
+            return Collections.emptySet();
+        }
+        
+        StorageService ss = StorageService.instance;
+        Set<InetAddress> neighbors = new HashSet<InetAddress>();
+        Map<Range, List<InetAddress>> replicaSets = ss.getRangeToAddressMap(table);
+        for (Range range : ss.getLocalRanges(table))
+        {
+            // for every range stored locally (replica or original) collect neighbors storing copies
+            List<InetAddress> list = replicaSets.get(range);
+            for (InetAddress inetAddress : list) 
+            {
+                if (StorageService.instance.isInRemoteRange(columnFamilyStore, inetAddress))
+                    neighbors.add(inetAddress);
+            }
+        }
+        neighbors.remove(FBUtilities.getLocalAddress());
+        return neighbors;
+    }
+
     /**
      * Register a tree from the given endpoint to be compared to the appropriate trees
      * in AE_SERVICE_STAGE when they become available.
@@ -155,23 +230,35 @@ public class AntiEntropyService
         // return the rendezvous pairs for this cf
         ExpiringMap<InetAddress, TreePair> ctrees = rendezvousPairs(cf);
 
+        PersistentMerkleTree ptree;
+        try {
+            ptree = new PersistentMerkleTree(cf, endpoint, tree );
+        } catch (IOException e) {
+            logger.error("Cannot rendezvous with "+endpoint+cf,e);
+            return;
+        }
+
         List<Differencer> differencers = new ArrayList<Differencer>();
         if (LOCAL.equals(endpoint))
         {
             // we're registering a local tree: rendezvous with all remote trees
-            for (InetAddress neighbor : getNeighbors(cf.left))
+            
+            for (InetAddress neighbor : getNeighbors(cf))
             {
                 TreePair waiting = ctrees.remove(neighbor);
                 if (waiting != null && waiting.right != null)
                 {
                     // the neighbor beat us to the rendezvous: queue differencing
                     differencers.add(new Differencer(cf, LOCAL, neighbor,
-                                                     tree, waiting.right));
+                                                     ptree, waiting.right));
+                    
+                    waiting.right.close();
+
                     continue;
                 }
 
                 // else, the local tree is first to the rendezvous: store and wait
-                ctrees.put(neighbor, new TreePair(tree, null));
+                ctrees.put(neighbor, new TreePair(ptree.open(), null));
                 logger.debug("Stored local tree for " + cf + " to wait for " + neighbor);
             }
         }
@@ -183,12 +270,13 @@ public class AntiEntropyService
             {
                 // the local tree beat us to the rendezvous: queue differencing
                 differencers.add(new Differencer(cf, LOCAL, endpoint,
-                                                 waiting.left, tree));
+                                                 waiting.left, ptree ));
+                waiting.left.close();
             }
             else
             {
                 // else, the remote tree is first to the rendezvous: store and wait
-                ctrees.put(endpoint, new TreePair(null, tree));
+                ctrees.put(endpoint, new TreePair(null, ptree.open()) );
                 logger.debug("Stored remote tree for " + cf + " from " + endpoint);
             }
         }
@@ -402,7 +490,7 @@ public class AntiEntropyService
             AntiEntropyService aes = AntiEntropyService.instance;
             InetAddress local = FBUtilities.getLocalAddress();
 
-            Collection<InetAddress> neighbors = getNeighbors(cf.left);
+            Collection<InetAddress> neighbors = getNeighbors(cf);
 
             // store the local tree and then broadcast it to our neighbors
             aes.rendezvous(cf, local, tree);
@@ -421,17 +509,17 @@ public class AntiEntropyService
         public final CFPair cf;
         public final InetAddress local;
         public final InetAddress remote;
-        public final MerkleTree ltree;
-        public final MerkleTree rtree;
+        public final PersistentMerkleTree pltree;
+        public final PersistentMerkleTree prtree;
         public final List<Range> differences;
 
-        public Differencer(CFPair cf, InetAddress local, InetAddress remote, MerkleTree ltree, MerkleTree rtree)
+        public Differencer(CFPair cf, InetAddress local, InetAddress remote, PersistentMerkleTree ltree, PersistentMerkleTree rtree)
         {
             this.cf = cf;
             this.local = local;
             this.remote = remote;
-            this.ltree = ltree;
-            this.rtree = rtree;
+            this.pltree = ltree.open();
+            this.prtree = rtree.open();
             differences = new ArrayList<Range>();
         }
 
@@ -441,6 +529,21 @@ public class AntiEntropyService
         public void run()
         {
             StorageService ss = StorageService.instance;
+            
+            MerkleTree ltree, rtree;
+            
+            try {
+            
+                ltree = pltree.get();
+                rtree = prtree.get();
+
+            } catch (IOException e)
+            {
+                throw new RuntimeException("Cannot check " + local + " and " + remote + " for " + cf, e);
+            } finally {
+                pltree.close();
+                prtree.close();
+            }
 
             // restore partitioners (in case we were serialized)
             if (ltree.partitioner() == null)
@@ -462,7 +565,7 @@ public class AntiEntropyService
             {
                 if (differences.isEmpty())
                 {
-                    logger.debug("Endpoints " + local + " and " + remote + " are consistent for " + cf);
+                    logger.info("Endpoints " + local + " and " + remote + " are consistent for " + cf);
                     return;
                 }
                 
@@ -645,12 +748,144 @@ public class AntiEntropyService
      * A tuple of a local and remote tree. One of the trees should be null, but
      * not both.
      */
-    static class TreePair extends Pair<MerkleTree,MerkleTree>
+    static class TreePair extends Pair<PersistentMerkleTree,PersistentMerkleTree>
     {
-        public TreePair(MerkleTree local, MerkleTree remote)
+        public TreePair(PersistentMerkleTree local, PersistentMerkleTree remote)
         {
             super(local, remote);
             assert local != null ^ remote != null;
         }
+    }
+    
+    /**
+     * Wrapper to store merkle tree on disk.
+     * 
+     * @author Oleg Anastasyev<oa@hq.one.lv>
+     */
+    static class PersistentMerkleTree 
+    {
+        private final CFPair cfPair;
+        private final InetAddress endpoint;
+
+        // while someone is using merkle tree its ref will be here to avoid
+        // needlessly loading it from disk
+        private WeakReference<MerkleTree> treeCache;
+        
+        private final boolean isEmpty;
+        
+        private int openCount;
+        
+        /**
+         * @throws IOException 
+         * 
+         */
+        PersistentMerkleTree(CFPair cfp, InetAddress endpoint, MerkleTree tree) throws IOException
+        {
+            cfPair = cfp;
+            this.endpoint = endpoint;
+        
+            this.isEmpty=tree==null;
+            if (!isEmpty)
+            {
+                this.treeCache = new WeakReference<MerkleTree>(tree);
+                save(tree);
+            }
+        }
+        
+        public MerkleTree get() throws IOException
+        {
+            if (isEmpty)
+                return null;
+            
+            MerkleTree tree=treeCache.get();
+            if (tree!=null)
+                return tree;
+            
+            tree = load();
+            treeCache = new WeakReference<MerkleTree>(tree);
+            
+            return tree;
+        }
+        
+        public PersistentMerkleTree open()
+        {
+            openCount++;
+            return this;
+        }
+        
+        public void close() 
+        {
+            openCount--;
+            if (openCount>0)
+                return;
+                
+            File file = getPersistentFilename();
+            if (file.delete())
+            {
+//                if (logger.isDebugEnabled())
+                    logger.info("Removed "+file);
+                
+            }
+            treeCache.clear();
+        }
+        
+        /**
+         * @param tree
+         * @throws IOException 
+         */
+        private void save(MerkleTree tree) throws IOException
+        {
+            File treeFile = getPersistentFilename();
+            ObjectOutputStream oos = new ObjectOutputStream( new FileOutputStream(treeFile) );
+            
+            try {
+                oos.writeObject(tree);
+            } finally {
+                oos.close();
+            }
+            
+
+//            if (logger.isDebugEnabled())
+                logger.info("Saved "+treeFile.length()+" bytes of "+this+" to "+treeFile);
+        }
+        
+        private MerkleTree load() throws IOException
+        {
+            File treeFile = getPersistentFilename();
+            ObjectInputStream ios = new ObjectInputStream( new FileInputStream(treeFile) );
+            
+            try {
+                
+//                if (logger.isDebugEnabled())
+                    logger.info("Loading "+this+" from "+treeFile);
+                
+                return (MerkleTree) ios.readObject();
+            } catch (ClassNotFoundException e) {
+                logger.error("Cannot read merkle tree from "+treeFile,e);
+                throw new IOException("Cannot read merkle tree from "+treeFile);
+            } finally {
+                ios.close();
+            }
+        }
+        
+        /* (non-Javadoc)
+         * @see java.lang.Object#toString()
+         */
+        @Override
+        public String toString()
+        {
+            return "PersistentMerkleTree[ CF="+cfPair.right+", endpoint ="+endpoint.getHostAddress()+"]";
+        }
+
+        private File getPersistentFilename()
+        {
+            File dir=new File( DatabaseDescriptor.getMerkleTreeArchiveDestination()+File.separatorChar+cfPair.left+File.separatorChar+endpoint.getHostAddress() );
+            
+            dir.mkdirs();
+            
+            return new File( dir, cfPair.right+"-tmp-MerkleTree.db");
+        }
+        
+        
     }
 }
