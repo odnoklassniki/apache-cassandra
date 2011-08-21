@@ -22,6 +22,10 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -29,6 +33,7 @@ import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import org.apache.log4j.Logger;
 
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.filter.IdentityQueryFilter;
@@ -342,15 +347,43 @@ public class Table
         return list;
     }
 
-    private Table(String table) throws IOException
+    private Table(final String table) throws IOException
     {
         name = table;
         waitForCommitLog = DatabaseDescriptor.getCommitLogSync() == DatabaseDescriptor.CommitLogSync.batch;
         tableMetadata = Table.TableMetadata.instance(table);
-        for (String columnFamily : tableMetadata.getColumnFamilies())
+        
+        // MM : Speed up startup by parallelling all CF initializations
+        logger.info("Starting "+table+" keyspace using "+DatabaseDescriptor.getAllDataFileLocations().length+" threads");
+        ExecutorService initExecutor = Executors.newFixedThreadPool(DatabaseDescriptor.getAllDataFileLocations().length, new NamedThreadFactory("KS-INIT-"+table));
+
+        List<Callable<ColumnFamilyStore>> tasks = new ArrayList<Callable<ColumnFamilyStore>>();
+        for (final String columnFamily : tableMetadata.getColumnFamilies())
         {
-            columnFamilyStores.put(columnFamily, ColumnFamilyStore.createColumnFamilyStore(table, columnFamily));
+//            columnFamilyStores.put(columnFamily, ColumnFamilyStore.createColumnFamilyStore(table, columnFamily));
+            tasks.add(new Callable<ColumnFamilyStore>()
+            {
+                
+                @Override
+                public ColumnFamilyStore call() throws Exception
+                {
+                    return ColumnFamilyStore.createColumnFamilyStore(table, columnFamily);
+                }
+            });
         }
+        
+        try {
+            List<Future<ColumnFamilyStore>> cfs = initExecutor.invokeAll(tasks);
+            
+            for (Future<ColumnFamilyStore> future : cfs) 
+            {
+                columnFamilyStores.put(future.get().getColumnFamilyName(), future.get());
+            }
+        } catch (Exception e1) {
+            throw new RuntimeException(table+" initialization failure", e1);
+        }
+        
+        initExecutor.shutdown();
 
         // check 10x as often as the lifetime, so we can exceed lifetime by 10% at most
 //        int checkMs = DatabaseDescriptor.getMemtableLifetimeMS() / 10;
