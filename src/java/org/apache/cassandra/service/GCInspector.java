@@ -165,11 +165,14 @@ public class GCInspector
         logger.info(String.format("%-25s%20s%20s%20s", "ColumnFamily", "Memtable ops,data", "Row cache size/cap", "Key cache size/cap"));
         for (ColumnFamilyStore cfs : ColumnFamilyStore.all())
         {
-            logger.info(String.format("%-25s%20s%20s%20s",
+            if (cfs.getMemtableColumnsCount()>0)
+            {
+                logger.info(String.format("%-25s%20s%20s%20s",
                                       cfs.getTable().name + "." + cfs.columnFamily_,
                                       cfs.getMemtableColumnsCount() + "," + cfs.getMemtableDataSize(),
                                       cfs.getRowCacheSize() + "/" + cfs.getRowCacheCapacity(),
                                       cfs.getKeyCacheSize() + "/" + cfs.getKeyCacheCapacity()));
+            }
         }
     }
     
