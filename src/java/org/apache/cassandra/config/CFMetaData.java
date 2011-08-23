@@ -46,12 +46,12 @@ public final class CFMetaData
     /** MM: if split by domain - name of CF without domain postfix **/
     public final String  domainCFName;
     /** MM: domain value of the minimum key, if split by domain (domain + NUL char) **/
-    public final Token domainMinToken;
+    public final Token domainMinToken, domainMaxToken;
 
     CFMetaData(String tableName, String cfName, String columnType, AbstractType comparator, AbstractType subcolumnComparator,
                boolean bloomColumns,
                String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds,
-               boolean domainSplit, String domainCFName, Token domain
+               boolean domainSplit, String domainCFName, Token domainMin, Token domainMax
                )
     {
         this.tableName = tableName;
@@ -67,7 +67,8 @@ public final class CFMetaData
         this.keyCacheSavePeriodInSeconds = keyCacheSavePeriodInSeconds;
         this.domainSplit = domainSplit;
         this.domainCFName = domainCFName;
-        this.domainMinToken = domain;
+        this.domainMinToken = domainMin;
+        this.domainMaxToken = domainMax;
     }
 
     // a quick and dirty pretty printer for describing the column family...

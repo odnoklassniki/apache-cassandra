@@ -235,6 +235,20 @@ public class Range extends AbstractBounds implements Comparable<Range>, Serializ
         return false;
     }
 
+    public static boolean isRangeInRanges(Range test, Iterable<Range> ranges)
+    {
+        assert ranges != null;
+
+        for (Range range : ranges)
+        {
+            if (range.contains(test))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public boolean equals(Object o)
     {

@@ -584,7 +584,7 @@ public class DatabaseDescriptor
                                                                             DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS,
                                                                             false, 
                                                                             SystemTable.STATUS_CF,
-                                                                            null
+                                                                            null,null
                                                                             ));
 
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
@@ -600,7 +600,7 @@ public class DatabaseDescriptor
                                                                                     DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS,
                                                                                     false, 
                                                                                     HintedHandOffManager.HINTS_CF,
-                                                                                    null
+                                                                                    null,null
                                                                                     ));
 
             /* Load the seeds for node contact points */
@@ -860,12 +860,13 @@ public class DatabaseDescriptor
                             Token domainToken = getPartitioner().getToken(Integer.toHexString(domain));
                             String postfix='_'+domainToken.toString();
                             domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
-                            meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken));
+                            Token domainMax = domain==255 ? getPartitioner().getToken(Integer.toHexString(0)) : getPartitioner().getToken(Integer.toHexString(domain+1));
+                            meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax));
                         }
                     }
                     else
                     {
-                        meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null));
+                        meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null));
                     }
                 }
 

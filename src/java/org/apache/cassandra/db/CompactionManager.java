@@ -25,6 +25,7 @@ import java.net.InetAddress;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -37,12 +38,14 @@ import org.apache.commons.collections.iterators.FilterIterator;
 import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.concurrent.DebuggableThreadPoolExecutor;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.io.*;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.AntiEntropyService;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
@@ -130,7 +133,19 @@ public class CompactionManager implements CompactionManagerMBean
         {
             public Object call() throws IOException
             {
-                doCleanupCompaction(cfStore);
+                if (!StorageService.instance.isInLocalRange(cfStore))
+                {
+                    // this column family is completely out of local node range.
+                    // so we can just remove its files
+                    doCleanupDelete( cfStore );
+                } else
+                {
+                    CFMetaData cfMetaData = DatabaseDescriptor.getCFMetaData(cfStore.getTable().name, cfStore.getColumnFamilyName());
+                    if (!cfMetaData.domainSplit) // domain split CF dont need cleanup: if its 1st key is in local range, every key in it is
+                        doCleanupCompaction(cfStore);
+                    else
+                        logger.info("Skipping cleanup of "+cfStore.getColumnFamilyName()+" - its data do belong to this node");
+                }
                 return this;
             }
         };
@@ -143,9 +158,31 @@ public class CompactionManager implements CompactionManagerMBean
         {
             public List<String> call() throws IOException
             {
-                return doAntiCompaction(cfStore, cfStore.getSSTables(), ranges, target);
+                // we dont need to do anticompaction, if 
+                // CF os domain split and its whole domain fits inside at least one of 
+                // requested ranges
+                CFMetaData cfMetaData = DatabaseDescriptor.getCFMetaData(cfStore.getTable().name, cfStore.getColumnFamilyName());
+                Range cfRange = new Range(cfMetaData.domainMinToken,cfMetaData.domainMaxToken);
+                if ( cfMetaData.domainSplit && Range.isRangeInRanges(cfRange, ranges))
+                {
+                    logger.debug(cfStore.getColumnFamilyName()+"' range "+cfRange+" contained fully in "+ranges);
+                
+                    return doLinkReaders( cfStore, cfStore.getSSTables(), target);
+        
+                } else
+                {
+                    if ( cfMetaData.domainSplit && !Range.isTokenInRanges(cfMetaData.domainMinToken, ranges) )
+                    {
+                        logger.debug(cfStore.getColumnFamilyName()+"' range "+cfRange+" is completely out of "+ranges);
+                    
+                        return Collections.emptyList(); // this CF is out of ranges completely
+                    
+                    } else
+                        return doAntiCompaction(cfStore, cfStore.getSSTables(), ranges, target);
+                }
             }
         };
+        
         return executor.submit(callable);
     }
 
@@ -443,6 +480,52 @@ public class CompactionManager implements CompactionManagerMBean
         }
         return filenames;
     }
+    
+    /**
+     * This is alternative for anticompaction for domain split CFs. If such CF fits requested range completely
+     * all we should do is to transfer all its sstables and wera done (no need to read and write new file - we
+     * just making hardlinks to existing files)
+     * 
+     * @param cfStore
+     * @param ssTables
+     * @param target
+     * @return
+     */
+    protected List<String> doLinkReaders(ColumnFamilyStore cfStore,
+            Collection<SSTableReader> ssTables, InetAddress target)
+    {
+        try {
+            int ssCount = ssTables.size();
+            List<String> result = new ArrayList<String>(ssCount* SSTable.FILES_ON_DISK);
+            for (SSTableReader reader : ssTables) 
+            {
+                List<String> allFilenames = reader.getAllFilenames();
+                for (String ssfile : allFilenames) {
+                    // hard link must be located on the same disk as original file do
+                    File f = new File(ssfile);
+                    String streamingDir = f.getParentFile().getAbsolutePath() +  File.separator + DatabaseDescriptor.STREAMING_SUBDIR;
+                    FileUtils.createDirectory(streamingDir);
+                    
+                    File linkF= new File( streamingDir, f.getName() );
+                    
+                    CLibrary.createHardLink(f, linkF);
+                    
+                    if (logger.isDebugEnabled())
+                        logger.debug("Linked "+f+" to "+linkF);
+                    
+                    result.add( linkF.getAbsolutePath() );
+                    
+                }
+            }
+            
+            logger.info("Skipped anticompaction and hard-linked ["+StringUtils.join(ssTables, ",")+"] for transfer to "+target);
+            return result;
+        } catch (IOException e) {
+            throw new UnsupportedOperationException("Cannot create hardlinks",e);
+        }
+    }
+
+    
 
     /**
      * Like doAntiCompaction(), but returns an List of SSTableReaders instead of a list of filenames.
@@ -474,6 +557,32 @@ public class CompactionManager implements CompactionManagerMBean
         {
             cfs.replaceCompactedSSTables(originalSSTables, sstables);
         }
+    }
+
+    /**
+     * Cleaning up sstables by removing it.
+     * 
+     * @param cfStore
+     * @throws IOException 
+     */
+    protected void doCleanupDelete(ColumnFamilyStore cfs) throws IOException
+    {
+        try {
+            cfs.forceBlockingFlush();
+        } catch (Exception e) {
+            logger.error("Flush prior cleanup failed. Still continuing with cleanup",e);
+        }
+        Collection<SSTableReader> sstables = cfs.getSSTables();
+        
+        if (sstables.isEmpty())
+            return;
+        
+        logger.info("Removing sstables ["+StringUtils.join(sstables, ",")+"] due to cleanup");
+        
+        cfs.markCompacted(sstables);
+        
+        
+        
     }
 
     /**

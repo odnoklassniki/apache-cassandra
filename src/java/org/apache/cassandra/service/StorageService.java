@@ -61,6 +61,8 @@ import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.net.ResponseVerbHandler;
 import org.apache.cassandra.service.AntiEntropyService.TreeRequestVerbHandler;
 import org.apache.cassandra.streaming.*;
+import org.apache.cassandra.thrift.CassandraDaemon;
+import org.apache.cassandra.thrift.CassandraServer;
 import org.apache.cassandra.thrift.ConsistencyLevel;
 import org.apache.cassandra.thrift.UnavailableException;
 import org.apache.cassandra.utils.FBUtilities;
@@ -1479,7 +1481,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 MessagingService.shutdown();
                 StageManager.shutdownNow();
                 setMode("Decommissioned", true);
-                // let op be responsible for killing the process
+                
+                System.exit(0);
             }
         };
         unbootstrap(finishLeaving);
