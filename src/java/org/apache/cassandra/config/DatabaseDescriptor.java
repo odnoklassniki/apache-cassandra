@@ -95,6 +95,7 @@ public class DatabaseDescriptor
     private static int consistencyThreads = 4; // not configurable
     private static int concurrentReaders = 8;
     private static int concurrentWriters = 32;
+    private static int concurrentAcceptors = 8;
 
     private static double flushDataBufferSizeInMB = 32;
     private static double flushIndexBufferSizeInMB = 8;
@@ -370,6 +371,17 @@ public class DatabaseDescriptor
             {
                 throw new ConfigurationException("ConcurrentWrites must be at least 2");
             }
+
+            String rawAcceptors = xmlUtils.getNodeValue("/Storage/ConcurrentAcceptors");
+            if (rawAcceptors != null)
+            {
+                concurrentAcceptors = Integer.parseInt(rawAcceptors);
+            }
+            if (concurrentAcceptors < 1)
+            {
+                throw new ConfigurationException("ConcurrentAcceptors must be at least 1");
+            }
+            logger.info("Using "+concurrentAcceptors+" thrift acceptor threads");
 
             String rawFlushData = xmlUtils.getNodeValue("/Storage/FlushDataBufferSizeInMB");
             if (rawFlushData != null)
@@ -1171,6 +1183,11 @@ public class DatabaseDescriptor
     public static int getConcurrentWriters()
     {
         return concurrentWriters;
+    }
+
+    public static int getConcurrentAcceptors()
+    {
+        return concurrentAcceptors;
     }
 
     public static long getRowWarningThreshold()

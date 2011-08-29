@@ -23,7 +23,9 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -175,6 +177,23 @@ public class CassandraDaemon
                 cassandraServer.logout();
             }
         };
+        
+        options.acceptorThreads = DatabaseDescriptor.getConcurrentAcceptors();
+        ExecutorService acceptorService = Executors.newFixedThreadPool(options.acceptorThreads, new ThreadFactory()
+        {
+            int count=0;
+            
+            @Override
+            public Thread newThread(Runnable runnable)
+            {
+                Thread t = new Thread(runnable,"THRIFT-ACCEPTOR-"+(++count));
+                t.setDaemon(true);
+                t.setPriority(Thread.MAX_PRIORITY);
+                
+                return t;
+            }
+        });
+        
         serverEngine = new CustomTThreadPoolServer(new TProcessorFactory(processor),
                                              tServerSocket,
                                              inTransportFactory,
@@ -182,7 +201,9 @@ public class CassandraDaemon
                                              tProtocolFactory,
                                              tProtocolFactory,
                                              options,
-                                             executorService);
+                                             executorService,
+                                             acceptorService
+                                             );
     }
 
     /** hook for JSVC */

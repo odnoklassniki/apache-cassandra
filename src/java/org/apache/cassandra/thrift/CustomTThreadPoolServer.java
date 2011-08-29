@@ -25,6 +25,7 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.antlr.gunit.swingui.AwAdapter;
 import org.apache.thrift.TException;
 import org.apache.thrift.TProcessor;
 import org.apache.thrift.TProcessorFactory;
@@ -52,6 +53,7 @@ public class CustomTThreadPoolServer extends TServer
 
     // Executor service for handling client connections
     private ExecutorService executorService_;
+    private ExecutorService acceptorsService_;
 
     // Flag for stopping the server
     private volatile boolean stopped_;
@@ -66,6 +68,7 @@ public class CustomTThreadPoolServer extends TServer
         public int maxWorkerThreads = Integer.MAX_VALUE;
         public int stopTimeoutVal = 60;
         public TimeUnit stopTimeoutUnit = TimeUnit.SECONDS;
+        public int acceptorThreads = 1;
     }
 
 
@@ -76,13 +79,16 @@ public class CustomTThreadPoolServer extends TServer
                                    TProtocolFactory tProtocolFactory,
                                    TProtocolFactory tProtocolFactory2,
                                    Options options,
-                                   ExecutorService executorService)
+                                   ExecutorService executorService,
+                                   ExecutorService acceptorService
+                                   )
     {
 
         super(tProcessorFactory, tServerSocket, inTransportFactory, outTransportFactory,
               tProtocolFactory, tProtocolFactory2);
         options_ = options;
         executorService_ = executorService;
+        acceptorsService_ = acceptorService;
     }
 
 
@@ -99,25 +105,19 @@ public class CustomTThreadPoolServer extends TServer
         }
 
         stopped_ = false;
-        while (!stopped_)
-        {
-            int failureCount = 0;
-            try
-            {
-                TTransport client = serverTransport_.accept();
-                WorkerProcess wp = new WorkerProcess(client);
-                executorService_.execute(wp);
-            }
-            catch (TTransportException ttx)
-            {
-                if (!stopped_)
-                {
-                    ++failureCount;
-                    LOGGER.warn("Transport error occurred during acceptance of message.", ttx);
-                }
-            }
-        }
+        
+        for (int i=options_.acceptorThreads;i-->0;)
+            acceptorsService_.submit(new AcceptorRunnable());
+        
 
+        acceptorsService_.shutdown();
+        
+        try {
+            while (!acceptorsService_.awaitTermination(60, TimeUnit.MINUTES));
+        } catch (InterruptedException e) {
+            LOGGER.error("Interrupted on acceptors service",e);
+        }
+        
         executorService_.shutdown();
 
         // Loop until awaitTermination finally does return without a interrupted
@@ -211,6 +211,36 @@ public class CustomTThreadPoolServer extends TServer
             {
                 outputTransport.close();
             }
+        }
+    }
+    
+    class AcceptorRunnable implements Runnable
+    {
+        /* (non-Javadoc)
+         * @see java.lang.Runnable#run()
+         */
+        @Override
+        public void run()
+        {
+            while (!stopped_)
+            {
+                int failureCount = 0;
+                try
+                {
+                    TTransport client = serverTransport_.accept();
+                    WorkerProcess wp = new WorkerProcess(client);
+                    executorService_.execute(wp);
+                }
+                catch (TTransportException ttx)
+                {
+                    if (!stopped_)
+                    {
+                        ++failureCount;
+                        LOGGER.warn("Transport error occurred during acceptance of message.", ttx);
+                    }
+                }
+            }
+            
         }
     }
 }
