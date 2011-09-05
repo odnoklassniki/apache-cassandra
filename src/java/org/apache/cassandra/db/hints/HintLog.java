@@ -1,0 +1,720 @@
+/**
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.cassandra.db.hints;
+
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOError;
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
+
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.HintedHandOffManager;
+import org.apache.cassandra.db.RowMutation;
+import org.apache.cassandra.gms.FailureDetector;
+import org.apache.cassandra.gms.Gossiper;
+import org.apache.cassandra.io.util.BufferedRandomAccessFile;
+import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.service.WriteResponseHandler;
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
+
+/**
+ * This is alternative hints storage implementation, modeled after commit log. 
+ * 
+ * I believe it is better than default. because:
+ * 1. It has smaller memory requirements to operate than Hints CF, especially on long runs. 
+ * 2. It tracks mutations, not rows to hint, which takes less space and memory, if you have large rows.
+ * 3. It does not require compaction. If all mutations from hint log are delivered - whole hint log file is just removed.
+ * 4. It saves data to commit log device, not to data devices. This is good, if commit log is underloaded, 
+ * 5. It does not require random reads on delivery - mutations are read sequentially from disk. (Hints CF up to 1.0 require it)
+ * 6. It has all io operations performed by single hint log writer thread, so writer threads are not affected much by disk io delays.
+ * 
+ * @author Oleg Anastasyev<oa@odnoklassniki.ru>
+ */
+public class HintLog
+{
+    private static volatile int SEGMENT_SIZE = 128*1024*1024; // roll after log gets this big
+    private static volatile int SYNC_PERIOD = DatabaseDescriptor.getCommitLogSyncPeriod();
+    private static boolean HINT_DELIVERY_ON_SYNC = true; 
+    
+
+    private static final Logger logger = Logger.getLogger(HintLog.class);
+
+    public static HintLog instance()
+    {
+        return CLHandle.instance;
+    }
+
+    private static class CLHandle
+    {
+        public static HintLog instance = new HintLog();
+    }
+
+    private final HashMap<InetAddress,Deque<HintLogSegment>> segments = new HashMap<InetAddress, Deque<HintLogSegment>>();
+    
+    private final PeriodicHintLogExecutorService executor;
+    private Thread syncerThread;
+
+    public static void setSegmentSize(int size)
+    {
+        SEGMENT_SIZE = size;
+    }
+    
+    public static void setSyncPeiod(int period)
+    {
+        SYNC_PERIOD = period;
+    }
+
+    /**
+     * param @ table - name of table for which we are maintaining
+     *                 this commit log.
+     * param @ recoverymode - is commit log being instantiated in
+     *                        in recovery mode.
+    */
+    HintLog()
+    {
+        // loading hint logs from disk
+        loadSegments();
+        
+//        if (DatabaseDescriptor.getCommitLogSync() == DatabaseDescriptor.CommitLogSync.periodic)
+//        {
+            executor = new PeriodicHintLogExecutorService();
+            final Callable<Void> syncer = new Callable<Void>()
+            {
+                public Void call() throws Exception
+                {
+                    sync();
+                    return null;
+                }
+            };
+
+            (
+            syncerThread=new Thread(new Runnable()
+            {
+                
+                public void run()
+                {
+                    while (true)
+                    {
+                        try
+                        {
+                            executor.submit(syncer).get();
+                            Thread.sleep(SYNC_PERIOD);
+                        }
+                        catch (InterruptedException e)
+                        {
+                            throw new AssertionError(e);
+                        }
+                        catch (ExecutionException e)
+                        {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }
+            }, "PERIODIC-HINT-LOG-SYNCER") 
+            ).start();
+//        }
+//        else
+//        {
+//            executor = new BatchCommitLogExecutorService();
+//        }
+    }
+    
+    private void loadSegments()
+    {
+        String directory = DatabaseDescriptor.getHintLogDirectory();
+        File file = new File(directory);
+        File[] files = file.listFiles(new FilenameFilter()
+        {
+            public boolean accept(File dir, String name)
+            {
+                return name.matches("Hints-\\d+[.]\\d+[.]\\d+[.]\\d+-\\d+.log");
+            }
+        });
+        if (files.length == 0)
+            return;
+        
+        Arrays.sort(files, new FileUtils.FileComparator());
+       
+        for (int i=files.length;i-->0; ) 
+        {
+            File f=files[i];
+            
+            String[] nameElements=f.getName().split("-");
+            InetAddress endpoint;
+            try {
+                 endpoint = InetAddress.getByName(nameElements[1]);
+            } catch (UnknownHostException e) {
+                logger.error("Illegal name of hint log file."+f+". File is skipped",e);
+                continue;
+            }
+            
+            Deque<HintLogSegment> endpSegments = getEndpointSegments(endpoint);
+
+            HintLogSegment segment = new HintLogSegment(endpoint, f.getAbsolutePath());
+            if (!segment.isEmpty() && segment.isFullyReplayed())
+            {
+                segment.close();
+                segment.delete();
+            } else
+            {
+                endpSegments.addFirst(segment);
+            }
+        }
+    }
+    
+//    public void stop()
+//    {
+//        try {
+//            executor.submit(new Callable<Void>()
+//            {
+//                /* (non-Javadoc)
+//                 * @see java.util.concurrent.Callable#call()
+//                 */
+//                @Override
+//                public Void call() throws Exception
+//                {
+//                    Collection<Deque<HintLogSegment>> values = segments.values();
+//                    
+//                    for (Deque<HintLogSegment> deque : values) {
+//                        HintLogSegment last = deque.peekLast();
+//                        
+//                        if (last!=null)
+//                            last.close();
+//                        
+//                        deque.clear();
+//                    }
+//                    return null;
+//                    
+//                    
+//                }
+//            }).get();
+//        } catch (Exception e) {
+//            throw new AssertionError(e);
+//        }
+//        
+//        syncerThread.interrupt();
+//        
+//        CLHandle.instance = null;
+//        
+//        logger.debug("HintLog stopped");
+//    }
+
+    private Deque<HintLogSegment> getEndpointSegments(InetAddress endpoint)
+    {
+        Deque<HintLogSegment> endpSegments = segments.get(endpoint);
+        if (endpSegments==null)
+        {
+            endpSegments = new ArrayDeque<HintLogSegment>();
+            segments.put(endpoint, endpSegments);
+            endpSegments.add( new HintLogSegment(endpoint) );
+        }
+        
+        return endpSegments;
+    }
+
+
+    /**
+     * Obtains iterator of hint row mutations to send to specified endpoints. 
+     * You must call {@link Iterator#remove()} for all successfully delivered hints to avoid their resending in future.
+     * 
+     * @param destination endpoint to send.
+     * @return iterator (or empty iterator if no hints to deliver)
+     */
+    public Iterator<byte[]> getHintsToDeliver(InetAddress destination)
+    {
+        Deque<HintLogSegment> endpSegments = segments.get(destination);
+        
+        if (endpSegments==null)
+            return Collections.<byte[]>emptyList().iterator();
+        
+        return new HintLogReader(destination, forceNewSegment(destination));
+    }
+    
+    private HintLogSegment currentSegment(InetAddress endpoint)
+    {
+        return getEndpointSegments(endpoint).getLast();
+    }
+    
+    private void sync()
+    {
+        Collection<Deque<HintLogSegment>> values = segments.values();
+        
+        for (Deque<HintLogSegment> deque : values) {
+            HintLogSegment last = deque.peekLast();
+            
+            if (last!=null)
+                try {
+                    last.sync();
+                    
+                    // roll log if necessary
+                    if (last.length() >= SEGMENT_SIZE)
+                    {
+                        last.close();
+                        getEndpointSegments(last.getEndpoint()).add(new HintLogSegment(last.getEndpoint()));
+                    }
+
+                    if ( (deque.size()>1 || !last.isEmpty()) && HINT_DELIVERY_ON_SYNC) {
+                        if (FailureDetector.instance.isAlive(last.getEndpoint()))
+                        {
+                            HintedHandOffManager.instance().deliverHints(last.getEndpoint());
+                        }
+                        else
+                            if (!Gossiper.instance.isKnownEndpoint(last.getEndpoint()))
+                            {
+                                logger.info("Endpoint is not not known "+last.getEndpoint()+" removing hint logs");
+                                
+                                for (HintLogSegment hintLogSegment : deque) 
+                                {
+                                    hintLogSegment.close();
+                                    hintLogSegment.delete();
+                                }
+
+                                deque.clear();
+                                deque.add( new HintLogSegment( last.getEndpoint() ) );
+                            }
+                    }
+                        
+                    
+                } catch (IOException e) {
+                    logger.error("Cannot sync "+last,e);
+                }
+        }
+    }
+    
+    public void close()
+    {
+        Collection<Deque<HintLogSegment>> values = segments.values();
+        
+        for (Deque<HintLogSegment> deque : values) {
+            HintLogSegment last = deque.peekLast();
+            
+            if (last!=null)
+                try {
+                    last.sync();
+                    
+                    if (!last.isEmpty()) {
+                        last.close();
+                    }
+                        
+                    
+                } catch (IOException e) {
+                    logger.error("Cannot close "+last,e);
+                }
+        }
+    }
+    
+    /*
+     * Adds the specified row to the commit log. This method will reset the
+     * file offset to what it is before the start of the operation in case
+     * of any problems. This way we can assume that the subsequent commit log
+     * entry will override the garbage left over by the previous write.
+    */
+    public void add(InetAddress endpoint, byte[] serializedRow) throws IOException
+    {
+        executor.add(new LogRecordAdder(endpoint, serializedRow));
+    }
+
+
+    /*
+     * this is called in HintLogReader to remove hint log segment with all its mutations successfully played back.
+    */
+    public void discardPlayedbackSegment(final InetAddress endpoint, final HintLogSegment segment)
+    {
+        Callable task = new Callable()
+        {
+            public Object call() throws IOException
+            {
+                assert segment.isFullyReplayed();
+                
+                Deque<HintLogSegment> endpointSegments = getEndpointSegments(endpoint);
+                
+                if (endpointSegments.remove(segment))
+                {
+                    segment.delete();
+                } else
+                {
+                    logger.warn("Hm. "+segment+" not found in list of hintlog segments for "+endpoint);
+                }
+                
+                return null;
+            }
+        };
+        try
+        {
+            executor.submit(task).get();
+        }
+        catch (InterruptedException e)
+        {
+            throw new RuntimeException(e);
+        }
+        catch (ExecutionException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    
+    public List<HintLogSegment> forceNewSegment(final InetAddress endpoint)
+    {
+        Callable<List<HintLogSegment>> task = new Callable<List<HintLogSegment>>()
+        {
+            public List<HintLogSegment> call() throws Exception
+            {
+                Deque<HintLogSegment> endpointSegments = getEndpointSegments(endpoint);
+                
+                HintLogSegment last = endpointSegments.getLast();
+                if (last==null)
+                    return Collections.emptyList();
+                
+                if (!last.isEmpty())
+                {
+                    last.close();
+
+                    ArrayList<HintLogSegment> readable = new ArrayList<HintLogSegment>(endpointSegments);
+                    
+                    endpointSegments.add(new HintLogSegment(endpoint));
+                    
+                    return readable;
+                } else
+                {
+                    // last one is empty - returning all except last
+                    if (endpointSegments.size()<=1)
+                        return Collections.emptyList();
+                    
+                    endpointSegments.pollLast();
+                    ArrayList<HintLogSegment> readable = new ArrayList<HintLogSegment>(endpointSegments);
+                    
+                    endpointSegments.add(last);
+                    
+                    return readable;
+                }
+                
+            }
+        };
+        try
+        {
+            return executor.submit(task).get();
+        }
+        catch (InterruptedException e)
+        {
+            throw new RuntimeException(e);
+        }
+        catch (ExecutionException e)
+        {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // TODO this should be a Runnable since it doesn't actually return anything, but it's difficult to do that
+    // without breaking the fragile CheaterFutureTask in BatchCLES.
+    class LogRecordAdder implements Callable, Runnable
+    {
+        final InetAddress endpoint;
+        final byte[] serializedRow;
+
+        LogRecordAdder(InetAddress endpoint, byte[] serializedRow)
+        {
+            this.endpoint = endpoint;
+            this.serializedRow = serializedRow;
+        }
+
+
+        public void run()
+        {
+            try
+            {
+                HintLogSegment currentSegment = currentSegment(endpoint);
+                currentSegment.write(serializedRow);
+            }
+            catch (IOException e)
+            {
+                throw new IOError(e);
+            }
+        }
+
+        public Object call() throws Exception
+        {
+            run();
+            return null;
+        }
+    }
+    
+    public class HintLogReader implements Iterator<byte[]>, Closeable
+    {
+        private final InetAddress destination;
+        
+        private Iterator<HintLogSegment> segments;
+        
+        private HintLogSegment current = null;
+        
+        private BufferedRandomAccessFile reader = null;
+        
+        private byte[] currentMutation = null, nextMutation = null;
+
+        private long lastHeaderWrite = 0l;
+        private int  unwrittedConfirmations = 0;
+
+        /**
+         * @param
+         * @param segments shared queue
+         * 
+         */
+        public HintLogReader(InetAddress destination, List<HintLogSegment> segments )
+        {
+            this.destination= destination;
+            this.segments = segments.iterator();
+            
+            nextSegment();
+        }
+        
+        private boolean nextSegment()
+        {
+            if (current!=null)
+            {
+                try {
+                    current.writeHeader();
+                    reader.close();
+                } catch (IOException e) {
+                    logger.warn("Cannot write header of segment "+current);
+                }
+                
+                assert current.isFullyReplayed();
+                
+                discardPlayedbackSegment(destination, current);
+                
+                current = null;
+                reader = null;
+            }
+            
+            while (segments.hasNext())
+            {
+                current = segments.next();
+                
+                if (!current.isEmpty() && !current.isFullyReplayed() )
+                {
+                    try 
+                    {
+                        reader = current.createReader();
+
+                        /* seek to the lowest position where last unconfirmed HH mutation is written 
+                         * if replay was forced - reading all records, regardless of commit log header 
+                         */
+                        reader.seek(current.getHeader().getPosition());
+                        
+                        logger.info("Delivering " + current + " starting at " + reader.getFilePointer());
+                        
+                        lastHeaderWrite = System.currentTimeMillis();
+                        unwrittedConfirmations = 0;
+
+                    } catch (IOException e) {
+                        logger.error("Cannot open "+current+". Skipping its replay. Consider starting repair on this node or "+destination.getHostAddress(),e);
+                        current = null;
+                        continue;
+                    }
+                    
+                    return true;
+                }
+
+                if (!current.isEmpty())
+                    discardPlayedbackSegment(destination, current);
+                
+                current = null;
+            }
+            
+            return false;
+        }
+        
+        private boolean nextMutation()
+        {
+            if (nextMutation!=null)
+                return true;
+            
+            assert currentMutation == null : "Previous Mutation must be confirmed before getting next one";
+
+            if (current == null && ! nextSegment() )
+                return false;
+
+            while (nextMutation==null)
+            {
+                /* read the next valid RowMutation  */
+
+                long claimedCRC32;
+                byte[] bytes;
+                try
+                {
+                    if ( reader.isEOF() && !nextSegment() )
+                        return false;
+
+                    if (logger.isDebugEnabled())
+                        logger.debug("Reading mutation at " + reader.getFilePointer());
+
+                    long length = reader.readLong();
+                    // RowMutation must be at LEAST 10 bytes:
+                    // 3 each for a non-empty Table and Key (including the 2-byte length from writeUTF), 4 bytes for column count.
+                    // This prevents CRC by being fooled by special-case garbage in the file; see CASSANDRA-2128
+                    if (length < 10 || length > Integer.MAX_VALUE)
+                    {
+                        // garbage at the EOF. Skipping.
+                        logger.warn("Garbage detected in "+current+" at position "+reader.getFilePointer()+". Skipping rest of file");
+
+                        current.getHeader().setReplayedPosition(reader.length());
+
+                        if (nextSegment())
+                            continue;
+                        else
+                            break;
+                    }
+                    bytes = new byte[(int) length]; // readlong can throw EOFException too
+                    reader.readFully(bytes);
+                    claimedCRC32 = reader.readLong();
+                }
+                catch (IOException e)
+                {
+                    if ( ! ( e instanceof EOFException ) )
+                        logger.error("Cannot read "+current+". Skipping ",e);
+
+                    // OK. this is EOF last CL entry didn't get completely written.  that's ok.
+                    current.getHeader().setReplayedPosition(reader.getFilePointer());
+                    if (nextSegment())
+                        continue;
+                    else
+                        break;
+                }
+
+                Checksum checksum = new CRC32();
+                checksum.update(bytes, 0, bytes.length);
+                if (claimedCRC32 != checksum.getValue())
+                {
+                    // this part of the log must not have been fsynced.  probably the rest is bad too,
+                    // but just in case there is no harm in trying them.
+                    continue;
+                }
+
+                /* deserialize the commit log entry */
+                nextMutation = bytes;
+                
+            }
+            
+            return nextMutation!=null;
+        }
+        
+        /**
+         * @return next mutation to deliver
+         */
+        public byte[] next()
+        {
+            if (nextMutation())
+            {
+                currentMutation = nextMutation;
+                nextMutation = null;
+            }
+            
+            return currentMutation;
+        }
+        
+        /* (non-Javadoc)
+         * @see java.io.Closeable#close()
+         */
+        @Override
+        public void close() throws IOException
+        {
+            if (current!=null)
+            {
+                current.writeHeader();
+                reader.close();
+                
+                current = null;
+                reader = null;
+            }
+            
+        }
+        
+
+        @Override
+        public boolean hasNext()
+        {
+            return nextMutation();
+        }
+        
+        
+
+        /**
+         * Confirms successful delivery of current row mutation to destination. 
+         * So this mutation could be omitted from future hinted handoffs.
+         * (note, that a couple of confirmed mutations still could be sent twice and more)
+         */
+        @Override
+        public void remove()
+        {
+            assert currentMutation !=null;
+
+            current.getHeader().setReplayedPosition(reader.getFilePointer());
+
+            if ( ++unwrittedConfirmations % 1000 == 0 && System.currentTimeMillis()-lastHeaderWrite > DatabaseDescriptor.getCommitLogSyncPeriod() )
+            {
+                try {
+                    current.writeHeader();
+                } catch (IOException e) {
+                }
+                
+                unwrittedConfirmations = 0;
+                lastHeaderWrite = System.currentTimeMillis();
+            }
+            
+            currentMutation = null;
+        }
+    }
+
+    /**
+     * @return test only
+     */
+    public int getSegmentCount(InetAddress endpoint)
+    {
+        return getEndpointSegments(endpoint).size();
+    }
+
+    /**
+     * @param b
+     */
+    public static void setHintDelivery(boolean b)
+    {
+        HINT_DELIVERY_ON_SYNC  = b;
+    }
+    
+}

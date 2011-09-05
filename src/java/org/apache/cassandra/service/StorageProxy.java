@@ -18,7 +18,9 @@
 package org.apache.cassandra.service;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
@@ -27,14 +29,18 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
+
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import com.google.common.collect.Multimap;
 import org.apache.log4j.Logger;
 import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.builder.ToStringBuilder;
 
 import org.apache.cassandra.concurrent.StageManager;
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.dht.AbstractBounds;
@@ -63,7 +69,18 @@ public class StorageProxy implements StorageProxyMBean
     private static final LatencyTracker readStats = new LatencyTracker();
     private static final LatencyTracker rangeStats = new LatencyTracker();
     private static final LatencyTracker writeStats = new LatencyTracker();
+    private static final LatencyTracker hintStats = new LatencyTracker();
+    private static AtomicLong laggedHints=new AtomicLong();
+    
     private static boolean hintedHandoffEnabled = DatabaseDescriptor.hintedHandoffEnabled();
+    /**
+     * wait additionally for this number of millis for all endpoint responses.
+     * (if during this additional timeout some endpoint did not responded - 
+     *  mutation will be added to hinted handoff for all not responded in time nodes) 
+     *  
+     *  0 -  turn it off
+     */
+    private static int     hintedHandoffWriteLatencyThreshold = 1;
 
     private StorageProxy() {}
     static
@@ -150,17 +167,10 @@ public class StorageProxy implements StorageProxyMBean
                         }
                         else
                         {
-                            // hinted
-                            Message hintedMessage = rm.makeRowMutationMessage();
-                            for (InetAddress target : targets)
-                            {
-                                if (!target.equals(destination))
-                                {
-                                    addHintHeader(hintedMessage, target);
-                                    if (logger.isDebugEnabled())
-                                        logger.debug("insert writing key " + rm.key() + " to " + hintedMessage.getMessageId() + "@" + destination + " for " + target);
-                                }
-                            }
+                            Message hintedMessage = addHintHeader(
+                                    rm,
+                                    destination,
+                                    targets);
                             MessagingService.instance.sendOneWay(hintedMessage, destination);
                         }
                     }
@@ -187,7 +197,7 @@ public class StorageProxy implements StorageProxyMBean
     public static void mutateBlocking(List<RowMutation> mutations, ConsistencyLevel consistency_level) throws UnavailableException, TimeoutException
     {
         long startTime = System.nanoTime();
-        ArrayList<WriteResponseHandler> responseHandlers = new ArrayList<WriteResponseHandler>();
+        ArrayList<WriteResponseHandler> responseHandlers = new ArrayList<WriteResponseHandler>(mutations.size());
 
         RowMutation mostRecentRowMutation = null;
         StorageService ss = StorageService.instance;
@@ -208,8 +218,10 @@ public class StorageProxy implements StorageProxyMBean
                 assureSufficientLiveNodes(blockFor, writeEndpoints, hintedEndpoints, consistency_level);
                 
                 // send out the writes, as in mutate() above, but this time with a callback that tracks responses
-                final WriteResponseHandler responseHandler = ss.getWriteResponseHandler(blockFor, consistency_level, table);
+                int destinationCount = hintedEndpoints.keySet().size();
+                final WriteResponseHandler responseHandler = ss.getWriteResponseHandler(blockFor,destinationCount, consistency_level, table);
                 responseHandlers.add(responseHandler);
+
                 for (Map.Entry<InetAddress, Collection<InetAddress>> entry : hintedEndpoints.asMap().entrySet())
                 {
                     InetAddress destination = entry.getKey();
@@ -225,6 +237,7 @@ public class StorageProxy implements StorageProxyMBean
                         else
                         {
                             // belongs on a different server.  send it there.
+                            responseHandler.addEndpoint(destination);
                             Message unhintedMessage = rm.makeRowMutationMessage();
                             if (logger.isDebugEnabled())
                                 logger.debug("insert writing key " + rm.key() + " to " + unhintedMessage.getMessageId() + "@" + destination);
@@ -234,29 +247,89 @@ public class StorageProxy implements StorageProxyMBean
                     else
                     {
                         // hinted
-                        Message hintedMessage = rm.makeRowMutationMessage();
-                        for (InetAddress target : targets)
-                        {
-                            if (!target.equals(destination))
-                            {
-                                addHintHeader(hintedMessage, target);
-                                if (logger.isDebugEnabled())
-                                    logger.debug("insert writing key " + rm.key() + " to " + hintedMessage.getMessageId() + "@" + destination + " for " + target);
-                            }
-                        }
                         // (non-destination hints are part of the callback and count towards consistency only under CL.ANY)
                         if (writeEndpoints.contains(destination) || consistency_level == ConsistencyLevel.ANY)
-                            MessagingService.instance.sendRR(hintedMessage, destination, responseHandler);
+                        {
+                            if (destination.equals(FBUtilities.getLocalAddress()))
+                            {
+                                insertLocalMessage(rm, responseHandler);
+                                
+                                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                                DataOutputStream dos = new DataOutputStream( bos );
+                                RowMutation.serializer().serialize(rm, dos);
+                                byte[] bytes = bos.toByteArray();
+                                
+                                for (InetAddress target : targets)
+                                {
+                                    if (!target.equals(destination))
+                                    {
+                                        HintedHandOffManager.instance().storeHint(target, rm, bytes);
+                                    }
+                                }
+                                
+                            } else
+                            {
+                                Message hintedMessage = addHintHeader(
+                                        rm,
+                                        destination,
+                                        targets);
+                                responseHandler.addEndpoint(destination);
+                                
+                                MessagingService.instance.sendRR(hintedMessage, destination, responseHandler);
+                            }
+                        }
                         else
+                        {
+                            Message hintedMessage = addHintHeader(
+                                    rm,
+                                    destination,
+                                    targets);
+                            
                             MessagingService.instance.sendOneWay(hintedMessage, destination);
+                        }
                     }
                 }
             }
+            
             // wait for writes.  throws timeoutexception if necessary
             for( WriteResponseHandler responseHandler : responseHandlers )
             {
                 responseHandler.get();
             }
+
+            // now wait a bit more
+            if (hintedHandoffWriteLatencyThreshold>0)
+            {
+                long hStart = System.nanoTime();
+                for( int i=responseHandlers.size();i-->0; )
+                {
+                    WriteResponseHandler responseHandler = responseHandlers.get(i);
+                    
+                    if (!responseHandler.getAllResponses(hintedHandoffWriteLatencyThreshold))
+                    {
+                        List<InetAddress> laggingEndpoints = responseHandler.getLaggingEndpoints();
+                        if (laggingEndpoints==null || laggingEndpoints.size()==0)
+                        {
+                            continue;
+                        }
+                        // mutations and response handlers will have the same index.
+                        RowMutation rm = mutations.get(i);
+                        
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        DataOutputStream dos = new DataOutputStream( bos );
+                        RowMutation.serializer().serialize(rm, dos);
+                        byte[] bytes = bos.toByteArray();
+
+                        for (InetAddress inetAddress : laggingEndpoints) 
+                        {
+                            HintedHandOffManager.instance().storeHint(inetAddress, rm, bytes);
+                            laggedHints.incrementAndGet();
+                        }
+                    }
+                }
+                hintStats.addNano( System.nanoTime()-hStart );
+            }
+            
         }
         catch (IOException e)
         {
@@ -270,6 +343,22 @@ public class StorageProxy implements StorageProxyMBean
             writeStats.addNano(System.nanoTime() - startTime);
         }
 
+    }
+
+    private static Message addHintHeader(RowMutation rm, InetAddress destination,
+            Collection<InetAddress> targets) throws IOException
+    {
+        Message hintedMessage = rm.makeRowMutationMessage();
+        for (InetAddress target : targets)
+        {
+            if (!target.equals(destination))
+            {
+                addHintHeader(hintedMessage, target);
+                if (logger.isDebugEnabled())
+                    logger.debug("insert writing key " + rm.key() + " to " + hintedMessage.getMessageId() + "@" + destination + " for " + target);
+            }
+        }
+        return hintedMessage;
     }
 
     private static void assureSufficientLiveNodes(int blockFor, Collection<InetAddress> writeEndpoints, Multimap<InetAddress, InetAddress> hintedEndpoints, ConsistencyLevel consistencyLevel)
@@ -663,6 +752,31 @@ public class StorageProxy implements StorageProxyMBean
         return rangeStats.getRecentLatencyMicros();
     }
 
+    public long getHintOperations()
+    {
+        return hintStats.getOpCount();
+    }
+
+    public long getTotalHintLatencyMicros()
+    {
+        return hintStats.getTotalLatencyMicros();
+    }
+
+    public double getRecentHintLatencyMicros()
+    {
+        return hintStats.getRecentLatencyMicros();
+    }
+    
+    public long[] getRecentHintHistogram()
+    {
+        return hintStats.getRecentLatencyHistogramMicros();
+    }
+
+    public long[] getTotalHintHistogram()
+    {
+        return hintStats.getTotalLatencyHistogramMicros();
+    }
+
     public long getWriteOperations()
     {
         return writeStats.getOpCount();
@@ -678,19 +792,42 @@ public class StorageProxy implements StorageProxyMBean
         return writeStats.getRecentLatencyMicros();
     }
 
-    public boolean getHintedHandoffEnabled()
+    public String getHintedHandoffEnabled()
     {
-        return hintedHandoffEnabled;
+        if (hintedHandoffEnabled)
+            return HintedHandOffManager.instance().getClass()==HintedHandOffManager.class ? "true" : "hintlog";
+        else
+            return "false";
     }
 
-    public void setHintedHandoffEnabled(boolean b)
+    public void setHintedHandoffEnabled(String config) throws ConfigurationException
     {
-        hintedHandoffEnabled = b;
+        DatabaseDescriptor.setHintedHandoffManager(config);
+        
+        hintedHandoffEnabled = DatabaseDescriptor.hintedHandoffEnabled();
+    }
+    
+    public void setHintedHandoffWriteLatencyThreshold(int millis)
+    {
+        hintedHandoffWriteLatencyThreshold = millis;
+    }
+    
+    public int getHintedHandoffWriteLatencyThreshold()
+    {
+        return hintedHandoffWriteLatencyThreshold;
     }
 
     public static boolean isHintedHandoffEnabled()
     {
         return hintedHandoffEnabled;
+    }
+    
+    /**
+     * @return the laggedHints
+     */
+    public long getTotalLaggedHints()
+    {
+        return laggedHints.get();
     }
 
     static class weakReadLocalCallable implements Callable<Object>

@@ -87,4 +87,13 @@ public class SimpleCondition implements Condition
     {
         throw new UnsupportedOperationException();
     }
+    
+    /* (non-Javadoc)
+     * @see java.lang.Object#toString()
+     */
+    @Override
+    public String toString()
+    {
+        return "SimpleCondition["+isSignaled()+"]";
+    }
 }

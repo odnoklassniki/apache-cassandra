@@ -19,7 +19,9 @@
 package org.apache.cassandra.db;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataInput;
 import java.io.DataInputStream;
+import java.io.DataOutput;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -33,6 +35,7 @@ import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.io.ICompactSerializer;
+import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.service.StorageService;
@@ -44,16 +47,39 @@ import org.apache.cassandra.utils.FBUtilities;
 public class RowMutation
 {
     private static ICompactSerializer<RowMutation> serializer_;
+    private static ICompactSerializer2<String> tableNameSerializer_;
     public static final String HINT = "HINT";
 
     static
     {
         serializer_ = new RowMutationSerializer();
+        tableNameSerializer_ = new ICompactSerializer2<String>()
+        {
+            @Override
+            public String deserialize(DataInput dis) throws IOException
+            {
+                return dis.readUTF();
+            }
+
+            @Override
+            public void serialize(String t, DataOutput dos) throws IOException
+            {
+                dos.writeUTF(t);
+            }
+        };
     }   
 
     public static ICompactSerializer<RowMutation> serializer()
     {
         return serializer_;
+    }
+    
+    /**
+     * @return the tableNameserializer_
+     */
+    public static ICompactSerializer2<String> tableNameSerializer_()
+    {
+        return tableNameSerializer_;
     }
 
     private String table_;
@@ -217,6 +243,12 @@ public class RowMutation
         serializer().serialize(this, dos);
         return new Message(FBUtilities.getLocalAddress(), StageManager.MUTATION_STAGE, verb, bos.toByteArray());
     }
+    
+    public static Message makeRowMutationMessage(byte[] serializedMutation) throws IOException
+    {
+        return new Message(FBUtilities.getLocalAddress(), StageManager.MUTATION_STAGE, StorageService.Verb.MUTATION, serializedMutation);
+    }
+    
 
     public static RowMutation getRowMutationFromMutations(String keyspace, String key, Map<String, List<Mutation>> cfmap)
     {
@@ -366,5 +398,4 @@ class RowMutationSerializer implements ICompactSerializer<RowMutation>
         return new RowMutation(table, key, modifications);
     }
 
-  
 }

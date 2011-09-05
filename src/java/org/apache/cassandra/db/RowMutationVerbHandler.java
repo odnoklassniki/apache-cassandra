@@ -57,11 +57,9 @@ public class RowMutationVerbHandler implements IVerbHandler
                 {
                     bb.get(addressBytes);
                     InetAddress hint = InetAddress.getByAddress(addressBytes);
-                    if (logger_.isDebugEnabled())
-                        logger_.debug("Adding hint for " + hint);
-                    RowMutation hintedMutation = new RowMutation(Table.SYSTEM_TABLE, rm.getTable());
-                    hintedMutation.addHints(rm.key(), addressBytes);
-                    hintedMutation.apply();
+                    
+                    HintedHandOffManager.instance().storeHint(hint,rm,bytes);
+                    
                 }
             }
 

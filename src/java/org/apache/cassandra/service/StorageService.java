@@ -45,6 +45,7 @@ import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.db.hints.HintLog;
 import org.apache.cassandra.dht.BootStrapper;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Range;
@@ -980,12 +981,12 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     */
     public final void deliverHints(InetAddress endpoint)
     {
-        HintedHandOffManager.instance.deliverHints(endpoint);
+        HintedHandOffManager.instance().deliverHints(endpoint);
     }
 
     public final void deliverHints(String host) throws UnknownHostException
     {
-        HintedHandOffManager.instance.deliverHints(host);
+        HintedHandOffManager.instance().deliverHints(host);
     }
 
     public Token getLocalToken()
@@ -1635,9 +1636,9 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken()) + Delimiter + REMOVE_TOKEN + Delimiter + partitioner_.getTokenFactory().toString(token)));
     }
 
-    public WriteResponseHandler getWriteResponseHandler(int blockFor, ConsistencyLevel consistency_level, String table)
+    public WriteResponseHandler getWriteResponseHandler(int blockFor, int writeEndpointCount, ConsistencyLevel consistency_level, String table)
     {
-        return getReplicationStrategy(table).getWriteResponseHandler(blockFor, consistency_level, table);
+        return getReplicationStrategy(table).getWriteResponseHandler(blockFor, writeEndpointCount, consistency_level, table);
     }
 
     public boolean isClientMode()
@@ -1707,6 +1708,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         ColumnFamilyStore.postFlushExecutor.shutdown();
         ColumnFamilyStore.postFlushExecutor.awaitTermination(60, TimeUnit.SECONDS);
         CommitLog.instance().forceNewSegment();
+        
+        HintLog.instance().close();
         // want to make sure that any segments deleted as a result of flushing are gone.
         DeletionService.waitFor();
        

@@ -18,6 +18,8 @@
 */
 package org.apache.cassandra.service;
 
+import org.apache.cassandra.config.ConfigurationException;
+
 public interface StorageProxyMBean
 {
     public long getReadOperations();
@@ -32,6 +34,44 @@ public interface StorageProxyMBean
     public long getTotalWriteLatencyMicros();
     public double getRecentWriteLatencyMicros();
 
-    public boolean getHintedHandoffEnabled();
-    public void setHintedHandoffEnabled(boolean b);
+    public String getHintedHandoffEnabled();
+    /**
+     * @param config
+     * @throws ConfigurationException
+     */
+    void setHintedHandoffEnabled(String config) throws ConfigurationException;
+    /**
+     * @return
+     */
+    int getHintedHandoffWriteLatencyThreshold();
+    /**
+     * @param millis
+     */
+    void setHintedHandoffWriteLatencyThreshold(int millis);
+    /**
+     * @return
+     */
+    double getRecentHintLatencyMicros();
+    /**
+     * @return
+     */
+    long getTotalHintLatencyMicros();
+    /**
+     * @return
+     */
+    long getHintOperations();
+    /**
+     * @return
+     */
+    long[] getTotalHintHistogram();
+    /**
+     * @return
+     */
+    long[] getRecentHintHistogram();
+    /**
+     * @return
+     */
+    long getTotalLaggedHints();
+    
+    
 }

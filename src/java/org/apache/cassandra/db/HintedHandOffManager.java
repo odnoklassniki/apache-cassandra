@@ -30,10 +30,12 @@ import org.apache.log4j.Logger;
 import org.apache.commons.lang.ArrayUtils;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
+import org.apache.cassandra.db.hints.HintLogHandoffManager;
 import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.net.Message;
@@ -78,13 +80,29 @@ import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
 public class HintedHandOffManager
 {
-    public static final HintedHandOffManager instance = new HintedHandOffManager();
+    private static HintedHandOffManager instance ;
+    
+    public static HintedHandOffManager instance()
+    {
+        return instance;
+    }
+    
+    public static void setInstance(Class<? extends HintedHandOffManager> clazz) throws ConfigurationException
+    {
+        // TODO previous HHM deactivation
+        try {
+            if (instance==null || instance.getClass()!=clazz)
+                instance = clazz.newInstance();
+        } catch (Exception e) {
+            throw new ConfigurationException("Cannot create instance of "+clazz+" due to "+e);
+        }
+    }
 
     private static final Logger logger_ = Logger.getLogger(HintedHandOffManager.class);
     public static final String HINTS_CF = "HintsColumnFamily";
     private static final int PAGE_SIZE = 10000;
 
-    private final NonBlockingHashSet<InetAddress> queuedDeliveries = new NonBlockingHashSet<InetAddress>();
+    protected final NonBlockingHashSet<InetAddress> queuedDeliveries = new NonBlockingHashSet<InetAddress>();
 
     private final ExecutorService executor_;
 
@@ -129,7 +147,7 @@ public class HintedHandOffManager
                 RowMutation rm = new RowMutation(tableName, key);
                 rm.add(cf);
                 Message message = rm.makeRowMutationMessage();
-                WriteResponseHandler responseHandler = new WriteResponseHandler(1, tableName);
+                WriteResponseHandler responseHandler = new WriteResponseHandler(1, 1, tableName);
                 MessagingService.instance.sendRR(message, endPoint, responseHandler);
                 try
                 {
@@ -176,7 +194,7 @@ public class HintedHandOffManager
                || (hintColumnFamily.getSortedColumns().size() == 1 && hintColumnFamily.getColumn(startColumn) != null);
     }
 
-    private void deliverHintsToEndpoint(InetAddress endPoint) throws IOException, DigestMismatchException, InvalidRequestException, TimeoutException
+    protected void deliverHintsToEndpoint(InetAddress endPoint) throws IOException, DigestMismatchException, InvalidRequestException, TimeoutException
     {
         logger_.info("Started hinted handoff for endPoint " + endPoint);
         queuedDeliveries.remove(endPoint);
@@ -262,5 +280,23 @@ public class HintedHandOffManager
     public void deliverHints(String to) throws UnknownHostException
     {
         deliverHints(InetAddress.getByName(to));
+    }
+
+    /**
+     * Stores new hint for later delivery
+     * 
+     * @param hint
+     * @param rm
+     * @param serializedMutation 
+     * @throws IOException 
+     */
+    public void storeHint(InetAddress hint, RowMutation rm, byte[] serializedMutation) throws IOException
+    {
+        if (logger_.isDebugEnabled())
+            logger_.debug("Adding hint for " + hint.getHostAddress());
+        
+        RowMutation hintedMutation = new RowMutation(Table.SYSTEM_TABLE, rm.getTable());
+        hintedMutation.addHints(rm.key(), hint.getAddress());
+        hintedMutation.apply();
     }
 }

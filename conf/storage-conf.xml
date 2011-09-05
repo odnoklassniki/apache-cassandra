@@ -47,6 +47,11 @@
 
   <!--
    ~ See http://wiki.apache.org/cassandra/HintedHandoff
+   ~ 
+   ~ Possible values are: 
+   ~ 	true - classic hinted handoff in Hints CF (space conservative, but random reads intensive)
+   ~    hintlog - hinted handoff invididual mutations are stored in log structure. Trade space and commit log device io for hinted handoff speed. Can handoff all missed mutations, avoiding need for repair.
+   ~    false - turn off hinted repair      
   -->
   <HintedHandoffEnabled>true</HintedHandoffEnabled>
 

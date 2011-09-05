@@ -1,4 +1,4 @@
-package org.apache.cassandra.db.commitlog;
+package org.apache.cassandra.db.hints;
 /*
  * 
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -21,21 +21,30 @@ package org.apache.cassandra.db.commitlog;
  */
 
 
-import java.util.concurrent.*;
+import java.lang.management.ManagementFactory;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
 
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
+import org.apache.cassandra.db.commitlog.PeriodicCommitLogExecutorServiceMBean;
 import org.apache.cassandra.utils.WrappedRunnable;
 
-public class PeriodicCommitLogExecutorService implements ICommitLogExecutorService, PeriodicCommitLogExecutorServiceMBean
+public class PeriodicHintLogExecutorService implements PeriodicHintLogExecutorServiceMBean
 {
     private final BlockingQueue<Runnable> queue;
     protected volatile long completedTaskCount = 0;
 
-    public PeriodicCommitLogExecutorService()
+    public PeriodicHintLogExecutorService()
     {
         this(1024 * Runtime.getRuntime().availableProcessors());
     }
 
-    public PeriodicCommitLogExecutorService(int queueSize)
+    public PeriodicHintLogExecutorService(int queueSize)
     {
         queue = new LinkedBlockingQueue<Runnable>(queueSize);
         Runnable runnable = new WrappedRunnable()
@@ -49,12 +58,25 @@ public class PeriodicCommitLogExecutorService implements ICommitLogExecutorServi
                 }
             }
         };
-        new Thread(runnable, "COMMIT-LOG-WRITER").start();
+        new Thread(runnable, "HINT-LOG-WRITER").start();
 
-        AbstractCommitLogExecutorService.registerMBean(this);
+        registerMBean(this);
+    }
+    
+    protected static void registerMBean(Object o)
+    {
+        MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+        try
+        {
+            mbs.registerMBean(o, new ObjectName("org.apache.cassandra.db:type=Hintlog"));
+        }
+        catch (Exception e)
+        {
+            throw new RuntimeException(e);
+        }
     }
 
-    public void add(CommitLog.LogRecordAdder adder)
+    public void add(HintLog.LogRecordAdder adder)
     {
         try
         {

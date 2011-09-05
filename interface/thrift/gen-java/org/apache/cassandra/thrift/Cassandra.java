@@ -1657,6 +1657,7 @@ public class Cassandra {
           result.te = te;
         } catch (Throwable th) {
           LOGGER.error("Internal error processing batch_mutate", th);
+          th.printStackTrace();
           TApplicationException x = new TApplicationException(TApplicationException.INTERNAL_ERROR, "Internal error processing batch_mutate");
           oprot.writeMessageBegin(new TMessage("batch_mutate", TMessageType.EXCEPTION, seqid));
           x.write(oprot);

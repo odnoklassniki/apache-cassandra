@@ -39,6 +39,8 @@ import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.db.hints.HintLog;
+import org.apache.cassandra.db.hints.HintLogHandoffManager;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.dht.IPartitioner;
@@ -90,6 +92,8 @@ public class DatabaseDescriptor
     private static String logFileDirectory;
     /** MM: where to ship commit logs for backup **/
     private static String logFileArchiveDestination;
+    /** MM: where to write hint logs for later delivery **/
+    private static String hintLogDirectory;
 
     private static String savedCachesDirectory;
     private static int consistencyThreads = 4; // not configurable
@@ -144,8 +148,8 @@ public class DatabaseDescriptor
 
     private static boolean snapshotBeforeCompaction;
     private static boolean autoBootstrap = false;
-
-    private static boolean hintedHandoffEnabled = true;
+    
+    private static Class<? extends HintedHandOffManager> hintedHandoffManager = null;
 
     private static IAuthenticator authenticator = new AllowAllAuthenticator();
 
@@ -554,19 +558,29 @@ public class DatabaseDescriptor
             if ( value != null)
                 CommitLog.setSegmentSize(Integer.parseInt(value) * 1024 * 1024);
 
+            hintLogDirectory = xmlUtils.getNodeValue("/Storage/HintLogDirectory");
+            if (hintLogDirectory==null)
+                hintLogDirectory = logFileDirectory + File.separatorChar + ".hints";
+
             /* should Hinted Handoff be on? */
             String hintedHandOffStr = xmlUtils.getNodeValue("/Storage/HintedHandoffEnabled");
             if (hintedHandOffStr != null)
             {
-                if (hintedHandOffStr.equalsIgnoreCase("true"))
-                    hintedHandoffEnabled = true;
-                else if (hintedHandOffStr.equalsIgnoreCase("false"))
-                    hintedHandoffEnabled = false;
-                else
-                    throw new ConfigurationException("Unrecognized value for HintedHandoff.  Use 'true' or 'false'.");
+                setHintedHandoffManager(hintedHandOffStr);
+            } else
+            {
+                hintedHandoffManager = HintedHandOffManager.class;
+                
             }
+            
+
+            String v = xmlUtils.getNodeValue("/Storage/CommitLogRotationThresholdInMB");
+            if ( v != null)
+                HintLog.setSegmentSize(Integer.parseInt(v) * 1024 * 1024);
+
             if (logger.isDebugEnabled())
-                logger.debug("setting hintedHandoffEnabled to " + hintedHandoffEnabled);
+                logger.debug("setting hintedHandoffManager to " + hintedHandoffManager);
+            
 
             String indexIntervalStr = xmlUtils.getNodeValue("/Storage/IndexInterval");
             if (indexIntervalStr != null)
@@ -642,6 +656,29 @@ public class DatabaseDescriptor
         {
             throw new RuntimeException(e);
         }
+    }
+
+    public static void setHintedHandoffManager(String hintedHandOffStr)
+            throws ConfigurationException
+    {
+        if (hintedHandOffStr.equalsIgnoreCase("hintlog"))
+        {
+            hintedHandoffManager = HintLogHandoffManager.class;
+
+            logger.info("HintLog Handoff activated. Will write hint logs to "+hintLogDirectory);
+
+        }
+        else if (hintedHandOffStr.equalsIgnoreCase("false"))
+            hintedHandoffManager = null;
+        else if (hintedHandOffStr.equalsIgnoreCase("true"))
+        {
+            hintedHandoffManager = HintedHandOffManager.class;
+            
+        } 
+        else
+            throw new ConfigurationException("Unrecognized value for HintedHandoff.  Use 'true','false' or 'hintlog'.");
+
+        HintedHandOffManager.setInstance(hintedHandoffManager);
     }
 
     private static void readTablesFromXml() throws ConfigurationException
@@ -964,7 +1001,13 @@ public class DatabaseDescriptor
             {
                 throw new ConfigurationException("SavedCachesDirectory must be specified");
             }
+
             FileUtils.createDirectory(savedCachesDirectory);
+            
+            if (hintLogDirectory !=null )
+            {
+                FileUtils.createDirectory(hintLogDirectory);
+            }   
         }
         catch (ConfigurationException ex) {
             logger.error("Fatal error: " + ex.getMessage());
@@ -1409,7 +1452,12 @@ public class DatabaseDescriptor
 
     public static boolean hintedHandoffEnabled()
     {
-        return hintedHandoffEnabled;
+        return hintedHandoffManager != null;
+    }
+    
+    public static String getHintLogDirectory()
+    {
+        return hintLogDirectory;
     }
 
     public static int getIndexInterval()

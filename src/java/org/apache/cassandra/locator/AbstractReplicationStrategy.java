@@ -62,9 +62,9 @@ public abstract class AbstractReplicationStrategy
      */
     public abstract ArrayList<InetAddress> getNaturalEndpoints(Token token, TokenMetadata metadata, String table);
     
-    public WriteResponseHandler getWriteResponseHandler(int blockFor, ConsistencyLevel consistency_level, String table)
+    public WriteResponseHandler getWriteResponseHandler(int blockFor, int endpointCount, ConsistencyLevel consistency_level, String table)
     {
-        return new WriteResponseHandler(blockFor, table);
+        return new WriteResponseHandler(blockFor, endpointCount, table);
     }
 
     public ArrayList<InetAddress> getNaturalEndpoints(Token token, String table)
