@@ -43,6 +43,7 @@ import org.apache.cassandra.concurrent.RetryingScheduledThreadPoolExecutor;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.commitlog.CommitLogSegment;
+import org.apache.cassandra.db.commitlog.CommitLogSegment.CommitLogContext;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.dht.AbstractBounds;
@@ -474,8 +475,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             oldMemtable.freeze();
 
-            final CommitLogSegment.CommitLogContext ctx = writeCommitLog ? CommitLog.instance().getContext() : null;
-            logger_.info(columnFamily_ + " has reached its threshold; switching in a fresh Memtable at " + ctx);
+            // dont wait with write lock held for commit log queue - only obtain future and continue
+            final Future<CommitLogContext> ctx = writeCommitLog ? CommitLog.instance().getContext() : null;
+//            logger_.info(columnFamily_ + " has reached its threshold; switching in a fresh Memtable at " + ctx);
             final Condition condition = submitFlush(oldMemtable);
             memtable_ = new Memtable(this);
             // a second executor that makes sure the onMemtableFlushes get called in the right order,
@@ -489,7 +491,13 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                     {
                         // if we're not writing to the commit log, we are replaying the log, so marking
                         // the log header with "you can discard anything written before the context" is not valid
-                        CommitLog.instance().discardCompletedSegments(table_, columnFamily_, ctx);
+                        try {
+                            CommitLogContext ctxValue = ctx.get();
+                            logger_.info(columnFamily_ + " has reached its threshold; switched in a fresh Memtable at " + ctxValue);
+                            CommitLog.instance().discardCompletedSegments(table_, columnFamily_, ctxValue);
+                        } catch (ExecutionException e) {
+                            throw new RuntimeException(e);
+                        }
                     }
                 }
             });

@@ -35,6 +35,7 @@ import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
+import org.apache.cassandra.db.commitlog.CommitLogSegment.CommitLogContext;
 import org.apache.cassandra.io.DeletionService;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.FileUtils;
@@ -215,6 +216,13 @@ public class CommitLog
         List<Future<?>> futures = new ArrayList<Future<?>>();
         for (File file : clogs)
         {
+            // empty log file - just removing it
+            if (file.length()==0)
+            {
+                file.delete();
+                continue;
+            }
+            
             int bufferSize = (int)Math.min(file.length(), 32 * 1024 * 1024);
             BufferedRandomAccessFile reader = new BufferedRandomAccessFile(file.getAbsolutePath(), "r", bufferSize);
 
@@ -371,7 +379,7 @@ public class CommitLog
         return segments.getLast();
     }
     
-    public CommitLogSegment.CommitLogContext getContext() throws IOException
+    public Future<CommitLogContext> getContext() throws IOException
     {
         Callable<CommitLogSegment.CommitLogContext> task = new Callable<CommitLogSegment.CommitLogContext>()
         {
@@ -380,18 +388,18 @@ public class CommitLog
                 return currentSegment().getContext();
             }
         };
-        try
-        {
-            return executor.submit(task).get();
-        }
-        catch (InterruptedException e)
-        {
-            throw new RuntimeException(e);
-        }
-        catch (ExecutionException e)
-        {
-            throw new RuntimeException(e);
-        }
+//        try
+//        {
+            return executor.submit(task);
+//        }
+//        catch (InterruptedException e)
+//        {
+//            throw new RuntimeException(e);
+//        }
+//        catch (ExecutionException e)
+//        {
+//            throw new RuntimeException(e);
+//        }
     }
 
     /*
