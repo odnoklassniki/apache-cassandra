@@ -65,7 +65,7 @@ public class CassandraDaemon
     private static Logger logger = Logger.getLogger(CassandraDaemon.class);
     private TServer serverEngine;
 
-    private void setup() throws IOException, TTransportException
+    public void setup() throws IOException, TTransportException
     {
         CLibrary.tryMlockall();
         
