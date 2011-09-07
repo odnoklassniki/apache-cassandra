@@ -263,7 +263,7 @@ public class ColumnFamilyRecordReader extends RecordReader<String, SortedMap<byt
 
         private IColumn unthriftifySuper(SuperColumn super_column)
         {
-            org.apache.cassandra.db.SuperColumn sc = new org.apache.cassandra.db.SuperColumn(super_column.name, subComparator);
+            org.apache.cassandra.db.SuperColumn sc = new org.apache.cassandra.db.SuperColumn(super_column.getName(), subComparator);
             for (Column column : super_column.columns)
             {
                 sc.addColumn(unthriftifySimple(column));
@@ -273,7 +273,7 @@ public class ColumnFamilyRecordReader extends RecordReader<String, SortedMap<byt
 
         private IColumn unthriftifySimple(Column column)
         {
-            return new org.apache.cassandra.db.Column(column.name, column.value, column.timestamp);
+            return new org.apache.cassandra.db.Column(column.getName(), column.getValue(), column.timestamp);
         }
     }
 }

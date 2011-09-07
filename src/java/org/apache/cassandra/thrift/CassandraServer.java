@@ -21,6 +21,7 @@ package org.apache.cassandra.thrift;
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.TimeoutException;
 
@@ -36,6 +37,7 @@ import org.apache.cassandra.db.marshal.MarshalException;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.thrift.TException;
 import org.json.simple.JSONValue;
 
@@ -121,7 +123,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 continue;
             }
-            Column thrift_column = new Column(column.name(), column.value(), column.timestamp());
+            Column thrift_column = ThriftGlue.column(column.name(), column.value(), column.timestamp());
             thriftColumns.add(thrift_column);
         }
 
@@ -137,7 +139,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 continue;
             }
-            Column thrift_column = new Column(column.name(), column.value(), column.timestamp());
+            Column thrift_column = ThriftGlue.column(column.name(), column.value(), column.timestamp());
             thriftColumns.add(createColumnOrSuperColumn_Column(thrift_column));
         }
 
@@ -159,7 +161,7 @@ public class CassandraServer implements Cassandra.Iface
             {
                 continue;
             }
-            SuperColumn superColumn = new SuperColumn(column.name(), subcolumns);
+            SuperColumn superColumn = ThriftGlue.superColumn(column.name(), subcolumns);
             thriftSuperColumns.add(createColumnOrSuperColumn_SuperColumn(superColumn));
         }
 
@@ -238,7 +240,7 @@ public class CassandraServer implements Cassandra.Iface
             for (String key: keys)
             {
                 ThriftValidation.validateKey(key);
-                commands.add(new SliceByNamesReadCommand(keyspace, key, column_parent, predicate.column_names));
+                commands.add(new SliceByNamesReadCommand(keyspace, key, column_parent, ThriftGlue.toBytes( predicate.column_names ) ) );
             }
         }
         else
@@ -247,7 +249,7 @@ public class CassandraServer implements Cassandra.Iface
             for (String key: keys)
             {
                 ThriftValidation.validateKey(key);
-                commands.add(new SliceFromReadCommand(keyspace, key, column_parent, range.start, range.finish, range.reversed, range.count));
+                commands.add(new SliceFromReadCommand(keyspace, key, column_parent, ByteBufferUtil.getArray(range.start), ByteBufferUtil.getArray(range.finish), range.reversed, range.count));
             }
         }
 
@@ -287,8 +289,9 @@ public class CassandraServer implements Cassandra.Iface
     {
         ThriftValidation.validateColumnPath(table, column_path);
 
-        QueryPath path = new QueryPath(column_path.column_family, column_path.column == null ? null : column_path.super_column);
-        List<byte[]> nameAsList = Arrays.asList(column_path.column == null ? column_path.super_column : column_path.column);
+        byte[] columnPath = ThriftGlue.columnPath(column_path);
+        QueryPath path = new QueryPath(column_path.column_family, columnPath );
+        List<byte[]> nameAsList = Arrays.asList( columnPath );
         List<ReadCommand> commands = new ArrayList<ReadCommand>();
         for (String key: keys)
         {
@@ -324,11 +327,17 @@ public class CassandraServer implements Cassandra.Iface
 
         checkLoginDone();
 
-        SliceRange range = new SliceRange(ArrayUtils.EMPTY_BYTE_ARRAY, ArrayUtils.EMPTY_BYTE_ARRAY, false, Integer.MAX_VALUE);
+        SliceRange range = new SliceRange(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, false, Integer.MAX_VALUE);
         SlicePredicate predicate = new SlicePredicate().setSlice_range(range);
         return get_slice(table, key, column_parent, predicate, consistency_level).size();
     }
 
+    public void insert(String table, String key, ColumnPath column_path, ByteBuffer value, long timestamp, ConsistencyLevel consistency_level)
+    throws InvalidRequestException, UnavailableException, TimedOutException
+    {
+        insert(table, key, column_path, ByteBufferUtil.getArray(value), timestamp, consistency_level);
+    }
+    
     public void insert(String table, String key, ColumnPath column_path, byte[] value, long timestamp, ConsistencyLevel consistency_level)
     throws InvalidRequestException, UnavailableException, TimedOutException
     {

@@ -49,7 +49,7 @@ public class Header
     private String type_;
     private StorageService.Verb verb_;
     private String messageId_;
-    protected Map<String, byte[]> details_ = new Hashtable<String, byte[]>();
+    protected Map<String, byte[]> details_;
     
     Header(String id, InetAddress from, String messageType, StorageService.Verb verb)
     {
@@ -97,11 +97,17 @@ public class Header
 
     byte[] getDetail(Object key)
     {
+        if (details_==null)
+            return null;
+        
         return details_.get(key);
     }
 
     void setDetail(String key, byte[] value)
     {
+        if (details_==null)
+            details_ = new Hashtable<String, byte[]>(2);
+            
         details_.put(key, value);
     }
 }
@@ -116,16 +122,23 @@ class HeaderSerializer implements ICompactSerializer<Header>
         dos.writeInt(t.getVerb().ordinal());
         
         /* Serialize the message header */
-        int size = t.details_.size();
-        dos.writeInt(size);
-        Set<String> keys = t.details_.keySet();
-        
-        for( String key : keys )
+        if (t.details_==null)
         {
-            dos.writeUTF(key);
-            byte[] value = t.details_.get(key);
-            dos.writeInt(value.length);
-            dos.write(value);
+            dos.writeInt(0);
+        }
+        else
+        {
+            int size = t.details_.size();
+            dos.writeInt(size);
+            Set<String> keys = t.details_.keySet();
+
+            for( String key : keys )
+            {
+                dos.writeUTF(key);
+                byte[] value = t.details_.get(key);
+                dos.writeInt(value.length);
+                dos.write(value);
+            }
         }
     }
 
@@ -138,14 +151,18 @@ class HeaderSerializer implements ICompactSerializer<Header>
         
         /* Deserializing the message header */
         int size = dis.readInt();
-        Map<String, byte[]> details = new Hashtable<String, byte[]>(size);
-        for ( int i = 0; i < size; ++i )
+        Map<String, byte[]> details = null;
+        if (size>0)
         {
-            String key = dis.readUTF();
-            int length = dis.readInt();
-            byte[] bytes = new byte[length];
-            dis.readFully(bytes);
-            details.put(key, bytes);
+            details = new Hashtable<String, byte[]>(size);
+            for ( int i = 0; i < size; ++i )
+            {
+                String key = dis.readUTF();
+                int length = dis.readInt();
+                byte[] bytes = new byte[length];
+                dis.readFully(bytes);
+                details.put(key, bytes);
+            }
         }
         
         return new Header(id, from, type, StorageService.VERBS[verbOrdinal], details);

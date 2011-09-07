@@ -1181,7 +1181,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             columnNameSet.addAll(columnNames);
         for (String key : keys)
         {
-            QueryFilter filter = sliceRange == null ? new NamesQueryFilter(key, queryPath, columnNameSet) : new SliceQueryFilter(key, queryPath, sliceRange.start, sliceRange.finish, sliceRange.reversed, sliceRange.count);
+            QueryFilter filter = sliceRange == null ? new NamesQueryFilter(key, queryPath, columnNameSet) : new SliceQueryFilter(key, queryPath, sliceRange.getStart(), sliceRange.getFinish(), sliceRange.reversed, sliceRange.count);
             rows.add(new Row(key, getColumnFamily(filter)));
         }
 

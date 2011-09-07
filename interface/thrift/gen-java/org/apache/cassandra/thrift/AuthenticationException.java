@@ -4,28 +4,8 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  */
 package org.apache.cassandra.thrift;
-/*
- * 
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- * 
- *   http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- * 
- */
 
-
+import org.apache.commons.lang.builder.HashCodeBuilder;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
@@ -36,34 +16,29 @@ import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.Collections;
 import java.util.BitSet;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.apache.thrift.*;
-import org.apache.thrift.meta_data.*;
-import org.apache.thrift.protocol.*;
-
 /**
  * invalid authentication request (user does not exist or credentials invalid)
  */
-public class AuthenticationException extends Exception implements TBase<AuthenticationException._Fields>, java.io.Serializable, Cloneable, Comparable<AuthenticationException> {
-  private static final TStruct STRUCT_DESC = new TStruct("AuthenticationException");
+public class AuthenticationException extends Exception implements org.apache.thrift.TBase<AuthenticationException, AuthenticationException._Fields>, java.io.Serializable, Cloneable {
+  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("AuthenticationException");
 
-  private static final TField WHY_FIELD_DESC = new TField("why", TType.STRING, (short)1);
+  private static final org.apache.thrift.protocol.TField WHY_FIELD_DESC = new org.apache.thrift.protocol.TField("why", org.apache.thrift.protocol.TType.STRING, (short)1);
 
   public String why;
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
-  public enum _Fields implements TFieldIdEnum {
+  public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     WHY((short)1, "why");
 
-    private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
     private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
 
     static {
       for (_Fields field : EnumSet.allOf(_Fields.class)) {
-        byId.put((int)field._thriftId, field);
         byName.put(field.getFieldName(), field);
       }
     }
@@ -72,7 +47,12 @@ public class AuthenticationException extends Exception implements TBase<Authenti
      * Find the _Fields constant that matches fieldId, or null if its not found.
      */
     public static _Fields findByThriftId(int fieldId) {
-      return byId.get(fieldId);
+      switch(fieldId) {
+        case 1: // WHY
+          return WHY;
+        default:
+          return null;
+      }
     }
 
     /**
@@ -111,13 +91,13 @@ public class AuthenticationException extends Exception implements TBase<Authenti
 
   // isset id assignments
 
-  public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-    put(_Fields.WHY, new FieldMetaData("why", TFieldRequirementType.REQUIRED, 
-        new FieldValueMetaData(TType.STRING)));
-  }});
-
+  public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
-    FieldMetaData.addStructMetaDataMap(AuthenticationException.class, metaDataMap);
+    Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+    tmpMap.put(_Fields.WHY, new org.apache.thrift.meta_data.FieldMetaData("why", org.apache.thrift.TFieldRequirementType.REQUIRED, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    metaDataMap = Collections.unmodifiableMap(tmpMap);
+    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(AuthenticationException.class, metaDataMap);
   }
 
   public AuthenticationException() {
@@ -143,9 +123,9 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     return new AuthenticationException(this);
   }
 
-  @Deprecated
-  public AuthenticationException clone() {
-    return new AuthenticationException(this);
+  @Override
+  public void clear() {
+    this.why = null;
   }
 
   public String getWhy() {
@@ -161,7 +141,7 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     this.why = null;
   }
 
-  /** Returns true if field why is set (has been asigned a value) and false otherwise */
+  /** Returns true if field why is set (has been assigned a value) and false otherwise */
   public boolean isSetWhy() {
     return this.why != null;
   }
@@ -185,10 +165,6 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     }
   }
 
-  public void setFieldValue(int fieldID, Object value) {
-    setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
-  }
-
   public Object getFieldValue(_Fields field) {
     switch (field) {
     case WHY:
@@ -198,21 +174,17 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     throw new IllegalStateException();
   }
 
-  public Object getFieldValue(int fieldId) {
-    return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
-  }
-
-  /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+  /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
   public boolean isSet(_Fields field) {
+    if (field == null) {
+      throw new IllegalArgumentException();
+    }
+
     switch (field) {
     case WHY:
       return isSetWhy();
     }
     throw new IllegalStateException();
-  }
-
-  public boolean isSet(int fieldID) {
-    return isSet(_Fields.findByThriftIdOrThrow(fieldID));
   }
 
   @Override
@@ -242,7 +214,14 @@ public class AuthenticationException extends Exception implements TBase<Authenti
 
   @Override
   public int hashCode() {
-    return 0;
+    HashCodeBuilder builder = new HashCodeBuilder();
+
+    boolean present_why = true && (isSetWhy());
+    builder.append(present_why);
+    if (present_why)
+      builder.append(why);
+
+    return builder.toHashCode();
   }
 
   public int compareTo(AuthenticationException other) {
@@ -257,7 +236,8 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetWhy()) {      lastComparison = TBaseHelper.compareTo(why, typedOther.why);
+    if (isSetWhy()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.why, typedOther.why);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -265,25 +245,29 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     return 0;
   }
 
-  public void read(TProtocol iprot) throws TException {
-    TField field;
+  public _Fields fieldForId(int fieldId) {
+    return _Fields.findByThriftId(fieldId);
+  }
+
+  public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+    org.apache.thrift.protocol.TField field;
     iprot.readStructBegin();
     while (true)
     {
       field = iprot.readFieldBegin();
-      if (field.type == TType.STOP) { 
+      if (field.type == org.apache.thrift.protocol.TType.STOP) { 
         break;
       }
       switch (field.id) {
         case 1: // WHY
-          if (field.type == TType.STRING) {
+          if (field.type == org.apache.thrift.protocol.TType.STRING) {
             this.why = iprot.readString();
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         default:
-          TProtocolUtil.skip(iprot, field.type);
+          org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
       }
       iprot.readFieldEnd();
     }
@@ -293,7 +277,7 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     validate();
   }
 
-  public void write(TProtocol oprot) throws TException {
+  public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
     validate();
 
     oprot.writeStructBegin(STRUCT_DESC);
@@ -322,10 +306,26 @@ public class AuthenticationException extends Exception implements TBase<Authenti
     return sb.toString();
   }
 
-  public void validate() throws TException {
+  public void validate() throws org.apache.thrift.TException {
     // check for required fields
     if (why == null) {
-      throw new TProtocolException("Required field 'why' was not present! Struct: " + toString());
+      throw new org.apache.thrift.protocol.TProtocolException("Required field 'why' was not present! Struct: " + toString());
+    }
+  }
+
+  private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    try {
+      write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+    } catch (org.apache.thrift.TException te) {
+      throw new java.io.IOException(te);
+    }
+  }
+
+  private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+    try {
+      read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+    } catch (org.apache.thrift.TException te) {
+      throw new java.io.IOException(te);
     }
   }
 

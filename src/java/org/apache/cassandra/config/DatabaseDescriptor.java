@@ -99,7 +99,6 @@ public class DatabaseDescriptor
     private static int consistencyThreads = 4; // not configurable
     private static int concurrentReaders = 8;
     private static int concurrentWriters = 32;
-    private static int concurrentAcceptors = 8;
 
     private static double flushDataBufferSizeInMB = 32;
     private static double flushIndexBufferSizeInMB = 8;
@@ -154,6 +153,14 @@ public class DatabaseDescriptor
     private static IAuthenticator authenticator = new AllowAllAuthenticator();
 
     private static int indexinterval = 128;
+    
+    public enum RpcServerTypes { sync, hsha };
+    
+    private static RpcServerTypes rpcServerType = RpcServerTypes.sync; 
+    private static int rpcThreads ;
+    
+    public static int thriftMaxMessageLengthMB = 16;
+    public static int thriftFramedTransportSizeMB = 15;
 
     private final static String STORAGE_CONF_FILE = "storage-conf.xml";
 
@@ -345,6 +352,18 @@ public class DatabaseDescriptor
             if ( rpcTimeout != null )
                 rpcTimeoutInMillis = Integer.parseInt(rpcTimeout);
 
+            /* RPC Server Type */
+            String rpcST = xmlUtils.getNodeValue("/Storage/RpcServerType");
+            if ( rpcST != null )
+            {
+                try {
+                    rpcServerType = RpcServerTypes.valueOf(rpcST);
+                } catch (IllegalArgumentException e)
+                {
+                    throw new ConfigurationException("Invalid RpcServerType="+rpcST+". sync and hsha are supported");
+                }
+            }
+
             /* phi convict threshold for FailureDetector */
             String phiThreshold = xmlUtils.getNodeValue("/Storage/PhiConvictThreshold");
             if ( phiThreshold != null )
@@ -376,16 +395,16 @@ public class DatabaseDescriptor
                 throw new ConfigurationException("ConcurrentWrites must be at least 2");
             }
 
-            String rawAcceptors = xmlUtils.getNodeValue("/Storage/ConcurrentAcceptors");
-            if (rawAcceptors != null)
+            /** Min and max rpc threads allowed **/
+            String rpcMinT = xmlUtils.getNodeValue("/Storage/RpcThreads");
+            if ( rpcMinT != null )
+                rpcThreads = Integer.parseInt(rpcMinT);
+            else
             {
-                concurrentAcceptors = Integer.parseInt(rawAcceptors);
+                // the default is number of concurrent reads and writes we can support + some slack
+                rpcThreads = concurrentReaders + concurrentWriters;
+                rpcThreads += rpcThreads/10;
             }
-            if (concurrentAcceptors < 1)
-            {
-                throw new ConfigurationException("ConcurrentAcceptors must be at least 1");
-            }
-            logger.info("Using "+concurrentAcceptors+" thrift acceptor threads");
 
             String rawFlushData = xmlUtils.getNodeValue("/Storage/FlushDataBufferSizeInMB");
             if (rawFlushData != null)
@@ -1207,6 +1226,32 @@ public class DatabaseDescriptor
     {
         return rpcTimeoutInMillis;
     }
+    
+    public static RpcServerTypes getRpcServerType()
+    {
+        return rpcServerType;
+    }
+
+    public static int getRpcThreads()
+    {
+        return rpcThreads;
+    }
+    
+    /**
+     * @return the thriftFramedTransportSizeMB
+     */
+    public static int getThriftFramedTransportSize()
+    {
+        return thriftFramedTransportSizeMB * 1024 * 1024;
+    }
+    
+    /**
+     * @return the thriftMaxMessageLengthMB
+     */
+    public static int getThriftMaxMessageLength()
+    {
+        return thriftMaxMessageLengthMB * 1024 * 1024;
+    }
 
     public static int getPhiConvictThreshold()
     {
@@ -1226,11 +1271,6 @@ public class DatabaseDescriptor
     public static int getConcurrentWriters()
     {
         return concurrentWriters;
-    }
-
-    public static int getConcurrentAcceptors()
-    {
-        return concurrentAcceptors;
     }
 
     public static long getRowWarningThreshold()

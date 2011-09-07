@@ -4,28 +4,8 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  */
 package org.apache.cassandra.thrift;
-/*
- * 
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- * 
- *   http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- * 
- */
 
-
+import org.apache.commons.lang.builder.HashCodeBuilder;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
@@ -36,13 +16,10 @@ import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.Collections;
 import java.util.BitSet;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.apache.thrift.*;
-import org.apache.thrift.meta_data.*;
-import org.apache.thrift.protocol.*;
 
 /**
  * A KeySlice is key followed by the data it maps to. A collection of KeySlice is returned by the get_range_slice operation.
@@ -51,26 +28,24 @@ import org.apache.thrift.protocol.*;
  * @param columns. List of data represented by the key. Typically, the list is pared down to only the columns specified by
  *                 a SlicePredicate.
  */
-public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, Cloneable, Comparable<KeySlice> {
-  private static final TStruct STRUCT_DESC = new TStruct("KeySlice");
+public class KeySlice implements org.apache.thrift.TBase<KeySlice, KeySlice._Fields>, java.io.Serializable, Cloneable {
+  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("KeySlice");
 
-  private static final TField KEY_FIELD_DESC = new TField("key", TType.STRING, (short)1);
-  private static final TField COLUMNS_FIELD_DESC = new TField("columns", TType.LIST, (short)2);
+  private static final org.apache.thrift.protocol.TField KEY_FIELD_DESC = new org.apache.thrift.protocol.TField("key", org.apache.thrift.protocol.TType.STRING, (short)1);
+  private static final org.apache.thrift.protocol.TField COLUMNS_FIELD_DESC = new org.apache.thrift.protocol.TField("columns", org.apache.thrift.protocol.TType.LIST, (short)2);
 
   public String key;
   public List<ColumnOrSuperColumn> columns;
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
-  public enum _Fields implements TFieldIdEnum {
+  public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     KEY((short)1, "key"),
     COLUMNS((short)2, "columns");
 
-    private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
     private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
 
     static {
       for (_Fields field : EnumSet.allOf(_Fields.class)) {
-        byId.put((int)field._thriftId, field);
         byName.put(field.getFieldName(), field);
       }
     }
@@ -79,7 +54,14 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
      * Find the _Fields constant that matches fieldId, or null if its not found.
      */
     public static _Fields findByThriftId(int fieldId) {
-      return byId.get(fieldId);
+      switch(fieldId) {
+        case 1: // KEY
+          return KEY;
+        case 2: // COLUMNS
+          return COLUMNS;
+        default:
+          return null;
+      }
     }
 
     /**
@@ -118,16 +100,16 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
 
   // isset id assignments
 
-  public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-    put(_Fields.KEY, new FieldMetaData("key", TFieldRequirementType.REQUIRED, 
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.COLUMNS, new FieldMetaData("columns", TFieldRequirementType.REQUIRED, 
-        new ListMetaData(TType.LIST, 
-            new StructMetaData(TType.STRUCT, ColumnOrSuperColumn.class))));
-  }});
-
+  public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
-    FieldMetaData.addStructMetaDataMap(KeySlice.class, metaDataMap);
+    Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+    tmpMap.put(_Fields.KEY, new org.apache.thrift.meta_data.FieldMetaData("key", org.apache.thrift.TFieldRequirementType.REQUIRED, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    tmpMap.put(_Fields.COLUMNS, new org.apache.thrift.meta_data.FieldMetaData("columns", org.apache.thrift.TFieldRequirementType.REQUIRED, 
+        new org.apache.thrift.meta_data.ListMetaData(org.apache.thrift.protocol.TType.LIST, 
+            new org.apache.thrift.meta_data.StructMetaData(org.apache.thrift.protocol.TType.STRUCT, ColumnOrSuperColumn.class))));
+    metaDataMap = Collections.unmodifiableMap(tmpMap);
+    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(KeySlice.class, metaDataMap);
   }
 
   public KeySlice() {
@@ -162,9 +144,10 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     return new KeySlice(this);
   }
 
-  @Deprecated
-  public KeySlice clone() {
-    return new KeySlice(this);
+  @Override
+  public void clear() {
+    this.key = null;
+    this.columns = null;
   }
 
   public String getKey() {
@@ -180,7 +163,7 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     this.key = null;
   }
 
-  /** Returns true if field key is set (has been asigned a value) and false otherwise */
+  /** Returns true if field key is set (has been assigned a value) and false otherwise */
   public boolean isSetKey() {
     return this.key != null;
   }
@@ -219,7 +202,7 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     this.columns = null;
   }
 
-  /** Returns true if field columns is set (has been asigned a value) and false otherwise */
+  /** Returns true if field columns is set (has been assigned a value) and false otherwise */
   public boolean isSetColumns() {
     return this.columns != null;
   }
@@ -251,10 +234,6 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     }
   }
 
-  public void setFieldValue(int fieldID, Object value) {
-    setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
-  }
-
   public Object getFieldValue(_Fields field) {
     switch (field) {
     case KEY:
@@ -267,12 +246,12 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     throw new IllegalStateException();
   }
 
-  public Object getFieldValue(int fieldId) {
-    return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
-  }
-
-  /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+  /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
   public boolean isSet(_Fields field) {
+    if (field == null) {
+      throw new IllegalArgumentException();
+    }
+
     switch (field) {
     case KEY:
       return isSetKey();
@@ -280,10 +259,6 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
       return isSetColumns();
     }
     throw new IllegalStateException();
-  }
-
-  public boolean isSet(int fieldID) {
-    return isSet(_Fields.findByThriftIdOrThrow(fieldID));
   }
 
   @Override
@@ -322,7 +297,19 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
 
   @Override
   public int hashCode() {
-    return 0;
+    HashCodeBuilder builder = new HashCodeBuilder();
+
+    boolean present_key = true && (isSetKey());
+    builder.append(present_key);
+    if (present_key)
+      builder.append(key);
+
+    boolean present_columns = true && (isSetColumns());
+    builder.append(present_columns);
+    if (present_columns)
+      builder.append(columns);
+
+    return builder.toHashCode();
   }
 
   public int compareTo(KeySlice other) {
@@ -337,7 +324,8 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetKey()) {      lastComparison = TBaseHelper.compareTo(key, typedOther.key);
+    if (isSetKey()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.key, typedOther.key);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -346,7 +334,8 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetColumns()) {      lastComparison = TBaseHelper.compareTo(columns, typedOther.columns);
+    if (isSetColumns()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.columns, typedOther.columns);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -354,27 +343,31 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     return 0;
   }
 
-  public void read(TProtocol iprot) throws TException {
-    TField field;
+  public _Fields fieldForId(int fieldId) {
+    return _Fields.findByThriftId(fieldId);
+  }
+
+  public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+    org.apache.thrift.protocol.TField field;
     iprot.readStructBegin();
     while (true)
     {
       field = iprot.readFieldBegin();
-      if (field.type == TType.STOP) { 
+      if (field.type == org.apache.thrift.protocol.TType.STOP) { 
         break;
       }
       switch (field.id) {
         case 1: // KEY
-          if (field.type == TType.STRING) {
+          if (field.type == org.apache.thrift.protocol.TType.STRING) {
             this.key = iprot.readString();
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         case 2: // COLUMNS
-          if (field.type == TType.LIST) {
+          if (field.type == org.apache.thrift.protocol.TType.LIST) {
             {
-              TList _list8 = iprot.readListBegin();
+              org.apache.thrift.protocol.TList _list8 = iprot.readListBegin();
               this.columns = new ArrayList<ColumnOrSuperColumn>(_list8.size);
               for (int _i9 = 0; _i9 < _list8.size; ++_i9)
               {
@@ -386,11 +379,11 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
               iprot.readListEnd();
             }
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         default:
-          TProtocolUtil.skip(iprot, field.type);
+          org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
       }
       iprot.readFieldEnd();
     }
@@ -400,7 +393,7 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     validate();
   }
 
-  public void write(TProtocol oprot) throws TException {
+  public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
     validate();
 
     oprot.writeStructBegin(STRUCT_DESC);
@@ -412,7 +405,7 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     if (this.columns != null) {
       oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
       {
-        oprot.writeListBegin(new TList(TType.STRUCT, this.columns.size()));
+        oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.STRUCT, this.columns.size()));
         for (ColumnOrSuperColumn _iter11 : this.columns)
         {
           _iter11.write(oprot);
@@ -449,13 +442,29 @@ public class KeySlice implements TBase<KeySlice._Fields>, java.io.Serializable, 
     return sb.toString();
   }
 
-  public void validate() throws TException {
+  public void validate() throws org.apache.thrift.TException {
     // check for required fields
     if (key == null) {
-      throw new TProtocolException("Required field 'key' was not present! Struct: " + toString());
+      throw new org.apache.thrift.protocol.TProtocolException("Required field 'key' was not present! Struct: " + toString());
     }
     if (columns == null) {
-      throw new TProtocolException("Required field 'columns' was not present! Struct: " + toString());
+      throw new org.apache.thrift.protocol.TProtocolException("Required field 'columns' was not present! Struct: " + toString());
+    }
+  }
+
+  private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    try {
+      write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+    } catch (org.apache.thrift.TException te) {
+      throw new java.io.IOException(te);
+    }
+  }
+
+  private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+    try {
+      read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+    } catch (org.apache.thrift.TException te) {
+      throw new java.io.IOException(te);
     }
   }
 

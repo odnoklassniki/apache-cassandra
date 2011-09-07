@@ -27,6 +27,7 @@ import org.apache.cassandra.db.Table;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
+import org.apache.cassandra.thrift.ThriftGlue;
 
 public class RangeSliceVerbHandler implements IVerbHandler
 {
@@ -48,7 +49,7 @@ public class RangeSliceVerbHandler implements IVerbHandler
                                                       command.range,
                                                       command.max_keys,
                                                       command.predicate.slice_range,
-                                                      command.predicate.column_names);
+                                                      ThriftGlue.toBytes(command.predicate.column_names) );
             Message response = reply.getReply(message);
             if (logger.isDebugEnabled())
                 logger.debug("Sending " + reply+ " to " + message.getMessageId() + "@" + message.getFrom());

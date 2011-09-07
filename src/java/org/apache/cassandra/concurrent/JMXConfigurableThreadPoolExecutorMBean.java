@@ -24,5 +24,4 @@ public interface JMXConfigurableThreadPoolExecutorMBean extends JMXEnabledThread
     void setCorePoolSize(int n);
 
     int getCorePoolSize();
-    
 }

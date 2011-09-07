@@ -18,6 +18,7 @@
 package org.apache.cassandra.cli;
 
 import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import org.antlr.runtime.tree.Tree;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.thrift.*;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.thrift.TException;
 
 import static org.apache.cassandra.thrift.ThriftGlue.*;
@@ -167,7 +169,7 @@ public class CliClient
        
        if (columnSpecCnt == 0)
        {
-           colParent = createColumnParent(columnFamily, null);
+           colParent = createColumnParent(columnFamily, (byte[]) null);
        }
        else
        {
@@ -252,7 +254,7 @@ public class CliClient
     private void doSlice(String keyspace, String key, String columnFamily, byte[] superColumnName)
             throws InvalidRequestException, UnavailableException, TimedOutException, TException, UnsupportedEncodingException, IllegalAccessException, NotFoundException, InstantiationException, ClassNotFoundException
     {
-        SliceRange range = new SliceRange(ArrayUtils.EMPTY_BYTE_ARRAY, ArrayUtils.EMPTY_BYTE_ARRAY, true, 1000000);
+        SliceRange range = new SliceRange(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, true, 1000000);
         List<ColumnOrSuperColumn> columns = thriftClient_.get_slice(keyspace, key, 
             createColumnParent(columnFamily, superColumnName),
             createSlicePredicate(null, range), ConsistencyLevel.ONE);
@@ -268,7 +270,7 @@ public class CliClient
                 css_.out.printf("=> (super_column=%s,", formatSuperColumnName(keyspace, columnFamily, superColumn));
                 for (Column col : superColumn.getColumns())
                     css_.out.printf("\n     (column=%s, value=%s, timestamp=%d)", formatSubcolumnName(keyspace, columnFamily, col),
-                                    new String(col.value, "UTF-8"), col.timestamp);
+                                    new String(col.getValue(), "UTF-8"), col.timestamp);
                 
                 css_.out.println(")"); 
             }
@@ -276,7 +278,7 @@ public class CliClient
             {
                 Column column = cosc.column;
                 css_.out.printf("=> (column=%s, value=%s, timestamp=%d)\n", formatColumnName(keyspace, columnFamily, column),
-                                new String(column.value, "UTF-8"), column.timestamp);
+                                new String(column.getValue(), "UTF-8"), column.timestamp);
             }
         }
         
@@ -285,17 +287,17 @@ public class CliClient
  
     private String formatSuperColumnName(String keyspace, String columnFamily, SuperColumn column) throws NotFoundException, TException, ClassNotFoundException, IllegalAccessException, InstantiationException
     {
-        return getFormatTypeForColumn(getCFMetaData(keyspace).get(columnFamily).get("CompareWith")).getString(column.name);
+        return getFormatTypeForColumn(getCFMetaData(keyspace).get(columnFamily).get("CompareWith")).getString(column.getName());
     }
 
     private String formatSubcolumnName(String keyspace, String columnFamily, Column subcolumn) throws NotFoundException, TException, ClassNotFoundException, IllegalAccessException, InstantiationException
     {
-        return getFormatTypeForColumn(getCFMetaData(keyspace).get(columnFamily).get("CompareSubcolumnsWith")).getString(subcolumn.name);
+        return getFormatTypeForColumn(getCFMetaData(keyspace).get(columnFamily).get("CompareSubcolumnsWith")).getString(subcolumn.getName());
     }
 
     private String formatColumnName(String keyspace, String columnFamily, Column column) throws ClassNotFoundException, NotFoundException, TException, IllegalAccessException, InstantiationException
     {
-        return getFormatTypeForColumn(getCFMetaData(keyspace).get(columnFamily).get("CompareWith")).getString(column.name);
+        return getFormatTypeForColumn(getCFMetaData(keyspace).get(columnFamily).get("CompareWith")).getString(column.getName());
     }
 
     private AbstractType getFormatTypeForColumn(String compareWith) throws ClassNotFoundException, IllegalAccessException, InstantiationException
@@ -376,7 +378,7 @@ public class CliClient
         ColumnPath path = createColumnPath(columnFamily, superColumnName, columnName);
         Column column = thriftClient_.get(tableName, key, path, ConsistencyLevel.ONE).column;
         css_.out.printf("=> (column=%s, value=%s, timestamp=%d)\n", formatColumnName(tableName, columnFamily, column),
-                        new String(column.value, "UTF-8"), column.timestamp);
+                        new String(column.getValue(), "UTF-8"), column.timestamp);
     }
 
     // Execute SET statement
@@ -424,7 +426,7 @@ public class CliClient
         
         // do the insert
         thriftClient_.insert(tableName, key, createColumnPath(columnFamily, superColumnName, columnName),
-                             value.getBytes(), timestampMicros(), ConsistencyLevel.ONE);
+                             ByteBuffer.wrap( value.getBytes() ), timestampMicros(), ConsistencyLevel.ONE);
         
         css_.out.println("Value inserted.");
     }

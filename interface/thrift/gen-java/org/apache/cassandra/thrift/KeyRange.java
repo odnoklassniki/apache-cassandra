@@ -4,28 +4,8 @@
  * DO NOT EDIT UNLESS YOU ARE SURE THAT YOU KNOW WHAT YOU ARE DOING
  */
 package org.apache.cassandra.thrift;
-/*
- * 
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- * 
- *   http://www.apache.org/licenses/LICENSE-2.0
- * 
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- * 
- */
 
-
+import org.apache.commons.lang.builder.HashCodeBuilder;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
@@ -36,13 +16,10 @@ import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.Collections;
 import java.util.BitSet;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import org.apache.thrift.*;
-import org.apache.thrift.meta_data.*;
-import org.apache.thrift.protocol.*;
 
 /**
  * The semantics of start keys and tokens are slightly different.
@@ -52,14 +29,14 @@ import org.apache.thrift.protocol.*;
  * one-element range, but a range from tokenY to tokenY is the
  * full ring.
  */
-public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, Cloneable, Comparable<KeyRange> {
-  private static final TStruct STRUCT_DESC = new TStruct("KeyRange");
+public class KeyRange implements org.apache.thrift.TBase<KeyRange, KeyRange._Fields>, java.io.Serializable, Cloneable {
+  private static final org.apache.thrift.protocol.TStruct STRUCT_DESC = new org.apache.thrift.protocol.TStruct("KeyRange");
 
-  private static final TField START_KEY_FIELD_DESC = new TField("start_key", TType.STRING, (short)1);
-  private static final TField END_KEY_FIELD_DESC = new TField("end_key", TType.STRING, (short)2);
-  private static final TField START_TOKEN_FIELD_DESC = new TField("start_token", TType.STRING, (short)3);
-  private static final TField END_TOKEN_FIELD_DESC = new TField("end_token", TType.STRING, (short)4);
-  private static final TField COUNT_FIELD_DESC = new TField("count", TType.I32, (short)5);
+  private static final org.apache.thrift.protocol.TField START_KEY_FIELD_DESC = new org.apache.thrift.protocol.TField("start_key", org.apache.thrift.protocol.TType.STRING, (short)1);
+  private static final org.apache.thrift.protocol.TField END_KEY_FIELD_DESC = new org.apache.thrift.protocol.TField("end_key", org.apache.thrift.protocol.TType.STRING, (short)2);
+  private static final org.apache.thrift.protocol.TField START_TOKEN_FIELD_DESC = new org.apache.thrift.protocol.TField("start_token", org.apache.thrift.protocol.TType.STRING, (short)3);
+  private static final org.apache.thrift.protocol.TField END_TOKEN_FIELD_DESC = new org.apache.thrift.protocol.TField("end_token", org.apache.thrift.protocol.TType.STRING, (short)4);
+  private static final org.apache.thrift.protocol.TField COUNT_FIELD_DESC = new org.apache.thrift.protocol.TField("count", org.apache.thrift.protocol.TType.I32, (short)5);
 
   public String start_key;
   public String end_key;
@@ -68,19 +45,17 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
   public int count;
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
-  public enum _Fields implements TFieldIdEnum {
+  public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     START_KEY((short)1, "start_key"),
     END_KEY((short)2, "end_key"),
     START_TOKEN((short)3, "start_token"),
     END_TOKEN((short)4, "end_token"),
     COUNT((short)5, "count");
 
-    private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
     private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
 
     static {
       for (_Fields field : EnumSet.allOf(_Fields.class)) {
-        byId.put((int)field._thriftId, field);
         byName.put(field.getFieldName(), field);
       }
     }
@@ -89,7 +64,20 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
      * Find the _Fields constant that matches fieldId, or null if its not found.
      */
     public static _Fields findByThriftId(int fieldId) {
-      return byId.get(fieldId);
+      switch(fieldId) {
+        case 1: // START_KEY
+          return START_KEY;
+        case 2: // END_KEY
+          return END_KEY;
+        case 3: // START_TOKEN
+          return START_TOKEN;
+        case 4: // END_TOKEN
+          return END_TOKEN;
+        case 5: // COUNT
+          return COUNT;
+        default:
+          return null;
+      }
     }
 
     /**
@@ -130,21 +118,21 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
   private static final int __COUNT_ISSET_ID = 0;
   private BitSet __isset_bit_vector = new BitSet(1);
 
-  public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-    put(_Fields.START_KEY, new FieldMetaData("start_key", TFieldRequirementType.OPTIONAL, 
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.END_KEY, new FieldMetaData("end_key", TFieldRequirementType.OPTIONAL, 
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.START_TOKEN, new FieldMetaData("start_token", TFieldRequirementType.OPTIONAL, 
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.END_TOKEN, new FieldMetaData("end_token", TFieldRequirementType.OPTIONAL, 
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.COUNT, new FieldMetaData("count", TFieldRequirementType.REQUIRED, 
-        new FieldValueMetaData(TType.I32)));
-  }});
-
+  public static final Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
-    FieldMetaData.addStructMetaDataMap(KeyRange.class, metaDataMap);
+    Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> tmpMap = new EnumMap<_Fields, org.apache.thrift.meta_data.FieldMetaData>(_Fields.class);
+    tmpMap.put(_Fields.START_KEY, new org.apache.thrift.meta_data.FieldMetaData("start_key", org.apache.thrift.TFieldRequirementType.OPTIONAL, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    tmpMap.put(_Fields.END_KEY, new org.apache.thrift.meta_data.FieldMetaData("end_key", org.apache.thrift.TFieldRequirementType.OPTIONAL, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    tmpMap.put(_Fields.START_TOKEN, new org.apache.thrift.meta_data.FieldMetaData("start_token", org.apache.thrift.TFieldRequirementType.OPTIONAL, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    tmpMap.put(_Fields.END_TOKEN, new org.apache.thrift.meta_data.FieldMetaData("end_token", org.apache.thrift.TFieldRequirementType.OPTIONAL, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.STRING)));
+    tmpMap.put(_Fields.COUNT, new org.apache.thrift.meta_data.FieldMetaData("count", org.apache.thrift.TFieldRequirementType.REQUIRED, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32)));
+    metaDataMap = Collections.unmodifiableMap(tmpMap);
+    org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(KeyRange.class, metaDataMap);
   }
 
   public KeyRange() {
@@ -185,9 +173,14 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     return new KeyRange(this);
   }
 
-  @Deprecated
-  public KeyRange clone() {
-    return new KeyRange(this);
+  @Override
+  public void clear() {
+    this.start_key = null;
+    this.end_key = null;
+    this.start_token = null;
+    this.end_token = null;
+    this.count = 100;
+
   }
 
   public String getStart_key() {
@@ -203,7 +196,7 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     this.start_key = null;
   }
 
-  /** Returns true if field start_key is set (has been asigned a value) and false otherwise */
+  /** Returns true if field start_key is set (has been assigned a value) and false otherwise */
   public boolean isSetStart_key() {
     return this.start_key != null;
   }
@@ -227,7 +220,7 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     this.end_key = null;
   }
 
-  /** Returns true if field end_key is set (has been asigned a value) and false otherwise */
+  /** Returns true if field end_key is set (has been assigned a value) and false otherwise */
   public boolean isSetEnd_key() {
     return this.end_key != null;
   }
@@ -251,7 +244,7 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     this.start_token = null;
   }
 
-  /** Returns true if field start_token is set (has been asigned a value) and false otherwise */
+  /** Returns true if field start_token is set (has been assigned a value) and false otherwise */
   public boolean isSetStart_token() {
     return this.start_token != null;
   }
@@ -275,7 +268,7 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     this.end_token = null;
   }
 
-  /** Returns true if field end_token is set (has been asigned a value) and false otherwise */
+  /** Returns true if field end_token is set (has been assigned a value) and false otherwise */
   public boolean isSetEnd_token() {
     return this.end_token != null;
   }
@@ -300,7 +293,7 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     __isset_bit_vector.clear(__COUNT_ISSET_ID);
   }
 
-  /** Returns true if field count is set (has been asigned a value) and false otherwise */
+  /** Returns true if field count is set (has been assigned a value) and false otherwise */
   public boolean isSetCount() {
     return __isset_bit_vector.get(__COUNT_ISSET_ID);
   }
@@ -354,10 +347,6 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     }
   }
 
-  public void setFieldValue(int fieldID, Object value) {
-    setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
-  }
-
   public Object getFieldValue(_Fields field) {
     switch (field) {
     case START_KEY:
@@ -379,12 +368,12 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     throw new IllegalStateException();
   }
 
-  public Object getFieldValue(int fieldId) {
-    return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
-  }
-
-  /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+  /** Returns true if field corresponding to fieldID is set (has been assigned a value) and false otherwise */
   public boolean isSet(_Fields field) {
+    if (field == null) {
+      throw new IllegalArgumentException();
+    }
+
     switch (field) {
     case START_KEY:
       return isSetStart_key();
@@ -398,10 +387,6 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
       return isSetCount();
     }
     throw new IllegalStateException();
-  }
-
-  public boolean isSet(int fieldID) {
-    return isSet(_Fields.findByThriftIdOrThrow(fieldID));
   }
 
   @Override
@@ -467,7 +452,34 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
 
   @Override
   public int hashCode() {
-    return 0;
+    HashCodeBuilder builder = new HashCodeBuilder();
+
+    boolean present_start_key = true && (isSetStart_key());
+    builder.append(present_start_key);
+    if (present_start_key)
+      builder.append(start_key);
+
+    boolean present_end_key = true && (isSetEnd_key());
+    builder.append(present_end_key);
+    if (present_end_key)
+      builder.append(end_key);
+
+    boolean present_start_token = true && (isSetStart_token());
+    builder.append(present_start_token);
+    if (present_start_token)
+      builder.append(start_token);
+
+    boolean present_end_token = true && (isSetEnd_token());
+    builder.append(present_end_token);
+    if (present_end_token)
+      builder.append(end_token);
+
+    boolean present_count = true;
+    builder.append(present_count);
+    if (present_count)
+      builder.append(count);
+
+    return builder.toHashCode();
   }
 
   public int compareTo(KeyRange other) {
@@ -482,7 +494,8 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetStart_key()) {      lastComparison = TBaseHelper.compareTo(start_key, typedOther.start_key);
+    if (isSetStart_key()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.start_key, typedOther.start_key);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -491,7 +504,8 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetEnd_key()) {      lastComparison = TBaseHelper.compareTo(end_key, typedOther.end_key);
+    if (isSetEnd_key()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.end_key, typedOther.end_key);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -500,7 +514,8 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetStart_token()) {      lastComparison = TBaseHelper.compareTo(start_token, typedOther.start_token);
+    if (isSetStart_token()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.start_token, typedOther.start_token);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -509,7 +524,8 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetEnd_token()) {      lastComparison = TBaseHelper.compareTo(end_token, typedOther.end_token);
+    if (isSetEnd_token()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.end_token, typedOther.end_token);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -518,7 +534,8 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    if (isSetCount()) {      lastComparison = TBaseHelper.compareTo(count, typedOther.count);
+    if (isSetCount()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.count, typedOther.count);
       if (lastComparison != 0) {
         return lastComparison;
       }
@@ -526,54 +543,58 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     return 0;
   }
 
-  public void read(TProtocol iprot) throws TException {
-    TField field;
+  public _Fields fieldForId(int fieldId) {
+    return _Fields.findByThriftId(fieldId);
+  }
+
+  public void read(org.apache.thrift.protocol.TProtocol iprot) throws org.apache.thrift.TException {
+    org.apache.thrift.protocol.TField field;
     iprot.readStructBegin();
     while (true)
     {
       field = iprot.readFieldBegin();
-      if (field.type == TType.STOP) { 
+      if (field.type == org.apache.thrift.protocol.TType.STOP) { 
         break;
       }
       switch (field.id) {
         case 1: // START_KEY
-          if (field.type == TType.STRING) {
+          if (field.type == org.apache.thrift.protocol.TType.STRING) {
             this.start_key = iprot.readString();
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         case 2: // END_KEY
-          if (field.type == TType.STRING) {
+          if (field.type == org.apache.thrift.protocol.TType.STRING) {
             this.end_key = iprot.readString();
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         case 3: // START_TOKEN
-          if (field.type == TType.STRING) {
+          if (field.type == org.apache.thrift.protocol.TType.STRING) {
             this.start_token = iprot.readString();
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         case 4: // END_TOKEN
-          if (field.type == TType.STRING) {
+          if (field.type == org.apache.thrift.protocol.TType.STRING) {
             this.end_token = iprot.readString();
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         case 5: // COUNT
-          if (field.type == TType.I32) {
+          if (field.type == org.apache.thrift.protocol.TType.I32) {
             this.count = iprot.readI32();
             setCountIsSet(true);
           } else { 
-            TProtocolUtil.skip(iprot, field.type);
+            org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
           }
           break;
         default:
-          TProtocolUtil.skip(iprot, field.type);
+          org.apache.thrift.protocol.TProtocolUtil.skip(iprot, field.type);
       }
       iprot.readFieldEnd();
     }
@@ -581,12 +602,12 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
 
     // check for required fields of primitive type, which can't be checked in the validate method
     if (!isSetCount()) {
-      throw new TProtocolException("Required field 'count' was not found in serialized data! Struct: " + toString());
+      throw new org.apache.thrift.protocol.TProtocolException("Required field 'count' was not found in serialized data! Struct: " + toString());
     }
     validate();
   }
 
-  public void write(TProtocol oprot) throws TException {
+  public void write(org.apache.thrift.protocol.TProtocol oprot) throws org.apache.thrift.TException {
     validate();
 
     oprot.writeStructBegin(STRUCT_DESC);
@@ -677,9 +698,27 @@ public class KeyRange implements TBase<KeyRange._Fields>, java.io.Serializable, 
     return sb.toString();
   }
 
-  public void validate() throws TException {
+  public void validate() throws org.apache.thrift.TException {
     // check for required fields
     // alas, we cannot check 'count' because it's a primitive and you chose the non-beans generator.
+  }
+
+  private void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
+    try {
+      write(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(out)));
+    } catch (org.apache.thrift.TException te) {
+      throw new java.io.IOException(te);
+    }
+  }
+
+  private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+    try {
+      // it doesn't seem like you should have to do this, but java serialization is wacky, and doesn't call the default constructor.
+      __isset_bit_vector = new BitSet(1);
+      read(new org.apache.thrift.protocol.TCompactProtocol(new org.apache.thrift.transport.TIOStreamTransport(in)));
+    } catch (org.apache.thrift.TException te) {
+      throw new java.io.IOException(te);
+    }
   }
 
 }

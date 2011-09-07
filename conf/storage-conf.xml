@@ -244,7 +244,22 @@
   <!-- Miscellaneous -->
 
   <!-- Time to wait for a reply from other nodes before failing the command -->
-  <RpcTimeoutInMillis>10000</RpcTimeoutInMillis>
+  <RpcTimeoutInMillis>2000</RpcTimeoutInMillis>
+  
+  <!-- 
+   ~    Type of the thrift server to use.
+   ~    sync - classic blocking io implementation with 1 thread per connection. 
+   ~            Works good for small number of client connections ( <2000 )
+   ~    hsha - NIO server with <processor cores> io threads and <RpcThreads> processor thread pools.
+   -->
+  <RpcServerType>hsha</RpcServerType>
+  <!-- 
+   ~    Number of threads in processing pool for hsha server.
+   ~    The default is <ConcurrentReaders> + <ConcurrentWriters>
+   ~    You can observe it in RPC-Threads tpstats and increase if neccessary
+   -->
+  <!-- RpcThreads>1024</RpcThreads -->
+.
   <!-- phi value that must be reached before a host is marked as down.
        most users should never adjust this -->
   <!-- PhiConvictThreshold>8</PhiConvictThreshold -->

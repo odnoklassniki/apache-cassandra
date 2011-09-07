@@ -42,6 +42,7 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.ColumnOrSuperColumn;
 import org.apache.cassandra.thrift.Deletion;
 import org.apache.cassandra.thrift.Mutation;
+import org.apache.cassandra.thrift.ThriftGlue;
 import org.apache.cassandra.utils.FBUtilities;
 
 public class RowMutation
@@ -284,13 +285,13 @@ public class RowMutation
                     assert cosc.super_column != null;
                     for (org.apache.cassandra.thrift.Column column : cosc.super_column.columns)
                     {
-                        rm.add(new QueryPath(cfName, cosc.super_column.name, column.name), column.value, column.timestamp);
+                        rm.add(new QueryPath(cfName, cosc.super_column.getName(), column.getName()), column.getValue(), column.timestamp);
                     }
                 }
                 else
                 {
                     assert cosc.super_column == null;
-                    rm.add(new QueryPath(cfName, null, cosc.column.name), cosc.column.value, cosc.column.timestamp);
+                    rm.add(new QueryPath(cfName, null, cosc.column.getName()), cosc.column.getValue(), cosc.column.timestamp);
                 }
             }
         }
@@ -319,12 +320,12 @@ public class RowMutation
         {
             for (org.apache.cassandra.thrift.Column column : cosc.super_column.columns)
             {
-                rm.add(new QueryPath(cfName, cosc.super_column.name, column.name), column.value, column.timestamp);
+                rm.add(new QueryPath(cfName, cosc.super_column.getName(), column.getName()), column.getValue(), column.timestamp);
             }
         }
         else
         {
-            rm.add(new QueryPath(cfName, null, cosc.column.name), cosc.column.value, cosc.column.timestamp);
+            rm.add(new QueryPath(cfName, null, cosc.column.getName()), cosc.column.getValue(), cosc.column.timestamp);
         }
     }
 
@@ -332,17 +333,17 @@ public class RowMutation
     {
         if (del.predicate != null && del.predicate.column_names != null)
         {
-            for(byte[] c : del.predicate.column_names)
+            for(byte[] c : ThriftGlue.toBytes(del.predicate.column_names) )
             {
                 if (del.super_column == null && DatabaseDescriptor.getColumnFamilyType(rm.table_, cfName).equals("Super"))
                     rm.delete(new QueryPath(cfName, c), del.timestamp);
                 else
-                    rm.delete(new QueryPath(cfName, del.super_column, c), del.timestamp);
+                    rm.delete(new QueryPath(cfName, del.getSuper_column(), c), del.timestamp);
             }
         }
         else
         {
-            rm.delete(new QueryPath(cfName, del.super_column), del.timestamp);
+            rm.delete(new QueryPath(cfName, del.getSuper_column()), del.timestamp);
         }
     }
 }

@@ -34,6 +34,7 @@ import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.dht.*;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.SliceRange;
+import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class Util
 {
@@ -83,7 +84,7 @@ public class Util
         return cfs.getRangeSlice(ArrayUtils.EMPTY_BYTE_ARRAY,
                                  new Bounds(min, min),
                                  10000,
-                                 new SliceRange(ArrayUtils.EMPTY_BYTE_ARRAY, ArrayUtils.EMPTY_BYTE_ARRAY, false, 10000),
+                                 new SliceRange(ByteBufferUtil.EMPTY_BYTE_BUFFER, ByteBufferUtil.EMPTY_BYTE_BUFFER, false, 10000),
                                  null);
     }
 

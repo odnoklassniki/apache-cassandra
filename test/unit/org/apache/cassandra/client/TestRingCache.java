@@ -18,6 +18,7 @@
 package org.apache.cassandra.client;
 
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.apache.cassandra.thrift.Cassandra;
@@ -99,9 +100,9 @@ public class TestRingCache
 
             // now, read the row back directly from the host owning the row locally
             setup(endPoints.get(0).getHostAddress(), DatabaseDescriptor.getThriftPort());
-            thriftClient.insert(table, row, col, "val1".getBytes(), 1, ConsistencyLevel.ONE);
+            thriftClient.insert(table, row, col, ByteBuffer.wrap("val1".getBytes()), 1, ConsistencyLevel.ONE);
             Column column=thriftClient.get(table, row, col, ConsistencyLevel.ONE).column;
-            System.out.println("read row " + row + " " + new String(column.name) + ":" + new String(column.value) + ":" + column.timestamp);
+            System.out.println("read row " + row + " " + new String(column.getName()) + ":" + new String(column.getValue()) + ":" + column.timestamp);
         }
 
         System.exit(1);

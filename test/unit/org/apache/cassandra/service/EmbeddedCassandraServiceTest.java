@@ -23,6 +23,7 @@ import static org.junit.Assert.assertNotNull;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
 
 import org.apache.cassandra.thrift.Cassandra;
 import org.apache.cassandra.thrift.ColumnOrSuperColumn;
@@ -91,7 +92,7 @@ public class EmbeddedCassandraServiceTest
         cp.setColumn("name".getBytes("utf-8"));
 
         // insert
-        client.insert("Keyspace1", key_user_id, cp, "Ran".getBytes("UTF-8"),
+        client.insert("Keyspace1", key_user_id, cp, ByteBuffer.wrap("Ran".getBytes("UTF-8")),
                 timestamp, ConsistencyLevel.ONE);
 
         // read

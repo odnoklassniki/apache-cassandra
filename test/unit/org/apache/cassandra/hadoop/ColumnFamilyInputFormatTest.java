@@ -29,6 +29,8 @@ import java.util.List;
 import org.junit.Test;
 
 import org.apache.cassandra.thrift.SlicePredicate;
+import org.apache.cassandra.thrift.ThriftGlue;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.hadoop.conf.Configuration;
 
@@ -40,8 +42,8 @@ public class ColumnFamilyInputFormatTest
         long columnValue = 1271253600000l;
         byte[] columnBytes = FBUtilities.toByteArray(columnValue);
 
-        List<byte[]> columnNames = new ArrayList<byte[]>();
-        columnNames.add(columnBytes);
+        List<ByteBuffer> columnNames = new ArrayList<ByteBuffer>();
+        columnNames.add( ByteBuffer.wrap(columnBytes) );
         SlicePredicate originalPredicate = new SlicePredicate().setColumn_names(columnNames);
 
         Configuration conf = new Configuration();
@@ -49,6 +51,6 @@ public class ColumnFamilyInputFormatTest
 
         SlicePredicate rtPredicate = ConfigHelper.getSlicePredicate(conf);
         assert rtPredicate.column_names.size() == 1;
-        assert Arrays.equals(originalPredicate.column_names.get(0), rtPredicate.column_names.get(0));
+        assert originalPredicate.column_names.get(0).equals(rtPredicate.column_names.get(0));
     }
 }

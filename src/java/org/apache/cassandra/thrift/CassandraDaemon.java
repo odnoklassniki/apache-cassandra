@@ -22,8 +22,10 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.text.MessageFormat;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -33,8 +35,12 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 
 import org.apache.cassandra.concurrent.DebuggableThreadPoolExecutor;
+import org.apache.cassandra.concurrent.JMXConfigurableThreadPoolExecutor;
+import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
+import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.config.DatabaseDescriptor.RpcServerTypes;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
@@ -45,9 +51,14 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.thrift.TProcessorFactory;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
+import org.apache.thrift.server.TNonblockingServer;
 import org.apache.thrift.server.TServer;
+import org.apache.thrift.server.TThreadPoolServer;
 import org.apache.thrift.transport.TFramedTransport;
+import org.apache.thrift.transport.TNonblockingServerSocket;
+import org.apache.thrift.transport.TNonblockingServerTransport;
 import org.apache.thrift.transport.TServerSocket;
+import org.apache.thrift.transport.TServerTransport;
 import org.apache.thrift.transport.TTransportException;
 import org.apache.thrift.transport.TTransportFactory;
 
@@ -130,80 +141,96 @@ public class CassandraDaemon
             System.exit(1);
         }
 
+        // init thrift server
+        initThrift(listenAddr, listenPort);
+    }
+    
+    private void initThrift(InetAddress listenAddr, int listenPort)
+    {
         // now we start listening for clients
         final CassandraServer cassandraServer = new CassandraServer();
         Cassandra.Processor processor = new Cassandra.Processor(cassandraServer);
 
         // Transport
-        TServerSocket tServerSocket = new TServerSocket(new InetSocketAddress(listenAddr, listenPort));
-        
         logger.info(String.format("Binding thrift service to %s:%s", listenAddr, listenPort));
 
         // Protocol factory
-        TProtocolFactory tProtocolFactory = new TBinaryProtocol.Factory();
-        
+        TProtocolFactory tProtocolFactory = new TBinaryProtocol.Factory(true, true, DatabaseDescriptor.getThriftMaxMessageLength());
+
         // Transport factory
-        TTransportFactory inTransportFactory, outTransportFactory;
-        if (DatabaseDescriptor.isThriftFramed())
-        {
-            inTransportFactory = new TFramedTransport.Factory();
-            outTransportFactory = new TFramedTransport.Factory();
-            
+        int tFramedTransportSize = DatabaseDescriptor.getThriftFramedTransportSize();
+        TTransportFactory inTransportFactory = new TFramedTransport.Factory(tFramedTransportSize);
+        TTransportFactory outTransportFactory = new TFramedTransport.Factory(tFramedTransportSize);
+        logger.info(String.format("Using TFramedTransport with a max frame size of %d bytes.", tFramedTransportSize));
+
+        if (DatabaseDescriptor.getRpcServerType()==RpcServerTypes.sync)
+        {                
+            TServerTransport serverTransport;
+            try
+            {
+                serverTransport = new TServerSocket(new InetSocketAddress(listenAddr, listenPort));
+            } 
+            catch (TTransportException e)
+            {
+                throw new RuntimeException(String.format("Unable to create thrift socket to %s:%s", listenAddr, listenPort), e);
+            }
+            // ThreadPool Server and will be invocation per connection basis...
+            TThreadPoolServer.Args serverArgs = new TThreadPoolServer.Args(serverTransport)
+            .minWorkerThreads(DatabaseDescriptor.getRpcThreads())
+            .maxWorkerThreads(Integer.MAX_VALUE)
+            .inputTransportFactory(inTransportFactory)
+            .outputTransportFactory(outTransportFactory)
+            .inputProtocolFactory(tProtocolFactory)
+            .outputProtocolFactory(tProtocolFactory)
+            .processor(processor);
+            ExecutorService executorService = new JMXEnabledThreadPoolExecutor(serverArgs.minWorkerThreads, serverArgs.maxWorkerThreads,
+                    60,
+                    TimeUnit.SECONDS,
+                    new SynchronousQueue<Runnable>(),
+                    new NamedThreadFactory("RPC-Thread")
+                    )
+            {
+                @Override
+                public void afterExecute(Runnable r, Throwable t)
+                {
+                    super.afterExecute(r, t);
+                    cassandraServer.logout();
+                }
+            };
+
+            serverEngine = new CustomTThreadPoolServer(serverArgs, executorService);
+            logger.info(String.format("Using synchronous/threadpool thrift server on %s : %s", listenAddr, listenPort));
         }
         else
         {
-            inTransportFactory = new TTransportFactory();
-            outTransportFactory = new TTransportFactory();
+            // async hsha server init
+            TNonblockingServerTransport serverTransport;
+            try
+            {
+                serverTransport = new TNonblockingServerSocket(new InetSocketAddress(listenAddr, listenPort));
+            } 
+            catch (TTransportException e)
+            {
+                throw new RuntimeException(String.format("Unable to create thrift socket to %s:%s", listenAddr, listenPort), e);
+            }
+
+            // This is NIO selector service but the invocation will be Multi-Threaded with the Executor service.
+            ExecutorService executorService = new JMXConfigurableThreadPoolExecutor(DatabaseDescriptor.getRpcThreads(),
+                    DatabaseDescriptor.getRpcThreads(),
+                    DatabaseDescriptor.getRpcTimeout(), 
+                    TimeUnit.MILLISECONDS,
+                    new LinkedBlockingQueue<Runnable>(), 
+                    new NamedThreadFactory("RPC-Thread"));
+
+            TNonblockingServer.Args serverArgs = new TNonblockingServer.Args(serverTransport).inputTransportFactory(inTransportFactory)
+                    .outputTransportFactory(outTransportFactory)
+                    .inputProtocolFactory(tProtocolFactory)
+                    .outputProtocolFactory(tProtocolFactory)
+                    .processor(processor);
+            logger.info(String.format("Using custom half-sync/half-async thrift server on %s : %s with %d processing threads", listenAddr, listenPort, DatabaseDescriptor.getRpcThreads()));
+            // Check for available processors in the system which will be equal to the IO Threads.
+            serverEngine = new CustomTHsHaServer(serverArgs, executorService, Runtime.getRuntime().availableProcessors());
         }
-
-
-        // ThreadPool Server
-        CustomTThreadPoolServer.Options options = new CustomTThreadPoolServer.Options();
-        options.minWorkerThreads = 64;
-
-        SynchronousQueue<Runnable> executorQueue = new SynchronousQueue<Runnable>();
-
-        ExecutorService executorService = new ThreadPoolExecutor(options.minWorkerThreads,
-                                                                 options.maxWorkerThreads,
-                                                                 60,
-                                                                 TimeUnit.SECONDS,
-                                                                 executorQueue)
-        {
-            @Override
-            protected void afterExecute(Runnable r, Throwable t)
-            {
-                super.afterExecute(r, t);
-                DebuggableThreadPoolExecutor.logExceptionsAfterExecute(r, t);
-                cassandraServer.logout();
-            }
-        };
-        
-        options.acceptorThreads = DatabaseDescriptor.getConcurrentAcceptors();
-        ExecutorService acceptorService = Executors.newFixedThreadPool(options.acceptorThreads, new ThreadFactory()
-        {
-            int count=0;
-            
-            @Override
-            public Thread newThread(Runnable runnable)
-            {
-                Thread t = new Thread(runnable,"THRIFT-ACCEPTOR-"+(++count));
-                t.setDaemon(true);
-                t.setPriority(Thread.MAX_PRIORITY);
-                
-                return t;
-            }
-        });
-        
-        serverEngine = new CustomTThreadPoolServer(new TProcessorFactory(processor),
-                                             tServerSocket,
-                                             inTransportFactory,
-                                             outTransportFactory,
-                                             tProtocolFactory,
-                                             tProtocolFactory,
-                                             options,
-                                             executorService,
-                                             acceptorService
-                                             );
     }
 
     /** hook for JSVC */
@@ -215,7 +242,7 @@ public class CassandraDaemon
     /** hook for JSVC */
     public void start()
     {
-        logger.info("Cassandra starting up...");
+        logger.info("Cassandra thrift server starting up...");
         serverEngine.serve();
     }
 
@@ -224,7 +251,7 @@ public class CassandraDaemon
     {
         // this doesn't entirely shut down Cassandra, just the Thrift server.
         // jsvc takes care of taking the rest down
-        logger.info("Cassandra shutting down...");
+        logger.info("Cassandra thrift server shutting down...");
         serverEngine.stop();
     }
     

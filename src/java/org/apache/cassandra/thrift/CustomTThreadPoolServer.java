@@ -21,21 +21,17 @@ package org.apache.cassandra.thrift;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.antlr.gunit.swingui.AwAdapter;
 import org.apache.thrift.TException;
 import org.apache.thrift.TProcessor;
-import org.apache.thrift.TProcessorFactory;
 import org.apache.thrift.protocol.TProtocol;
-import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.server.TServer;
-import org.apache.thrift.transport.TServerSocket;
+import org.apache.thrift.server.TThreadPoolServer;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
-import org.apache.thrift.transport.TTransportFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -53,45 +49,23 @@ public class CustomTThreadPoolServer extends TServer
 
     // Executor service for handling client connections
     private ExecutorService executorService_;
-    private ExecutorService acceptorsService_;
 
     // Flag for stopping the server
     private volatile boolean stopped_;
 
     // Server options
-    private Options options_;
+    private TThreadPoolServer.Args args;
 
-    // Customizable server options
-    public static class Options
-    {
-        public int minWorkerThreads = 5;
-        public int maxWorkerThreads = Integer.MAX_VALUE;
-        public int stopTimeoutVal = 60;
-        public TimeUnit stopTimeoutUnit = TimeUnit.SECONDS;
-        public int acceptorThreads = 1;
-    }
-
-
-    public CustomTThreadPoolServer(TProcessorFactory tProcessorFactory,
-                                   TServerSocket tServerSocket,
-                                   TTransportFactory inTransportFactory,
-                                   TTransportFactory outTransportFactory,
-                                   TProtocolFactory tProtocolFactory,
-                                   TProtocolFactory tProtocolFactory2,
-                                   Options options,
-                                   ExecutorService executorService,
-                                   ExecutorService acceptorService
-                                   )
-    {
-
-        super(tProcessorFactory, tServerSocket, inTransportFactory, outTransportFactory,
-              tProtocolFactory, tProtocolFactory2);
-        options_ = options;
+    //Track and Limit the number of connected clients
+    private final AtomicInteger activeClients = new AtomicInteger(0);
+    
+    
+    public CustomTThreadPoolServer(TThreadPoolServer.Args args, ExecutorService executorService) {
+        super(args);
         executorService_ = executorService;
-        acceptorsService_ = acceptorService;
+        this.args = args;
     }
-
-
+    
     public void serve()
     {
         try
@@ -105,26 +79,47 @@ public class CustomTThreadPoolServer extends TServer
         }
 
         stopped_ = false;
-        
-        for (int i=options_.acceptorThreads;i-->0;)
-            acceptorsService_.submit(new AcceptorRunnable());
-        
+        while (!stopped_)
+        {
+            // block until we are under max clients
+            while (activeClients.get() >= args.maxWorkerThreads)
+            {
+                try
+                {
+                    Thread.sleep(100);
+                }
+                catch (InterruptedException e)
+                {
+                    throw new AssertionError(e);
+                }
+            }
 
-        acceptorsService_.shutdown();
-        
-        try {
-            while (!acceptorsService_.awaitTermination(60, TimeUnit.MINUTES));
-        } catch (InterruptedException e) {
-            LOGGER.error("Interrupted on acceptors service",e);
+            try
+            {
+                TTransport client = serverTransport_.accept();
+                activeClients.incrementAndGet();
+                WorkerProcess wp = new WorkerProcess(client);
+                executorService_.execute(wp);
+            }
+            catch (TTransportException ttx)
+            {
+                if (!stopped_)
+                {
+                    LOGGER.warn("Transport error occurred during acceptance of message.", ttx);
+                }
+            }
+
+            if (activeClients.get() >= args.maxWorkerThreads)
+                LOGGER.warn("Maximum number of clients " + args.maxWorkerThreads + " reached");
         }
-        
+
         executorService_.shutdown();
 
         // Loop until awaitTermination finally does return without a interrupted
         // exception. If we don't do this, then we'll shut down prematurely. We want
         // to let the executorService clear it's task queue, closing client sockets
         // appropriately.
-        long timeoutMS = options_.stopTimeoutUnit.toMillis(options_.stopTimeoutVal);
+        long timeoutMS = args.stopTimeoutUnit.toMillis(args.stopTimeoutVal);
         long now = System.currentTimeMillis();
         while (timeoutMS >= 0)
         {
@@ -187,6 +182,8 @@ public class CustomTThreadPoolServer extends TServer
                 // down. this is necessary for graceful shutdown.
                 while (!stopped_ && processor.process(inputProtocol, outputProtocol))
                 {
+                    inputProtocol = inputProtocolFactory_.getProtocol(inputTransport);
+                    outputProtocol = outputProtocolFactory_.getProtocol(outputTransport);
                 }
             }
             catch (TTransportException ttx)
@@ -201,6 +198,10 @@ public class CustomTThreadPoolServer extends TServer
             {
                 LOGGER.error("Error occurred during processing of message.", x);
             }
+            finally
+            {
+                activeClients.decrementAndGet();
+            }
 
             if (inputTransport != null)
             {
@@ -211,36 +212,6 @@ public class CustomTThreadPoolServer extends TServer
             {
                 outputTransport.close();
             }
-        }
-    }
-    
-    class AcceptorRunnable implements Runnable
-    {
-        /* (non-Javadoc)
-         * @see java.lang.Runnable#run()
-         */
-        @Override
-        public void run()
-        {
-            while (!stopped_)
-            {
-                int failureCount = 0;
-                try
-                {
-                    TTransport client = serverTransport_.accept();
-                    WorkerProcess wp = new WorkerProcess(client);
-                    executorService_.execute(wp);
-                }
-                catch (TTransportException ttx)
-                {
-                    if (!stopped_)
-                    {
-                        ++failureCount;
-                        LOGGER.warn("Transport error occurred during acceptance of message.", ttx);
-                    }
-                }
-            }
-            
         }
     }
 }

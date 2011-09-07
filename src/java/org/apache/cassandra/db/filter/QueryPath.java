@@ -24,12 +24,14 @@ package org.apache.cassandra.db.filter;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 import org.apache.commons.lang.ArrayUtils;
 
 import org.apache.cassandra.db.ColumnSerializer;
 import org.apache.cassandra.thrift.ColumnParent;
 import org.apache.cassandra.thrift.ColumnPath;
+import org.apache.cassandra.utils.ByteBufferUtil;
 
 public class QueryPath
 {
@@ -46,7 +48,7 @@ public class QueryPath
 
     public QueryPath(ColumnParent columnParent)
     {
-        this(columnParent.column_family, columnParent.super_column, null);
+        this(columnParent.column_family, columnParent.getSuper_column(), null);
     }
 
     public QueryPath(String columnFamilyName, byte[] superColumnName)
@@ -61,8 +63,9 @@ public class QueryPath
 
     public QueryPath(ColumnPath column_path)
     {
-        this(column_path.column_family, column_path.super_column, column_path.column);
+        this(column_path.column_family, column_path.getSuper_column(), column_path.getColumn());
     }
+
 
     public static QueryPath column(byte[] columnName)
     {

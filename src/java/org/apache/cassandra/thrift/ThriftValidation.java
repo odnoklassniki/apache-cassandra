@@ -20,8 +20,10 @@ package org.apache.cassandra.thrift;
  * 
  */
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamily;
@@ -33,6 +35,7 @@ import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 
 import static org.apache.cassandra.thrift.ThriftGlue.createColumnParent;
@@ -46,10 +49,13 @@ public class ThriftValidation
         {
             throw new InvalidRequestException("Key may not be empty");
         }
-        // check that writeUTF will be able to handle it -- encoded length must fit in 2 bytes
-        int utflen = FBUtilities.encodedUTF8Length(key);
-        if (utflen > 65535)
-            throw new InvalidRequestException("Encoded key length of " + utflen + " is longer than maximum of 65535");
+        if (key.length()>65535/3)
+        {
+            // check that writeUTF will be able to handle it -- encoded length must fit in 2 bytes
+            int utflen = FBUtilities.encodedUTF8Length(key);
+            if (utflen > 65535)
+                throw new InvalidRequestException("Encoded key length of " + utflen + " is longer than maximum of 65535");
+        }
     }
 
     private static void validateTable(String tablename) throws KeyspaceNotDefinedException
@@ -96,13 +102,48 @@ public class ThriftValidation
         }
         if (column_path.column != null)
         {
-            validateColumns(tablename, column_path.column_family, column_path.super_column, Arrays.asList(column_path.column));
+            validateColumns(tablename, column_path.column_family, cfType, column_path.super_column, Arrays.asList(column_path.column));
         }
         if (column_path.super_column != null)
         {
-            validateColumns(tablename, column_path.column_family, null, Arrays.asList(column_path.super_column));
+            validateColumns(tablename, column_path.column_family, cfType, null, Arrays.asList(column_path.super_column));
         }
     }
+
+    
+    /**
+     * Validates the column names but not the parent path or data
+     */
+    private static void validateColumns(String table,String cf,String cfType, ByteBuffer superColumnName, Iterable<ByteBuffer> column_names)
+            throws InvalidRequestException
+    {
+        if (superColumnName != null)
+        {
+            if (superColumnName.remaining() > IColumn.MAX_NAME_LENGTH)
+                throw new InvalidRequestException("supercolumn name length must not be greater than " + IColumn.MAX_NAME_LENGTH);
+            if (superColumnName.remaining() == 0)
+                throw new InvalidRequestException("supercolumn name must not be empty");
+            if (cfType.equals("Standard"))
+                throw new InvalidRequestException("supercolumn specified to ColumnFamily " + cf + " containing normal columns");
+        }
+        AbstractType comparator = ColumnFamily.getComparatorFor(table, cf , superColumnName==null ? null : ByteBufferUtil.getArray(superColumnName) );
+        for (ByteBuffer name : column_names)
+        {
+            if (name.remaining() > IColumn.MAX_NAME_LENGTH)
+                throw new InvalidRequestException("column name length must not be greater than " + IColumn.MAX_NAME_LENGTH);
+            if (name.remaining() == 0)
+                throw new InvalidRequestException("column name must not be empty");
+            try
+            {
+                comparator.validate(ByteBufferUtil.getArray(name) );
+            }
+            catch (MarshalException e)
+            {
+                throw new InvalidRequestException(e.getMessage());
+            }
+        }
+    }
+
 
     static void validateColumnParent(String tablename, ColumnParent column_parent) throws InvalidRequestException
     {
@@ -117,7 +158,7 @@ public class ThriftValidation
         }
         if (column_parent.super_column != null)
         {
-            validateColumns(tablename, column_parent.column_family, null, Arrays.asList(column_parent.super_column));
+            validateColumns(tablename, column_parent.column_family, cfType , null, Arrays.asList(column_parent.super_column));
         }
     }
 
@@ -142,11 +183,11 @@ public class ThriftValidation
         }
         if (column_path_or_parent.column != null)
         {
-            validateColumns(tablename, column_path_or_parent.column_family, column_path_or_parent.super_column, Arrays.asList(column_path_or_parent.column));
+            validateColumns(tablename, column_path_or_parent.column_family, cfType, column_path_or_parent.super_column, Arrays.asList(column_path_or_parent.column));
         }
         if (column_path_or_parent.super_column != null)
         {
-            validateColumns(tablename, column_path_or_parent.column_family, null, Arrays.asList(column_path_or_parent.super_column));
+            validateColumns(tablename, column_path_or_parent.column_family, cfType, null, Arrays.asList(column_path_or_parent.super_column));
         }
     }
 
@@ -180,18 +221,19 @@ public class ThriftValidation
         }
     }
 
-    public static void validateColumns(String keyspace, ColumnParent column_parent, Iterable<byte[]> column_names) throws InvalidRequestException
-    {
-        validateColumns(keyspace, column_parent.column_family, column_parent.super_column, column_names);
-    }
+//    public static void validateColumns(String keyspace, ColumnParent column_parent, Iterable<byte[]> column_names) throws InvalidRequestException
+//    {
+//        String cfType = validateColumnFamily(tablename, column_parent.column_family);
+//        validateColumns(keyspace, column_parent.column_family, cfType, column_parent.super_column, column_names);
+//    }
 
     public static void validateRange(String keyspace, ColumnParent column_parent, SliceRange range) throws InvalidRequestException
     {
-        AbstractType comparator = ColumnFamily.getComparatorFor(keyspace, column_parent.column_family, column_parent.super_column);
+        AbstractType comparator = ColumnFamily.getComparatorFor(keyspace, column_parent.column_family, ByteBufferUtil.getArray(column_parent.super_column) );
         try
         {
-            comparator.validate(range.start);
-            comparator.validate(range.finish);
+            comparator.validate( wrap(range.start) );
+            comparator.validate( wrap(range.finish) );
         }
         catch (MarshalException e)
         {
@@ -202,12 +244,17 @@ public class ThriftValidation
             throw new InvalidRequestException("get_slice requires non-negative count");
 
         Comparator<byte[]> orderedComparator = range.isReversed() ? comparator.getReverseComparator() : comparator;
-        if (range.start.length > 0
-            && range.finish.length > 0
-            && orderedComparator.compare(range.start, range.finish) > 0)
+        if (range.start.remaining() > 0
+            && range.finish.remaining() > 0
+            && orderedComparator.compare( wrap(range.start), wrap(range.finish) ) > 0)
         {
             throw new InvalidRequestException("range finish must come after start in the order of traversal");
         }
+    }
+
+    private static byte[] wrap(ByteBuffer buf)
+    {
+        return ByteBufferUtil.getArray(buf);
     }
 
     public static void validateColumnOrSuperColumn(String keyspace, String cfName, ColumnOrSuperColumn cosc)
@@ -269,7 +316,7 @@ public class ThriftValidation
         }
     }
 
-    public static void validateSlicePredicate(String keyspace, String cfName, byte[] scName, SlicePredicate predicate) throws InvalidRequestException
+    public static void validateSlicePredicate(String keyspace, String cfName, ByteBuffer scName, SlicePredicate predicate) throws InvalidRequestException
     {
         if (predicate.column_names == null && predicate.slice_range == null)
             throw new InvalidRequestException("A SlicePredicate must be given a list of Columns, a SliceRange, or both");
@@ -278,7 +325,7 @@ public class ThriftValidation
             validateRange(keyspace, createColumnParent(cfName, scName), predicate.slice_range);
 
         if (predicate.column_names != null)
-            validateColumns(keyspace, cfName, scName, predicate.column_names);
+            validateColumns(keyspace, cfName, DatabaseDescriptor.getColumnFamilyType(keyspace, cfName) , scName, predicate.column_names);
     }
 
     public static void validatePredicate(String keyspace, ColumnParent column_parent, SlicePredicate predicate)
@@ -293,6 +340,18 @@ public class ThriftValidation
             validateRange(keyspace, column_parent, predicate.slice_range);
         else
             validateColumns(keyspace, column_parent, predicate.column_names);
+    }
+
+    /**
+     * @param keyspace
+     * @param column_parent
+     * @param column_names
+     * @throws InvalidRequestException 
+     */
+    private static void validateColumns(String keyspace,
+            ColumnParent column_parent, List<ByteBuffer> column_names) throws InvalidRequestException
+    {
+        validateColumns(keyspace, column_parent.column_family, DatabaseDescriptor.getColumnFamilyType(keyspace, column_parent.column_family) , column_parent.super_column, column_names);
     }
 
     public static void validateKeyRange(KeyRange range) throws InvalidRequestException
