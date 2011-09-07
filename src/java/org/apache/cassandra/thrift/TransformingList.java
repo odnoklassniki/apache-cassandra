@@ -31,6 +31,8 @@ public class TransformingList<SourceElement,TargetElement> implements List<Targe
     public TransformingList(List<SourceElement> source,
             Transformer<SourceElement, TargetElement> transformer)
     {
+        assert source != null && transformer!=null;
+        
         this.source = source;
         this.transformer = transformer;
     }

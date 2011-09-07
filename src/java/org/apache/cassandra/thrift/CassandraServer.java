@@ -289,9 +289,8 @@ public class CassandraServer implements Cassandra.Iface
     {
         ThriftValidation.validateColumnPath(table, column_path);
 
-        byte[] columnPath = ThriftGlue.columnPath(column_path);
-        QueryPath path = new QueryPath(column_path.column_family, columnPath );
-        List<byte[]> nameAsList = Arrays.asList( columnPath );
+        QueryPath path = new QueryPath(column_path.column_family, !column_path.isSetColumn() ? null : column_path.getSuper_column());
+        List<byte[]> nameAsList = Arrays.asList( ThriftGlue.columnPath(column_path) );
         List<ReadCommand> commands = new ArrayList<ReadCommand>();
         for (String key: keys)
         {

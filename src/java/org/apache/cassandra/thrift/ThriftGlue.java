@@ -107,6 +107,9 @@ public class ThriftGlue
     
     public static List<byte[]> toBytes(List<ByteBuffer> list)
     {
+        if (list==null)
+            return null;
+        
         return new TransformingList<ByteBuffer, byte[]>(list, new Transformer<ByteBuffer, byte[]>()
         {
             /* (non-Javadoc)

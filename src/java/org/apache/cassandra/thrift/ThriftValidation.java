@@ -229,7 +229,7 @@ public class ThriftValidation
 
     public static void validateRange(String keyspace, ColumnParent column_parent, SliceRange range) throws InvalidRequestException
     {
-        AbstractType comparator = ColumnFamily.getComparatorFor(keyspace, column_parent.column_family, ByteBufferUtil.getArray(column_parent.super_column) );
+        AbstractType comparator = ColumnFamily.getComparatorFor(keyspace, column_parent.column_family, column_parent.super_column == null ? null : ByteBufferUtil.getArray(column_parent.super_column) );
         try
         {
             comparator.validate( wrap(range.start) );
