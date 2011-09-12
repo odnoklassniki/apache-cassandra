@@ -84,7 +84,7 @@ public abstract class SSTable
         return indexFilename(path);
     }
 
-    protected static String compactedFilename(String dataFile)
+    public static String compactedFilename(String dataFile)
     {
         String[] parts = dataFile.split("-");
         parts[parts.length - 1] = "Compacted";

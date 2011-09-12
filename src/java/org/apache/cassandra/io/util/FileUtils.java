@@ -19,11 +19,13 @@
 package org.apache.cassandra.io.util;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.util.Comparator;
 import java.util.List;
 
+import org.apache.cassandra.io.SSTable;
 import org.apache.log4j.Logger;
 
 
@@ -160,5 +162,111 @@ public class FileUtils
 
         // The directory is now empty so now it can be smoked
         deleteWithConfirm(dir);
+    }
+    
+    /**
+     * 
+     * @param dir
+     * @param mask
+     * @return number of bytes occupied by data, index, not counting compacted files
+     */
+    public static long occupiedLiveDataSpace(File dir )
+    {
+        File[] files = dir.listFiles(new SuffixFileFilter("-Data.db","-Index.db"));
+        long occupied = 0;
+        
+        for (File file : files) 
+        {
+            if (new File(SSTable.compactedFilename(file.getAbsolutePath())).exists())
+            {
+//                logger_.info("Skipping compacted data "+file);
+                continue; // this file is compacted and should not be accounted (will never read)
+            }
+            
+            occupied+=file.length();
+        }
+        
+        return occupied;
+    }
+    
+    public static class SuffixFileFilter implements FilenameFilter {
+        
+        /** The filename suffixes to search for */
+        private String[] suffixes;
+
+        /**
+         * Constructs a new Suffix file filter for a single extension.
+         * 
+         * @param suffix  the suffix to allow, must not be null
+         * @throws IllegalArgumentException if the suffix is null
+         */
+        public SuffixFileFilter(String suffix) {
+            if (suffix == null) {
+                throw new IllegalArgumentException("The suffix must not be null");
+            }
+            this.suffixes = new String[] {suffix};
+        }
+
+        /**
+         * Constructs a new Suffix file filter for an array of suffixs.
+         * <p>
+         * The array is not cloned, so could be changed after constructing the
+         * instance. This would be inadvisable however.
+         * 
+         * @param suffixes  the suffixes to allow, must not be null
+         * @throws IllegalArgumentException if the suffix array is null
+         */
+        public SuffixFileFilter(String... suffixes) {
+            if (suffixes == null) {
+                throw new IllegalArgumentException("The array of suffixes must not be null");
+            }
+            this.suffixes = suffixes;
+        }
+
+        /**
+         * Constructs a new Suffix file filter for a list of suffixes.
+         * 
+         * @param suffixes  the suffixes to allow, must not be null
+         * @throws IllegalArgumentException if the suffix list is null
+         * @throws ClassCastException if the list does not contain Strings
+         */
+        public SuffixFileFilter(List suffixes) {
+            if (suffixes == null) {
+                throw new IllegalArgumentException("The list of suffixes must not be null");
+            }
+            this.suffixes = (String[]) suffixes.toArray(new String[suffixes.size()]);
+        }
+
+        /**
+         * Checks to see if the filename ends with the suffix.
+         * 
+         * @param file  the File to check
+         * @return true if the filename ends with one of our suffixes
+         */
+        public boolean accept(File file) {
+            String name = file.getName();
+            for (int i = 0; i < this.suffixes.length; i++) {
+                if (name.endsWith(this.suffixes[i])) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        /**
+         * Checks to see if the filename ends with the suffix.
+         * 
+         * @param file  the File directory
+         * @param name  the filename
+         * @return true if the filename ends with one of our suffixes
+         */
+        public boolean accept(File file, String name) {
+            for (int i = 0; i < this.suffixes.length; i++) {
+                if (name.endsWith(this.suffixes[i])) {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }
