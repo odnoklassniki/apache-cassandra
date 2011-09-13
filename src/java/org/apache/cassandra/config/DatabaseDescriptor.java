@@ -26,8 +26,6 @@ import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
-
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
 import javax.xml.xpath.XPathExpressionException;
@@ -37,7 +35,6 @@ import org.apache.log4j.Logger;
 import org.apache.cassandra.auth.AllowAllAuthenticator;
 import org.apache.cassandra.auth.IAuthenticator;
 import org.apache.cassandra.db.ColumnFamily;
-import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
@@ -49,7 +46,6 @@ import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.OdklDomainPartitioner;
 import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.io.SSTable;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.DynamicEndpointSnitch;
@@ -91,9 +87,6 @@ public class DatabaseDescriptor
     private static Set<InetAddress> seeds = new HashSet<InetAddress>();
     /* Keeps the list of data file directories */
     private static String[] dataFileDirectories;
-    /** occupied space by directory **/
-    private static long[] dataDirectoryOccupiedSpace;
-    
     /* Current index into the above list of directories */
     private static int currentIndex = 0;
     private static String logFileDirectory;
@@ -1012,7 +1005,7 @@ public class DatabaseDescriptor
             
             for ( String dataFileDirectory : dataFileDirectories )
                 FileUtils.createDirectory(dataFileDirectory);
-
+            
             if (logFileDirectory == null)
             {
                 throw new ConfigurationException("CommitLogDirectory must be specified");
@@ -1350,7 +1343,6 @@ public class DatabaseDescriptor
     	return cfType;
     }
 
-    
     /*
      * Loop through all the disks to see which disk has the max free space
      * return the disk with max free space for compactions. If the size of the expected
@@ -1359,78 +1351,32 @@ public class DatabaseDescriptor
      */
     public static String getDataFileLocationForTable(String table, long expectedCompactedFileSize)
     {
-        long minOccupiedFiles = Long.MAX_VALUE;
-        int minOccupiedDiskIndex = -1;
-        String dataFileDirectory = null;
-        String[] dataDirectoryForTable = getAllDataFileLocationsForTable(table);
-        
+      long maxFreeDisk = 0;
+      int maxDiskIndex = 0;
+      String dataFileDirectory = null;
+      String[] dataDirectoryForTable = getAllDataFileLocationsForTable(table);
 
-        refreshOccupiedSpace();
-
-        long[] occupiedSpace = dataDirectoryOccupiedSpace;
-        
-        if (occupiedSpace==null)
+      for ( int i = 0 ; i < dataDirectoryForTable.length ; i++ )
+      {
+        File f = new File(dataDirectoryForTable[i]);
+        if( maxFreeDisk < f.getUsableSpace())
         {
-            // race condition. trying to continue without occupation info
-            occupiedSpace = new long[dataFileDirectories.length];
+          maxFreeDisk = f.getUsableSpace();
+          maxDiskIndex = i;
         }
-
-        for ( int i = 0 ; i < dataDirectoryForTable.length ; i++ )
-        {
-            File f = new File(dataDirectoryForTable[i]);
-
-            // Load factor of 0.9 we do not want to use the entire disk that is too risky.
-            if (expectedCompactedFileSize+expectedCompactedFileSize/10 < f.getUsableSpace())
-            {
-                // this disk has enough room to host new file
-                if( minOccupiedFiles > occupiedSpace[i])
-                {
-                    minOccupiedFiles = occupiedSpace[i];
-                    minOccupiedDiskIndex = i;
-                }
-            }
-        }
-        if( minOccupiedDiskIndex >= 0 )
-        {
-            dataFileDirectory = dataDirectoryForTable[minOccupiedDiskIndex];
-            currentIndex = (minOccupiedDiskIndex + 1 )%dataDirectoryForTable.length ;
-        }
-        else
-        {
-            currentIndex = 0;
-        }
-
+      }
+      // Load factor of 0.9 we do not want to use the entire disk that is too risky.
+      maxFreeDisk = (long)(0.9 * maxFreeDisk);
+      if( expectedCompactedFileSize < maxFreeDisk )
+      {
+        dataFileDirectory = dataDirectoryForTable[maxDiskIndex];
+        currentIndex = (maxDiskIndex + 1 )%dataDirectoryForTable.length ;
+      }
+      else
+      {
+        currentIndex = maxDiskIndex;
+      }
         return dataFileDirectory;
-    }
-    
-    private static AtomicLong dataDirectoryLastRefresh = new AtomicLong();
-    
-    private static void refreshOccupiedSpace()
-    {
-        long l = dataDirectoryLastRefresh.get();
-        if (System.currentTimeMillis()-10000>l && dataDirectoryLastRefresh.compareAndSet(l, System.currentTimeMillis()))
-        {
-            long[] occupiedTable = new long[dataFileDirectories.length];
-            for (Table t : Table.all() )
-            {
-                String[] locationsForTable = getAllDataFileLocationsForTable(t.name);
-                
-                for (int i=0;i<locationsForTable.length;i++)
-                {
-                    occupiedTable[i]+=FileUtils.occupiedLiveDataSpace(new File(locationsForTable[i]) );
-                }
-            }
-            
-            dataDirectoryOccupiedSpace = occupiedTable;
-            
-            StringBuilder sb = new StringBuilder();
-            
-            for (long m : occupiedTable) {
-                sb.append(FileUtils.stringifyFileSize(m)).append(' ');
-            }
-            
-            logger.info("Refreshed live occupied spaces: "+sb);
-        }
     }
     
     public static AbstractType getComparator(String tableName, String cfName)
