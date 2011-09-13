@@ -26,6 +26,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 import javax.management.MBeanServer;
@@ -122,6 +123,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     private static IPartitioner partitioner_ = DatabaseDescriptor.getPartitioner();
 
     public static final StorageService instance = new StorageService();
+    
+    private AtomicLong recentReadRepairs = new AtomicLong();
 
     public static IPartitioner getPartitioner() {
         return partitioner_;
@@ -283,6 +286,33 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         Gossiper.instance.stop();
         MessagingService.shutdown();
         StageManager.shutdownNow();
+    }
+    
+    public  void setConsistencyCheckProbability( float p )
+    {
+        DatabaseDescriptor.setConsistencyCheckProbability(p);
+    }
+
+    public  float getConsistencyCheckProbability( )
+    {
+        return DatabaseDescriptor.getConsistencyCheckProbability() ;
+    }
+    
+    /**
+     * @return the recentReadRepairs
+     */
+    public long getRecentReadRepairs()
+    {
+        long l = recentReadRepairs.get();
+        
+        recentReadRepairs.set(0);
+        
+        return l;
+    }
+    
+    public void countReadRepair()
+    {
+        recentReadRepairs.incrementAndGet();
     }
 
     public synchronized void initClient() throws IOException

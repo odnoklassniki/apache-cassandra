@@ -125,7 +125,7 @@ public class DatabaseDescriptor
      * If set to false the read repairs are disable for very
      * high throughput on reads but at the cost of consistency.
     */
-    private static boolean doConsistencyCheck = true;
+    private static float doConsistencyCheck = 1.0f;
     /* Job Jar Location */
     private static String jobJarFileLocation;
     /* Address where to run the job tracker */
@@ -529,7 +529,7 @@ public class DatabaseDescriptor
              * high throughput on reads but at the cost of consistency.*/
             String doConsistency = xmlUtils.getNodeValue("/Storage/DoConsistencyChecksBoolean");
             if ( doConsistency != null )
-                doConsistencyCheck = Boolean.parseBoolean(doConsistency);
+                doConsistencyCheck = Boolean.parseBoolean(doConsistency) ? 1.0f : 0.0f;
 
             /* read the size at which we should do column indexes */
             String columnIndexSize = xmlUtils.getNodeValue("/Storage/ColumnIndexSizeInKB");
@@ -1143,10 +1143,28 @@ public class DatabaseDescriptor
     {
         DatabaseDescriptor.memtableOperations = memtableOperations;
     }
+    
+    private static Random consistencyRandom = new Random();
 
     public static boolean getConsistencyCheck()
     {
-      return doConsistencyCheck;
+        if (doConsistencyCheck==1.0f)
+            return true;
+
+        if (doConsistencyCheck==0.0f)
+            return false;
+
+        return consistencyRandom.nextFloat() < doConsistencyCheck;
+    }
+    
+    public static void setConsistencyCheckProbability( float p )
+    {
+        doConsistencyCheck = p;
+    }
+
+    public static float getConsistencyCheckProbability( )
+    {
+        return doConsistencyCheck ;
     }
 
     public static String getClusterName()

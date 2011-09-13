@@ -214,4 +214,19 @@ public interface StorageServiceMBean
      *   a mapping from "token -> %age of cluster owned by that token"
      */
     public Map<Token, Float> getOwnership();
+
+    /**
+     * @return
+     */
+    float getConsistencyCheckProbability();
+
+    /**
+     * @param p
+     */
+    void setConsistencyCheckProbability(float p);
+
+    /**
+     * @return
+     */
+    long getRecentReadRepairs();
 }

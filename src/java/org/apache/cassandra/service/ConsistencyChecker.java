@@ -142,6 +142,8 @@ public class ConsistencyChecker implements Runnable
                     }
 
                     repairInvoked = true;
+                    
+                    StorageService.instance.countReadRepair();
                 }
             }
             catch (Exception e)
