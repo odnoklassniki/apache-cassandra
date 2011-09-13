@@ -1351,32 +1351,23 @@ public class DatabaseDescriptor
      */
     public static String getDataFileLocationForTable(String table, long expectedCompactedFileSize)
     {
-      long maxFreeDisk = 0;
-      int maxDiskIndex = 0;
-      String dataFileDirectory = null;
-      String[] dataDirectoryForTable = getAllDataFileLocationsForTable(table);
+        int diskIndex = -1;
+        String[] dataDirectoryForTable = getAllDataFileLocationsForTable(table);
 
-      for ( int i = 0 ; i < dataDirectoryForTable.length ; i++ )
-      {
-        File f = new File(dataDirectoryForTable[i]);
-        if( maxFreeDisk < f.getUsableSpace())
+        for ( int i = 0 ; i < dataDirectoryForTable.length ; i++ )
         {
-          maxFreeDisk = f.getUsableSpace();
-          maxDiskIndex = i;
+            currentIndex = ( currentIndex + 1 ) % dataDirectoryForTable.length ;
+
+            File f = new File(dataDirectoryForTable[currentIndex]);
+            // Load factor of 0.9 we do not want to use the entire disk that is too risky.
+            if( expectedCompactedFileSize+expectedCompactedFileSize/10 < f.getUsableSpace())
+            {
+                diskIndex = currentIndex;
+                break;
+            }
         }
-      }
-      // Load factor of 0.9 we do not want to use the entire disk that is too risky.
-      maxFreeDisk = (long)(0.9 * maxFreeDisk);
-      if( expectedCompactedFileSize < maxFreeDisk )
-      {
-        dataFileDirectory = dataDirectoryForTable[maxDiskIndex];
-        currentIndex = (maxDiskIndex + 1 )%dataDirectoryForTable.length ;
-      }
-      else
-      {
-        currentIndex = maxDiskIndex;
-      }
-        return dataFileDirectory;
+        
+        return diskIndex >=0 ? dataDirectoryForTable[diskIndex] : null;
     }
     
     public static AbstractType getComparator(String tableName, String cfName)
