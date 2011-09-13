@@ -1,5 +1,6 @@
 package org.apache.cassandra.tools;
 
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.CassandraDaemon;
 import org.slf4j.Logger;
@@ -85,6 +86,15 @@ public class WrapperMain implements WrapperListener
     {
         WrapperManager.signalStopping(30000);
         daemon.stop();
+        
+        // making pause before proceeding, so all thrift clients 
+        // go to failover node
+        WrapperManager.signalStopping((int) (DatabaseDescriptor.getRpcTimeout()*3));
+        try {
+            Thread.sleep(DatabaseDescriptor.getRpcTimeout()*2);
+        } catch (InterruptedException e1) {
+            logger.error("Hm",e1);
+        }
         
         WrapperManager.signalStopping(300000);
         try {
