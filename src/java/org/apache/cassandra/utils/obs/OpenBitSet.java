@@ -76,7 +76,12 @@ Test system: AMD Opteron, 64 bit linux, Sun Java 1.5_06 -server -Xbatch -Xmx64M
 public class OpenBitSet implements Serializable {
   protected long[][] bits;
   protected int wlen;   // number of words (elements) used in the array
-  protected int pageSize; // length of bits[][] page in long[] elements. Both dimensions are equal.
+  /**
+   * length of bits[][] page in long[] elements. 
+   * Choosing unform size for all sizes of bitsets fight fragmentation for very large
+   * bloom filters (2G and more)
+   */
+  protected static final int PAGE_SIZE= 4096; 
 
   /** Constructs an OpenBitSet large enough to hold numBits.
    *
@@ -90,14 +95,13 @@ public class OpenBitSet implements Serializable {
   public OpenBitSet(long numBits, boolean allocatePages) 
   {
     wlen= bits2words(numBits);    
-    pageSize = pageSize(wlen);
     
-    bits = new long[pageSize][];
+    bits = new long[PAGE_SIZE][];
     
     if (allocatePages)
     {
-        for (int allocated=0,i=0;allocated<wlen;allocated+=pageSize,i++)
-            bits[i]=new long[pageSize];
+        for (int allocated=0,i=0;allocated<wlen;allocated+=PAGE_SIZE,i++)
+            bits[i]=new long[PAGE_SIZE];
     }
   }
 
@@ -110,12 +114,12 @@ public class OpenBitSet implements Serializable {
    */
   public int getPageSize()
   {
-      return pageSize;
+      return PAGE_SIZE;
   }
   
   public int getPageCount()
   {
-      return wlen / pageSize + 1;
+      return wlen / PAGE_SIZE + 1;
   }
 
   public long[] getPage(int pageIdx)
@@ -177,7 +181,7 @@ public class OpenBitSet implements Serializable {
     int bit = index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
     // TODO perfectionist one can implement this using bit operations
-    return (bits[i / pageSize ][i % pageSize] & bitmask) != 0;
+    return (bits[i / PAGE_SIZE ][i % PAGE_SIZE] & bitmask) != 0;
   }
 
 
@@ -191,7 +195,7 @@ public class OpenBitSet implements Serializable {
     int bit = index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
     // TODO perfectionist one can implement this using bit operations
-    return (bits[i / pageSize][i % pageSize ] & bitmask) != 0;
+    return (bits[i / PAGE_SIZE][i % PAGE_SIZE ] & bitmask) != 0;
   }
 
 
@@ -204,7 +208,7 @@ public class OpenBitSet implements Serializable {
     int bit = (int)index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
     // TODO perfectionist one can implement this using bit operations
-    return (bits[i / pageSize][i % pageSize ] & bitmask) != 0;
+    return (bits[i / PAGE_SIZE][i % PAGE_SIZE ] & bitmask) != 0;
   }
 
   /** Returns true or false for the specified bit index.
@@ -215,7 +219,7 @@ public class OpenBitSet implements Serializable {
     int bit = (int)index & 0x3f;           // mod 64
     long bitmask = 1L << bit;
     // TODO perfectionist one can implement this using bit operations
-    return (bits[i / pageSize][i % pageSize ] & bitmask) != 0;
+    return (bits[i / PAGE_SIZE][i % PAGE_SIZE ] & bitmask) != 0;
   }
 
   /*
@@ -237,7 +241,7 @@ public class OpenBitSet implements Serializable {
   public int getBit(int index) {
     int i = index >> 6;                // div 64
     int bit = index & 0x3f;            // mod 64
-    return ((int)(bits[i / pageSize][i % pageSize ]>>>bit)) & 0x01;
+    return ((int)(bits[i / PAGE_SIZE][i % PAGE_SIZE ]>>>bit)) & 0x01;
   }
 
 
@@ -255,7 +259,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = expandingWordNum(index);
     int bit = (int)index & 0x3f;
     long bitmask = 1L << bit;
-    bits[ wordNum / pageSize ][ wordNum % pageSize ] |= bitmask;
+    bits[ wordNum / PAGE_SIZE ][ wordNum % PAGE_SIZE ] |= bitmask;
   }
 
 
@@ -266,7 +270,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[ wordNum / pageSize ][ wordNum % pageSize ] |= bitmask;
+    bits[ wordNum / PAGE_SIZE ][ wordNum % PAGE_SIZE ] |= bitmask;
   }
 
  /** Sets the bit at the specified index.
@@ -276,7 +280,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = (int)(index >> 6);
     int bit = (int)index & 0x3f;
     long bitmask = 1L << bit;
-    bits[ wordNum / pageSize ][ wordNum % pageSize ] |= bitmask;
+    bits[ wordNum / PAGE_SIZE ][ wordNum % PAGE_SIZE ] |= bitmask;
   }
 
   /** Sets a range of bits, expanding the set size if necessary
@@ -297,15 +301,15 @@ public class OpenBitSet implements Serializable {
     long endmask = -1L >>> -endIndex;  // 64-(endIndex&0x3f) is the same as -endIndex due to wrap
 
     if (startWord == endWord) {
-      bits[startWord / pageSize][startWord % pageSize] |= (startmask & endmask);
+      bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] |= (startmask & endmask);
       return;
     }
 
-    assert startWord / pageSize == endWord / pageSize : "cross page sets not suppotred at all - they are not used";
+    assert startWord / PAGE_SIZE == endWord / PAGE_SIZE : "cross page sets not suppotred at all - they are not used";
 
-    bits[startWord / pageSize][startWord % pageSize] |= startmask;
-    Arrays.fill(bits[ startWord / pageSize], (startWord+1) % pageSize , endWord % pageSize , -1L);
-    bits[endWord / pageSize][endWord % pageSize] |= endmask;
+    bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] |= startmask;
+    Arrays.fill(bits[ startWord / PAGE_SIZE], (startWord+1) % PAGE_SIZE , endWord % PAGE_SIZE , -1L);
+    bits[endWord / PAGE_SIZE][endWord % PAGE_SIZE] |= endmask;
   }
 
 
@@ -327,7 +331,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = index >> 6;
     int bit = index & 0x03f;
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] &= ~bitmask;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] &= ~bitmask;
     // hmmm, it takes one more instruction to clear than it does to set... any
     // way to work around this?  If there were only 63 bits per word, we could
     // use a right shift of 10111111...111 in binary to position the 0 in the
@@ -344,7 +348,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = (int)(index >> 6); // div 64
     int bit = (int)index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] &= ~bitmask;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] &= ~bitmask;
   }
 
   /** clears a bit, allowing access beyond the current set size without changing the size.*/
@@ -353,7 +357,7 @@ public class OpenBitSet implements Serializable {
     if (wordNum>=wlen) return;
     int bit = (int)index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] &= ~bitmask;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] &= ~bitmask;
   }
 
   /** Clears a range of bits.  Clearing past the end does not change the size of the set.
@@ -379,24 +383,24 @@ public class OpenBitSet implements Serializable {
     endmask = ~endmask;
 
     if (startWord == endWord) {
-      bits[startWord / pageSize][startWord % pageSize] &= (startmask | endmask);
+      bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] &= (startmask | endmask);
       return;
     }
     
 
-    bits[startWord / pageSize][startWord % pageSize]  &= startmask;
+    bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE]  &= startmask;
 
     int middle = Math.min(wlen, endWord);
-    if (startWord / pageSize == middle / pageSize)
+    if (startWord / PAGE_SIZE == middle / PAGE_SIZE)
     {
-        Arrays.fill(bits[startWord/pageSize], (startWord+1) % pageSize, middle % pageSize, 0L);
+        Arrays.fill(bits[startWord/PAGE_SIZE], (startWord+1) % PAGE_SIZE, middle % PAGE_SIZE, 0L);
     } else
     {
         while (++startWord<middle)
-            bits[startWord / pageSize][startWord % pageSize] = 0L;
+            bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] = 0L;
     }
     if (endWord < wlen) {
-      bits[endWord / pageSize][endWord % pageSize] &= endmask;
+      bits[endWord / PAGE_SIZE][endWord % PAGE_SIZE] &= endmask;
     }
   }
 
@@ -424,23 +428,23 @@ public class OpenBitSet implements Serializable {
     endmask = ~endmask;
 
     if (startWord == endWord) {
-        bits[startWord / pageSize][startWord % pageSize] &= (startmask | endmask);
+        bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] &= (startmask | endmask);
         return;
     }
 
-    bits[startWord / pageSize][startWord % pageSize]  &= startmask;
+    bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE]  &= startmask;
 
     int middle = Math.min(wlen, endWord);
-    if (startWord / pageSize == middle / pageSize)
+    if (startWord / PAGE_SIZE == middle / PAGE_SIZE)
     {
-        Arrays.fill(bits[startWord/pageSize], (startWord+1) % pageSize, middle % pageSize, 0L);
+        Arrays.fill(bits[startWord/PAGE_SIZE], (startWord+1) % PAGE_SIZE, middle % PAGE_SIZE, 0L);
     } else
     {
         while (++startWord<middle)
-            bits[startWord / pageSize][startWord % pageSize] = 0L;
+            bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] = 0L;
     }
     if (endWord < wlen) {
-        bits[endWord / pageSize][endWord % pageSize] &= endmask;
+        bits[endWord / PAGE_SIZE][endWord % PAGE_SIZE] &= endmask;
     }
   }
 
@@ -453,8 +457,8 @@ public class OpenBitSet implements Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    boolean val = (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
-    bits[wordNum / pageSize][wordNum % pageSize] |= bitmask;
+    boolean val = (bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] & bitmask) != 0;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] |= bitmask;
     return val;
   }
 
@@ -465,8 +469,8 @@ public class OpenBitSet implements Serializable {
     int wordNum = (int)(index >> 6);      // div 64
     int bit = (int)index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    boolean val = (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
-    bits[wordNum / pageSize][wordNum % pageSize] |= bitmask;
+    boolean val = (bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] & bitmask) != 0;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] |= bitmask;
     return val;
   }
 
@@ -477,7 +481,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] ^= bitmask;
   }
 
   /** flips a bit.
@@ -487,7 +491,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = (int)(index >> 6);   // div 64
     int bit = (int)index & 0x3f;       // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] ^= bitmask;
   }
 
   /** flips a bit, expanding the set size if necessary */
@@ -495,7 +499,7 @@ public class OpenBitSet implements Serializable {
     int wordNum = expandingWordNum(index);
     int bit = (int)index & 0x3f;       // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] ^= bitmask;
   }
 
   /** flips a bit and returns the resulting bit value.
@@ -505,8 +509,8 @@ public class OpenBitSet implements Serializable {
     int wordNum = index >> 6;      // div 64
     int bit = index & 0x3f;     // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
-    return (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] ^= bitmask;
+    return (bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] & bitmask) != 0;
   }
 
   /** flips a bit and returns the resulting bit value.
@@ -516,8 +520,8 @@ public class OpenBitSet implements Serializable {
     int wordNum = (int)(index >> 6);   // div 64
     int bit = (int)index & 0x3f;       // mod 64
     long bitmask = 1L << bit;
-    bits[wordNum / pageSize][wordNum % pageSize] ^= bitmask;
-    return (bits[wordNum / pageSize][wordNum % pageSize] & bitmask) != 0;
+    bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] ^= bitmask;
+    return (bits[wordNum / PAGE_SIZE][wordNum % PAGE_SIZE] & bitmask) != 0;
   }
 
   /** Flips a range of bits, expanding the set size if necessary
@@ -544,17 +548,17 @@ public class OpenBitSet implements Serializable {
     long endmask = -1L >>> -endIndex;  // 64-(endIndex&0x3f) is the same as -endIndex due to wrap
 
     if (startWord == endWord) {
-      bits[startWord / pageSize][startWord % pageSize] ^= (startmask & endmask);
+      bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] ^= (startmask & endmask);
       return;
     }
 
-    bits[startWord / pageSize][startWord % pageSize] ^= startmask;
+    bits[startWord / PAGE_SIZE][startWord % PAGE_SIZE] ^= startmask;
 
     for (int i=startWord+1; i<endWord; i++) {
-      bits[i / pageSize][ i % pageSize] = ~bits[i / pageSize][ i % pageSize];
+      bits[i / PAGE_SIZE][ i % PAGE_SIZE] = ~bits[i / PAGE_SIZE][ i % PAGE_SIZE];
     }
 
-    bits[endWord / pageSize][endWord % pageSize] ^= endmask;
+    bits[endWord / PAGE_SIZE][endWord % PAGE_SIZE] ^= endmask;
   }
 
 
@@ -651,14 +655,14 @@ public class OpenBitSet implements Serializable {
     int i = index>>6;
     if (i>=wlen) return -1;
     int subIndex = index & 0x3f;      // index within the word
-    long word = bits[i / pageSize][ i % pageSize] >> subIndex;  // skip all the bits to the right of index
+    long word = bits[i / PAGE_SIZE][ i % PAGE_SIZE] >> subIndex;  // skip all the bits to the right of index
 
     if (word!=0) {
       return (i<<6) + subIndex + BitUtil.ntz(word);
     }
 
     while(++i < wlen) {
-      word = bits[i / pageSize][i % pageSize];
+      word = bits[i / PAGE_SIZE][i % PAGE_SIZE];
       if (word!=0) return (i<<6) + BitUtil.ntz(word);
     }
 
@@ -672,14 +676,14 @@ public class OpenBitSet implements Serializable {
     int i = (int)(index>>>6);
     if (i>=wlen) return -1;
     int subIndex = (int)index & 0x3f; // index within the word
-    long word = bits[i / pageSize][i % pageSize] >>> subIndex;  // skip all the bits to the right of index
+    long word = bits[i / PAGE_SIZE][i % PAGE_SIZE] >>> subIndex;  // skip all the bits to the right of index
 
     if (word!=0) {
       return (((long)i)<<6) + (subIndex + BitUtil.ntz(word));
     }
 
     while(++i < wlen) {
-      word = bits[i / pageSize][i % pageSize];
+      word = bits[i / PAGE_SIZE][i % PAGE_SIZE];
       if (word!=0) return (((long)i)<<6) + BitUtil.ntz(word);
     }
 
@@ -706,8 +710,8 @@ public class OpenBitSet implements Serializable {
     int newLen= Math.min(this.wlen,other.wlen);
     long[][] thisArr = this.bits;
     long[][] otherArr = other.bits;
-    int thisPageSize = this.pageSize;
-    int otherPageSize = other.pageSize;
+    int thisPageSize = this.PAGE_SIZE;
+    int otherPageSize = other.PAGE_SIZE;
     // testing against zero can be more efficient
     int pos=newLen;
     while(--pos>=0) {
@@ -827,47 +831,13 @@ public class OpenBitSet implements Serializable {
    */
   public void trimTrailingZeros() {
     int idx = wlen-1;
-    while (idx>=0 && bits[idx / pageSize][idx % pageSize]==0) idx--;
+    while (idx>=0 && bits[idx / PAGE_SIZE][idx % PAGE_SIZE]==0) idx--;
     wlen = idx+1;
   }
 
   /** returns the number of 64 bit words it would take to hold numBits */
   public static int bits2words(long numBits) {
    return (int)(((numBits-1)>>>6)+1);
-  }
-
-  /**
-   * Decides what should be page size of this bitset matrix. 
-   * Because long and pointer are both 64 bit we want to have equal
-   * number of rows and columns, rounded up to nearest power of 2. 
-   * roundup is necessary to lower number of random free continuous memory
-   * lengths and lower heap fragmentation.
-   * 
-   * This way arrays in use for row storage and columns are of equal sizes.
-   * 
-   * @param numWords number of long words 
-   * @return page size, not less than 4K
-   */
-  public static int pageSize(int numWords)
-  {
-      int page=(int) Math.sqrt(numWords);
-      if (page<=4096)
-          return 4096; // dont create very small arrays. so bitset will use 8K minimum
-      
-      // roundup to next power of 2
-      if ( (page & (page-1)) !=0 ) // only if it is not power of 2 yet
-      {
-          // http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
-          page--;
-          page |= page >> 1;
-          page |= page >> 2;
-          page |= page >> 4;
-          page |= page >> 8;
-          page |= page >> 16;
-          page++;
-      }
-      
-      return page;
   }
 
   /** returns true if both sets have the same bits set */
@@ -884,8 +854,8 @@ public class OpenBitSet implements Serializable {
       a=this;
     }
     
-    int aPageSize = this.pageSize;
-    int bPageSize = b.pageSize;
+    int aPageSize = this.PAGE_SIZE;
+    int bPageSize = b.PAGE_SIZE;
 
     // check for any set bits out of the range of b
     for (int i=a.wlen-1; i>=b.wlen; i--) {
@@ -906,7 +876,7 @@ public class OpenBitSet implements Serializable {
     // This effectively truncates trailing zeros without an explicit check.
     long h = 0;
     for (int i = wlen; --i>=0;) {
-      h ^= bits[i / pageSize][i % pageSize];
+      h ^= bits[i / PAGE_SIZE][i % PAGE_SIZE];
       h = (h << 1) | (h >>> 63); // rotate left
     }
     // fold leftmost bits into right and add a constant to prevent
