@@ -96,7 +96,7 @@ public class OpenBitSet implements Serializable {
   {
     wlen= bits2words(numBits);    
     
-    bits = new long[PAGE_SIZE][];
+    bits = new long[getPageCount()][];
     
     if (allocatePages)
     {
