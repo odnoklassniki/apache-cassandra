@@ -27,6 +27,7 @@ import org.apache.log4j.Logger;
 
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
+import org.apache.cassandra.service.StorageService;
 
 public class ReadRepairVerbHandler implements IVerbHandler
 {
@@ -41,7 +42,9 @@ public class ReadRepairVerbHandler implements IVerbHandler
         {
             RowMutationMessage rmMsg = RowMutationMessage.serializer().deserialize(new DataInputStream(buffer));
             RowMutation rm = rmMsg.getRowMutation();
-            rm.apply();                                   
+            rm.apply();     
+            
+            StorageService.instance.countReadRepair();
         }
         catch (IOException e)
         {

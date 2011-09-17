@@ -161,6 +161,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     private boolean initialized;
     private String operationMode;
 
+    private AtomicLong recentReadRepairs = new AtomicLong();
+
     public void addBootstrapSource(InetAddress s, String table)
     {
         if (logger_.isDebugEnabled())
@@ -982,6 +984,20 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     {
         return FileUtils.stringifyFileSize(getLoad());
     }
+
+    /**
+     * @return the recentReadRepairs
+     */
+    public long getRecentReadRepairs()
+    {
+        return recentReadRepairs.getAndSet(0);
+    }
+    
+    public void countReadRepair()
+    {
+        recentReadRepairs.incrementAndGet();
+    }
+
 
     public Map<String, String> getLoadMap()
     {

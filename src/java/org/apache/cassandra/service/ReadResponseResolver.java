@@ -195,6 +195,8 @@ public class ReadResponseResolver implements IResponseResolver<Row>
                 throw new IOError(e);
             }
             MessagingService.instance.sendOneWay(repairMessage, endPoints.get(i));
+            
+            StorageProxy.countReadRepair();
         }
     }
 
