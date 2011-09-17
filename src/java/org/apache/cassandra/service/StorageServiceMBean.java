@@ -224,9 +224,4 @@ public interface StorageServiceMBean
      * @param p
      */
     void setConsistencyCheckProbability(float p);
-
-    /**
-     * @return
-     */
-    long getRecentReadRepairs();
 }

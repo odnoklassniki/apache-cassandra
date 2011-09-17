@@ -126,6 +126,15 @@ public class DatabaseDescriptor
      * high throughput on reads but at the cost of consistency.
     */
     private static float doConsistencyCheck = 1.0f;
+    
+    /**
+     * MM: Should weak reads be submitted in parallel to all natural endpoints and
+     * served as soon as 1st data response arrived.
+     * This differs from default behaviour, which reads data from local node, requesting digests only from
+     * remotes. This leads to read response spikes if local node is slow at the moment.
+     */
+    private static boolean parallelWeakRead = true;
+    
     /* Job Jar Location */
     private static String jobJarFileLocation;
     /* Address where to run the job tracker */
@@ -1165,6 +1174,19 @@ public class DatabaseDescriptor
     public static float getConsistencyCheckProbability( )
     {
         return doConsistencyCheck ;
+    }
+    
+    public static boolean getParallelWeakRead()
+    {
+        return parallelWeakRead;
+    }
+    
+    /**
+     * @param parallelWeakRead the parallelWeakRead to set
+     */
+    public static void setParallelWeakRead(boolean parallelWeakRead)
+    {
+        DatabaseDescriptor.parallelWeakRead = parallelWeakRead;
     }
 
     public static String getClusterName()

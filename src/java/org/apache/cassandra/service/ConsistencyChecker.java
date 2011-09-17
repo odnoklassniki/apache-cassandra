@@ -143,7 +143,7 @@ public class ConsistencyChecker implements Runnable
 
                     repairInvoked = true;
                     
-                    StorageService.instance.countReadRepair();
+                    StorageProxy.countReadRepair();
                 }
             }
             catch (Exception e)

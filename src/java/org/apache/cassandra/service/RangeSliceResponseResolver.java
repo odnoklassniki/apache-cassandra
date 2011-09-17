@@ -52,6 +52,12 @@ public class RangeSliceResponseResolver implements IResponseResolver<List<Row>>
         this.sources = sources;
         this.partitioner = partitioner;
     }
+    
+    public List<Row> resolve(Message response) throws IOException
+    {
+        RangeSliceReply reply = RangeSliceReply.read(response.getMessageBody());
+        return reply.rows;
+    }
 
     public List<Row> resolve(Collection<Message> responses) throws DigestMismatchException, IOException
     {
@@ -66,10 +72,11 @@ public class RangeSliceResponseResolver implements IResponseResolver<List<Row>>
         int n = 0;
         for (Message response : responses)
         {
-            RangeSliceReply reply = RangeSliceReply.read(response.getMessageBody());
-            n = Math.max(n, reply.rows.size());
-            collator.addIterator(new RowIterator(reply.rows.iterator(), response.getFrom()));
+            List<Row> rows = resolve(response);
+            n = Math.max(n, rows.size());
+            collator.addIterator(new RowIterator(rows.iterator(), response.getFrom()));
         }
+        
 
         // for each row, compute the combination of all different versions seen, and repair incomplete versions
         ReducingIterator<Pair<Row,InetAddress>, Row> iter = new ReducingIterator<Pair<Row,InetAddress>, Row>(collator)

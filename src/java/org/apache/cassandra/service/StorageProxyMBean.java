@@ -72,6 +72,34 @@ public interface StorageProxyMBean
      * @return
      */
     long getTotalLaggedHints();
+    /**
+     * @return
+     */
+    boolean getParallelWeakRead();
+    /**
+     * @param parallelWeakRead
+     */
+    void setParallelWeakRead(boolean parallelWeakRead);
+    /**
+     * @return
+     */
+    long getRecentWeakReadsLocal();
+    /**
+     * @return
+     */
+    long getRecentWeakReadsRemote();
+    /**
+     * @return
+     */
+    long getRecentWeakConsistencyAll();
+    /**
+     * @return
+     */
+    long getRecentWeakConsistencyUnder();
+    /**
+     * @return
+     */
+    long getRecentReadRepairs();
     
     
 }

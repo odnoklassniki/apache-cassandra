@@ -23,14 +23,21 @@ import java.io.DataInputStream;
 import java.io.IOError;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.*;
-
-import org.apache.log4j.Logger;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.*;
+import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ReadResponse;
+import org.apache.cassandra.db.Row;
+import org.apache.cassandra.db.RowMutation;
+import org.apache.cassandra.db.RowMutationMessage;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
+import org.apache.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 /**
@@ -42,7 +49,7 @@ public class ReadResponseResolver implements IResponseResolver<Row>
 	private static Logger logger_ = Logger.getLogger(ReadResponseResolver.class);
     private final String table;
     private final int responseCount;
-    private final Map<Message, ReadResponse> results = new NonBlockingHashMap<Message, ReadResponse>();
+    private final Map<InetAddress, ReadResponse> results = new NonBlockingHashMap<InetAddress, ReadResponse>();
     private String key;
 
     public ReadResponseResolver(String table, String key, int responseCount)
@@ -53,6 +60,25 @@ public class ReadResponseResolver implements IResponseResolver<Row>
         this.responseCount = responseCount;
         this.table = table;
         this.key = key;
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.service.IResponseResolver#resolve(org.apache.cassandra.net.Message)
+     */
+    @Override
+    public Row resolve(Message message) throws IOException
+    {
+        ReadResponse result = parseResponse(message);
+        return result.row();
+    }
+
+    public ReadResponse parseResponse(Message message) throws IOException
+    {
+        byte[] body = message.getMessageBody();
+        ByteArrayInputStream bufIn = new ByteArrayInputStream(body);
+
+        ReadResponse result = ReadResponse.serializer().deserialize(new DataInputStream(bufIn));
+        return result;
     }
 
     /*
@@ -80,7 +106,7 @@ public class ReadResponseResolver implements IResponseResolver<Row>
         */
 		for (Message message : responses)
 		{
-            ReadResponse result = results.get(message);
+            ReadResponse result = results.get(message.getFrom());
             if (result == null)
                 continue; // arrived after quorum already achieved
             if (result.isDigestQuery())
@@ -117,6 +143,16 @@ public class ReadResponseResolver implements IResponseResolver<Row>
                 logger_.debug("digests verified");
         }
 
+        ColumnFamily resolved = resolve(versions, endPoints);
+
+        if (logger_.isDebugEnabled())
+            logger_.debug("resolve: " + (System.currentTimeMillis() - startTime) + " ms.");
+        
+        return new Row(key, resolved);
+	}
+
+    public ColumnFamily resolve(List<ColumnFamily> versions, List<InetAddress> endPoints)
+    {
         ColumnFamily resolved;
         if (versions.size() > 1)
         {
@@ -130,10 +166,8 @@ public class ReadResponseResolver implements IResponseResolver<Row>
             resolved = versions.get(0);
         }
 
-        if (logger_.isDebugEnabled())
-            logger_.debug("resolve: " + (System.currentTimeMillis() - startTime) + " ms.");
-		return new Row(key, resolved);
-	}
+		return resolved;
+    }
 
     /**
      * For each row version, compare with resolved (the superset of all row versions);
@@ -187,12 +221,10 @@ public class ReadResponseResolver implements IResponseResolver<Row>
 
     public void preprocess(Message message)
     {
-        byte[] body = message.getMessageBody();
-        ByteArrayInputStream bufIn = new ByteArrayInputStream(body);
         try
         {
-            ReadResponse result = ReadResponse.serializer().deserialize(new DataInputStream(bufIn));
-            results.put(message, result);
+            ReadResponse result = parseResponse(message);
+            results.put(message.getFrom(), result);
         }
         catch (IOException e)
         {
@@ -203,7 +235,17 @@ public class ReadResponseResolver implements IResponseResolver<Row>
     /** hack so ConsistencyChecker doesn't have to serialize/deserialize an extra real Message */
     public void injectPreProcessed(Message message, ReadResponse result)
     {
-        results.put(message, result);
+        results.put(message.getFrom(), result);
+    }
+
+    /**
+     * @param endpoint
+     * @param readResponse
+     */
+    public void injectPreProcessed(InetAddress endpoint,
+            ReadResponse readResponse)
+    {
+        results.put(endpoint, readResponse);
     }
 
     public boolean isDataPresent(Collection<Message> responses)
@@ -212,7 +254,7 @@ public class ReadResponseResolver implements IResponseResolver<Row>
         int data = 0;
         for (Message message : responses)
         {
-            ReadResponse result = results.get(message);
+            ReadResponse result = results.get(message.getFrom());
             if (result == null)
                 continue; // arrived concurrently
             if (result.isDigestQuery())

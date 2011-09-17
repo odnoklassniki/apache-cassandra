@@ -124,8 +124,6 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
 
     public static final StorageService instance = new StorageService();
     
-    private AtomicLong recentReadRepairs = new AtomicLong();
-
     public static IPartitioner getPartitioner() {
         return partitioner_;
     }
@@ -298,23 +296,6 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         return DatabaseDescriptor.getConsistencyCheckProbability() ;
     }
     
-    /**
-     * @return the recentReadRepairs
-     */
-    public long getRecentReadRepairs()
-    {
-        long l = recentReadRepairs.get();
-        
-        recentReadRepairs.set(0);
-        
-        return l;
-    }
-    
-    public void countReadRepair()
-    {
-        recentReadRepairs.incrementAndGet();
-    }
-
     public synchronized void initClient() throws IOException
     {
         if (initialized)
@@ -469,6 +450,15 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 consistencyManager_.submit(new ConsistencyChecker(command, row, endpoints, dataSource));
         }
     }
+    
+    public void doConsistencyCheck(Runnable checkTask)
+    {
+        if (DatabaseDescriptor.getConsistencyCheck())
+        {
+            consistencyManager_.submit(checkTask);
+        }
+    }
+    
 
     /**
      * for a keyspace, return the ranges and corresponding hosts for a given keyspace.
@@ -1402,6 +1392,18 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 return endpoint;
         }
         throw new UnavailableException(); // no nodes that could contain key are alive
+    }
+
+    /**
+     * This function finds the all live endpoints that contains a given key sorted by proximity
+     */
+    public List<InetAddress> findSuitableEndPoints(String table, String key) throws IOException, UnavailableException
+    {
+        List<InetAddress> endpoints = getLiveNaturalEndpoints(table, key);
+        if (endpoints.size()==0)
+            throw new UnavailableException(); // no nodes that could contain key are alive
+            
+        return DatabaseDescriptor.getEndPointSnitch(table).sortByProximity(FBUtilities.getLocalAddress(), endpoints);
     }
 
     public Map<String, String> getStringEndpointMap()
