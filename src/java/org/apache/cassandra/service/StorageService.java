@@ -1748,7 +1748,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
        
         // lets flush.
         setMode("Draining: flushing column families", false);
-        for (String tableName : DatabaseDescriptor.getNonSystemTables())
+        for (String tableName : DatabaseDescriptor.getTables())
             for (Future f : Table.open(tableName).flush())
                 f.get();
        
