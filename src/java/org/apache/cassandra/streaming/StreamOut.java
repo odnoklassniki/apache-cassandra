@@ -76,21 +76,8 @@ public class StreamOut
         {
             Table table = Table.open(tableName);
             logger.info("Flushing memtables for " + tableName + "...");
-            for (Future f : table.flush())
-            {
-                try
-                {
-                    f.get();
-                }
-                catch (InterruptedException e)
-                {
-                    throw new RuntimeException(e);
-                }
-                catch (ExecutionException e)
-                {
-                    throw new RuntimeException(e);
-                }
-            }
+            table.flushAndWait();
+
             logger.info("Performing anticompaction ...");
             /* Get the list of files that need to be streamed */
             transferSSTables(target, table.forceAntiCompaction(ranges, target), tableName); // SSTR GC deletes the file when done

@@ -50,7 +50,7 @@ public class WrapperMain implements WrapperListener
 
     public Integer start(final String[] args) 
     {
-        WrapperManager.signalStarting(3600000);
+        WrapperManager.signalStarting(3600000*24);
 
         try {
             daemon.setup();

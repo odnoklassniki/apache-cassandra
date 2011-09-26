@@ -487,6 +487,27 @@ public class Table
         return futures;
     }
 
+    /**
+     * Does flush memtables one by one and waits for process completion. This will take more time than
+     * {@link #flush()} but is more gentle for running loaded system.
+     * 
+     * @return
+     * @throws IOException
+     */
+    public void flushAndWait() throws IOException
+    {
+        for (String cfName : columnFamilyStores.keySet())
+        {
+            Future<?> future = columnFamilyStores.get(cfName).forceFlush();
+            if ( future != null )
+                try {
+                    future.get();
+                } catch (Exception e) {
+                    throw new RuntimeException("Cannot flush "+cfName,e);
+                }
+        }
+    }
+
     // for binary load path.  skips commitlog.
     void load(RowMutation rowMutation) throws IOException
     {
