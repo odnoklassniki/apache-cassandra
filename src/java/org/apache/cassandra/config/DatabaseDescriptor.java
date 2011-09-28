@@ -26,6 +26,7 @@ import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.util.*;
+
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
 import javax.xml.xpath.XPathExpressionException;
@@ -50,6 +51,12 @@ import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.DynamicEndpointSnitch;
 import org.apache.cassandra.locator.IEndPointSnitch;
+import org.apache.cassandra.maint.CleanArchivedLogsTask;
+import org.apache.cassandra.maint.CleanOldSnapshotsTask;
+import org.apache.cassandra.maint.ClusterSnapshotTask;
+import org.apache.cassandra.maint.MaintenanceTask;
+import org.apache.cassandra.maint.MaintenanceTaskManager;
+import org.apache.cassandra.maint.MajorCompactionTask;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.XMLUtils;
 import org.w3c.dom.Node;
@@ -667,6 +674,9 @@ public class DatabaseDescriptor
             {
                 seeds.add(InetAddress.getByName(seedString));
             }
+            
+            /* Init maintenance manager **/
+            readMaintenanceManagerConfig(xmlUtils);
         }
         catch (UnknownHostException e)
         {
@@ -707,6 +717,49 @@ public class DatabaseDescriptor
             throw new ConfigurationException("Unrecognized value for HintedHandoff.  Use 'true','false' or 'hintlog'.");
 
         HintedHandOffManager.setInstance(hintedHandoffManager);
+    }
+
+    /**
+     * @param xmlUtils
+     * @throws XPathExpressionException 
+     */
+    private static void readMaintenanceManagerConfig(XMLUtils xmlUtils) throws XPathExpressionException
+    {
+        String windowStart = xmlUtils.getNodeValue("/Storage/Maintenance/TimeWindow/Start");
+        String windowEnd = xmlUtils.getNodeValue("/Storage/Maintenance/TimeWindow/End");
+        
+        if (windowStart==null || windowEnd==null )
+            return;
+
+        List<MaintenanceTask> tasks = new ArrayList<MaintenanceTask>();
+        String tag = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/ClusterSnapshot");
+        if (tag!=null)
+        {
+            tasks.add(new ClusterSnapshotTask(tag));
+        }
+
+        String daysBack = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/CleanOldSnapshots");
+        if (daysBack!=null)
+        {
+            tasks.add(new CleanOldSnapshotsTask(Integer.parseInt(daysBack)));
+        }
+
+        daysBack = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/CleanArchivedLogs");
+        if (daysBack!=null)
+        {
+            tasks.add(new CleanArchivedLogsTask(Integer.parseInt(daysBack)));
+        }
+        
+        String spareNodes = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/MajorCompaction");
+        if (spareNodes!=null)
+        {
+            tasks.add(new MajorCompactionTask(Integer.parseInt(spareNodes)));
+        }
+        
+        if (tasks.size()==0)
+            return;
+        
+        MaintenanceTaskManager.init(tasks, windowStart, windowEnd);
     }
 
     private static void readTablesFromXml() throws ConfigurationException

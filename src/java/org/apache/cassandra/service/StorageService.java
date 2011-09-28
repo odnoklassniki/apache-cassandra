@@ -1318,6 +1318,16 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     {
         return getReplicationStrategy(table).getAddressRanges(table).get(ep);
     }
+    
+    /**
+     * Get all ranges that span the ring. All ranges are in sorted order of
+     * ranges.
+     * @return ranges in sorted order
+    */
+    public List<Range> getAllRanges()
+    {
+        return getAllRanges(tokenMetadata_.sortedTokens());
+    }
 
     /**
      * Get all ranges that span the ring given a set

@@ -437,4 +437,38 @@
    ~ See http://wiki.apache.org/cassandra/ReadRepair
   -->
   <DoConsistencyChecksBoolean>true</DoConsistencyChecksBoolean>
+  
+  <!--======================================================================-->
+  <!-- Maintenance tasks manager                                            -->
+  <!--======================================================================-->
+  <Maintenance>
+        <TimeWindow>
+            <Start>1:00</Start>
+            <End>8:00</End>
+        </TimeWindow>
+        <!-- Tasks maintenance manager must execute -->
+        <Tasks>
+            <ClusterSnapshot>night</ClusterSnapshot>
+            <!--
+                Clean old snapshots from node
+                Parameter: Days to keep old snapshots: default 3 days 
+             -->
+            <CleanOldSnapshots>3</CleanOldSnapshots>
+            <!--
+                Removes old archived logs 
+                Days to keep old archived logs: default: 3 days  
+            -->
+            <CleanArchivedLogs>3</CleanArchivedLogs>
+            <!-- 
+                Launches major compaction for column families in order.
+                Order is determined by Read Count * Total Read Latency. CF with higher number gets
+                major compacted first.
+                
+                Parameter: how many nodes in range to leave not compacting during time window to prevent
+                key range failures due to accidental GC
+             -->
+            <MajorCompaction>1</MajorCompaction>
+        </Tasks>
+  </Maintenance>
+  
 </Storage>
