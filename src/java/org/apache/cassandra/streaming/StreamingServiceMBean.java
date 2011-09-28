@@ -39,4 +39,14 @@ public interface StreamingServiceMBean
     
     /** What's currently happening wrt streaming. */
     public String getStatus();
+
+    /**
+     * @return
+     */
+    int getStreamInMBits();
+
+    /**
+     * @param newMBits
+     */
+    void setStreamInMBits(int newMBits);
 }

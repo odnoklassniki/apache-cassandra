@@ -28,14 +28,14 @@ import java.nio.channels.SocketChannel;
 
 import org.apache.log4j.Logger;
 
-import org.apache.cassandra.net.FileStreamTask;
-
 public class IncomingStreamReader
 {
     private static Logger logger = Logger.getLogger(IncomingStreamReader.class);
     private PendingFile pendingFile;
     private CompletedFileStatus streamStatus;
     private SocketChannel socketChannel;
+    
+    private static final int MEGABIT_BYTES = 1024*1024/8;
 
     public IncomingStreamReader(SocketChannel socketChannel)
     {
@@ -56,13 +56,21 @@ public class IncomingStreamReader
           logger.debug("Creating file for " + pendingFile.getTargetFile());
         FileOutputStream fos = new FileOutputStream(pendingFile.getTargetFile(), true);
         FileChannel fc = fos.getChannel();
-
+        
         long bytesRead = 0;
         try
         {
+            long rateControlledBytes = 0;
             while (bytesRead < pendingFile.getExpectedBytes()) {
-                bytesRead += fc.transferFrom(socketChannel, bytesRead, FileStreamTask.CHUNK_SIZE);
+                bytesRead += fc.transferFrom(socketChannel, bytesRead, MEGABIT_BYTES);
                 pendingFile.update(bytesRead);
+                
+                while (bytesRead-rateControlledBytes > MEGABIT_BYTES)
+                {
+                    // we received megabit. make pause, if we received it too fast
+                    StreamingService.instance.getStreamRateControl().control();
+                    rateControlledBytes+=MEGABIT_BYTES;
+                }
             }
             logger.debug("Receiving stream: finished reading chunk, awaiting more");
         }

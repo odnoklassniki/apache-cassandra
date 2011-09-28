@@ -27,6 +27,7 @@ import java.util.Set;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.log4j.Logger;
 
 public class StreamingService implements StreamingServiceMBean
@@ -34,6 +35,8 @@ public class StreamingService implements StreamingServiceMBean
     private static final Logger logger = Logger.getLogger(StreamingService.class);
     public static final String MBEAN_OBJECT_NAME = "org.apache.cassandra.streaming:type=StreamingService";
     public static final StreamingService instance = new StreamingService();
+    
+    private RateControl streamRateControl = null;
 
     private StreamingService()
     {
@@ -111,5 +114,27 @@ public class StreamingService implements StreamingServiceMBean
             files.add(String.format("%s: %s %d/%d", pf.getTable(), pf.getTargetFile(), pf.getPtr(), pf.getExpectedBytes()));
         }
         return files;
+    }
+    
+    public int getStreamInMBits()
+    {
+        return DatabaseDescriptor.getStreamInMBits();
+    }
+    
+    public void setStreamInMBits(int newMBits)
+    {
+        DatabaseDescriptor.setStreamInMBits(newMBits);
+
+        if (streamRateControl!=null)
+            streamRateControl = new RateControl(newMBits);
+    }
+
+    /**
+     * @return the streamRateControl
+     */
+    public RateControl getStreamRateControl()
+    {
+        RateControl rc = streamRateControl;
+        return rc == null ? streamRateControl = new RateControl(getStreamInMBits()) : rc;
     }
 }

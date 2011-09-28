@@ -45,6 +45,14 @@
   -->
   <AutoBootstrap>false</AutoBootstrap>
 
+  <!-- 
+   ~ Limit of streaming in speed in megabits.
+   ~ The default is 600, which is ok for bootstrapping, but for move/decommission it is better to limit it
+   ~ even more to do not impact your users.         
+   ~ This limit is controlled by receiving (streaming in) endpoint.
+   -->
+  <StreamInMBits>300</StreamInMBits>
+
   <!--
    ~ See http://wiki.apache.org/cassandra/HintedHandoff
    ~ 

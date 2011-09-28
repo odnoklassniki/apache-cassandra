@@ -175,6 +175,13 @@ public class DatabaseDescriptor
     private static RpcServerTypes rpcServerType = RpcServerTypes.sync; 
     private static int rpcThreads ;
     
+    /**
+     * MM: Limit stream in tasks to use no more than 600 mbits by default.
+     * This is ok for bootstrapping node, but you should limit it more when
+     * decomissioning
+     */
+    private static int streamInMBits = 600;
+    
     public static int thriftMaxMessageLengthMB = 16;
     public static int thriftFramedTransportSizeMB = 15;
 
@@ -540,6 +547,10 @@ public class DatabaseDescriptor
                 throw new ConfigurationException("Memtable object count must be a positive double");
             }
 
+            String streamInLimit = xmlUtils.getNodeValue("/Storage/StreamInLimit");
+            if ( streamInLimit != null )
+                streamInMBits = Integer.parseInt(streamInLimit);
+            
             /* This parameter enables or disables consistency checks.
              * If set to false the read repairs are disable for very
              * high throughput on reads but at the cost of consistency.*/
@@ -761,7 +772,7 @@ public class DatabaseDescriptor
         
         MaintenanceTaskManager.init(tasks, windowStart, windowEnd);
     }
-
+    
     private static void readTablesFromXml() throws ConfigurationException
     {
         XMLUtils xmlUtils = null;
@@ -1344,6 +1355,16 @@ public class DatabaseDescriptor
     public static int getThriftMaxMessageLength()
     {
         return thriftMaxMessageLengthMB * 1024 * 1024;
+    }
+    
+    public static int getStreamInMBits()
+    {
+        return streamInMBits;
+    }
+    
+    public static void setStreamInMBits(int newMBits)
+    {
+        streamInMBits = newMBits;
     }
 
     public static int getPhiConvictThreshold()

@@ -37,7 +37,7 @@ import org.apache.cassandra.utils.WrappedRunnable;
 public class FileStreamTask extends WrappedRunnable
 {
     private static Logger logger = Logger.getLogger( FileStreamTask.class );
-    
+
     public static final int CHUNK_SIZE = 32*1024*1024;
     // around 10 minutes at the default rpctimeout
     public static final int MAX_CONNECT_ATTEMPTS = 8;
