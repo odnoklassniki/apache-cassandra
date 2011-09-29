@@ -64,7 +64,7 @@ public class MaintenanceTaskManager implements Runnable
      * @param windowStart time spec HH:MM
      * @return millis since day start
      */
-    private static long parseTime(String timeString)
+    public static long parseTime(String timeString)
     {
         String[] times=timeString.split(":");
         
@@ -77,7 +77,7 @@ public class MaintenanceTaskManager implements Runnable
         
         assert minute >=0 && minute <60 : "Invalid minute in "+timeString;
         
-        return ( hour*24 + minute ) * 60000;
+        return ( hour*60 + minute ) * 60000;
     }
 
     /**
@@ -113,7 +113,7 @@ public class MaintenanceTaskManager implements Runnable
         
         long now = c.getTimeInMillis();
         
-        c.set(Calendar.HOUR, 0);
+        c.set(Calendar.HOUR_OF_DAY, 0);
         c.set(Calendar.MINUTE, 0);
         c.set(Calendar.SECOND, 0);
         c.set(Calendar.MILLISECOND, 0);
@@ -130,7 +130,7 @@ public class MaintenanceTaskManager implements Runnable
     {
         Calendar c = Calendar.getInstance();
         
-        c.set(Calendar.HOUR, 0);
+        c.set(Calendar.HOUR_OF_DAY, 0);
         c.set(Calendar.MINUTE, 0);
         c.set(Calendar.SECOND, 0);
         c.set(Calendar.MILLISECOND, 0);

@@ -74,15 +74,17 @@ public class CleanArchivedLogsTask implements MaintenanceTask, Runnable
 
         });
 
-        logger.info("Deleting obsolete archived logs (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteLogs));
-
-        try {
-            FileUtils.delete(obsoleteLogs);
-        } catch (IOException e) 
+        if (obsoleteLogs.length>0)
         {
-            logger.error("Cannot remove archived logs",e);
-        }    
-        
+            logger.info("Deleting obsolete archived logs (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteLogs));
+
+            try {
+                FileUtils.delete(obsoleteLogs);
+            } catch (IOException e) 
+            {
+                logger.error("Cannot remove archived logs",e);
+            }    
+        }        
 
         lastSuccessfulWindowMillis = currentCtx.startedMillis();
     }

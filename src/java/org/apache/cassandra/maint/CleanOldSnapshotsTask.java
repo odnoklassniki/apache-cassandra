@@ -80,13 +80,16 @@ public class CleanOldSnapshotsTask implements MaintenanceTask, Runnable
 
                 });
                 
-                logger.info("Deleting obsolete snapshot directories (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteSnapshotDirs));
+                if (obsoleteSnapshotDirs.length>0)
+                {
+                    logger.info("Deleting obsolete snapshot directories (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteSnapshotDirs));
 
-                for (File file : obsoleteSnapshotDirs) {
-                    try {
-                        FileUtils.deleteDir(file);
-                    } catch (IOException e) {
-                        logger.error("Cannot remove "+file,e);
+                    for (File file : obsoleteSnapshotDirs) {
+                        try {
+                            FileUtils.deleteDir(file);
+                        } catch (IOException e) {
+                            logger.error("Cannot remove "+file,e);
+                        }
                     }
                 }
             }

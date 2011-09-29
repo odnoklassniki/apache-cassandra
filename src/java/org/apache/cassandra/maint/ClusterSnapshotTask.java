@@ -52,7 +52,7 @@ public class ClusterSnapshotTask implements MaintenanceTask, Runnable
     public void run()
     {
         Set<String> liveNodes = StorageService.instance.getLiveNodes();
-        liveNodes.remove(FBUtilities.getLocalAddress());
+        liveNodes.remove(FBUtilities.getLocalAddress().getHostAddress());
 
         try
         {
@@ -69,7 +69,7 @@ public class ClusterSnapshotTask implements MaintenanceTask, Runnable
             try
             {
                 NodeProbe probe = new NodeProbe( liveNode );
-                probe.takeSnapshot("");
+                probe.takeSnapshot(tagname);
                 logger.debug(liveNode + " snapshot taken");
             }
             catch (Exception e)

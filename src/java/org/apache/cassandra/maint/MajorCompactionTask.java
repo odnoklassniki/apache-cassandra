@@ -131,7 +131,7 @@ public class MajorCompactionTask implements MaintenanceTask
         if (StorageService.instance.isBootstrapMode())
             return false;
         
-        int dayOfEpoch = (int) (ctx.startedMillis() / 3600 / 24);
+        int dayOfEpoch = (int) (ctx.startedMillis() /1000 / 3600 / 24);
         
         int rf = DatabaseDescriptor.getReplicationFactor(DatabaseDescriptor.getNonSystemTables().get(0));
 
@@ -171,7 +171,6 @@ public class MajorCompactionTask implements MaintenanceTask
             }
         }
         
-        // cannot determine any range for this node. Is it bootstrapping ?
         logger.info("Cannot determine compacting range for this node. Is it bootstrapping ?");
         
         return false;
@@ -229,6 +228,7 @@ public class MajorCompactionTask implements MaintenanceTask
         {
             return String.format("Major compaction maintenance of %s with read count = %d, read latency=%01.3f (%01.3f recent) ms, sstable count=%d",
                     store.getColumnFamilyName(),
+                    store.getReadCount(),
                     store.getTotalReadLatencyMicros() / 1000f,
                     store.getRecentReadLatencyMicros() / 1000,
                     store.getLiveSSTableCount()
