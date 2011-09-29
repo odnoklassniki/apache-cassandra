@@ -456,6 +456,10 @@
         </TimeWindow>
         <!-- Tasks maintenance manager must execute -->
         <Tasks>
+            <!-- 
+                Do cluster snapshots.
+                Parameter: snapshot tag name
+             -->
             <ClusterSnapshot>night</ClusterSnapshot>
             <!--
                 Clean old snapshots from node
