@@ -45,6 +45,7 @@ import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.maint.MaintenanceTaskManager;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
@@ -143,6 +144,10 @@ public class CassandraDaemon
 
         // init thrift server
         initThrift(listenAddr, listenPort);
+        
+        // start maintenance
+        if (MaintenanceTaskManager.isConfigured())
+            MaintenanceTaskManager.instance.start();
     }
     
     private void initThrift(InetAddress listenAddr, int listenPort)
@@ -253,6 +258,9 @@ public class CassandraDaemon
         // jsvc takes care of taking the rest down
         logger.info("Cassandra thrift server shutting down...");
         serverEngine.stop();
+        
+        if (MaintenanceTaskManager.isConfigured())
+            MaintenanceTaskManager.instance.stop();
     }
     
     

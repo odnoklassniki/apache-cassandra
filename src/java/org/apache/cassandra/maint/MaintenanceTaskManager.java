@@ -50,14 +50,18 @@ public class MaintenanceTaskManager implements Runnable
     public static void init(List<MaintenanceTask> tasks, String windowStart, String windowEnd)
     {
         if (instance!=null)
-            instance.close();
+            instance.stop();
         
         instance = new MaintenanceTaskManager(tasks);
         
         // parse window times
         instance.setWindow(parseTime(windowStart), parseTime(windowEnd));
         
-        logger.info("Will use "+windowStart+" - "+windowEnd+" as maintenance window for these tasks: "+tasks);
+    }
+    
+    public static boolean isConfigured()
+    {
+        return instance!=null;
     }
     
     /**
@@ -88,20 +92,11 @@ public class MaintenanceTaskManager implements Runnable
     private MaintenanceTaskManager(List<MaintenanceTask> tasks)
     {
         this.tasks = tasks;
-        
-        
-        if (tasks.size()>0)
-            executor.scheduleWithFixedDelay(this, 1, 1, TimeUnit.MINUTES);
     }
     
     private boolean inWindow()
     {
         return windowMillisLeft() > 0l;
-    }
-    
-    public void close()
-    {
-        executor.shutdownNow();
     }
     
     /**
@@ -166,6 +161,8 @@ public class MaintenanceTaskManager implements Runnable
     public void stop()
     {
         stopped = true;
+
+        executor.shutdownNow();
     }
     
     /**
@@ -174,6 +171,16 @@ public class MaintenanceTaskManager implements Runnable
     public void start()
     {
         stopped = false;
+
+        if (tasks.size()>0)
+            executor.scheduleWithFixedDelay(this, 1, 1, TimeUnit.MINUTES);
+
+        logger.info(String.format("Maitenance started for time window %s - %s with tasks: %s",stringifyTimeOffset(windowStartMillis),stringifyTimeOffset(windowsEndMillis),tasks) );
+    }
+    
+    private String stringifyTimeOffset(long timeOffset)
+    {
+        return String.format("%02d:%02d", timeOffset/3600000,(timeOffset%3600000)/60000);
     }
 
     /* (non-Javadoc)
