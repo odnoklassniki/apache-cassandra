@@ -80,7 +80,7 @@ public class CleanOldSnapshotsTask implements MaintenanceTask, Runnable
 
                 });
                 
-                if (obsoleteSnapshotDirs.length>0)
+                if (obsoleteSnapshotDirs!=null && obsoleteSnapshotDirs.length>0)
                 {
                     logger.info("Deleting obsolete snapshot directories (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteSnapshotDirs));
 

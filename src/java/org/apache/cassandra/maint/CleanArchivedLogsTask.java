@@ -74,7 +74,7 @@ public class CleanArchivedLogsTask implements MaintenanceTask, Runnable
 
         });
 
-        if (obsoleteLogs.length>0)
+        if (obsoleteLogs!=null && obsoleteLogs.length>0)
         {
             logger.info("Deleting obsolete archived logs (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteLogs));
 
