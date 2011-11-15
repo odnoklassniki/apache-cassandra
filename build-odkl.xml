@@ -1,18 +1,64 @@
-<project name="apache-cassandra-odkl" default="jar" basedir="."
+<?xml version="1.0"?>
+
+<!DOCTYPE project [
+        <!ENTITY commonAntCommands SYSTEM "../one-deploy/build/common-ant.xml">
+        ]>
+
+
+<project name="apache-cassandra-odkl" default="build-stat" basedir="."
         xmlns:ivy="antlib:org.apache.ivy.ant">
     <property name="one-deploy.location" location="../one-deploy"/>
+    <property name="build.src.stat" value="${basedir}/stat/src"/>
+    <property name="build.classes.stat" value="${basedir}/build/classes-stat"/>
 
-    <import file="build.xml"/>
+    <!-- path to root -->
+    <property name="root.dir" value="${basedir}"/>
+
+    <!-- local.properties имеют высший приоритет -->
+    <property file="${root.dir}/local.properties"/>
+
+    <!-- проперти для деплоймент целей -->
+    <property file="${user.home}/one/${ant.project.name}.properties"/>
+
+	&commonAntCommands;
 
     <path id="autoivy.ext.classpath">
         <fileset dir="${one-deploy.location}/lib/ivy" includes="*.jar"/>
+    </path>
+    <path id="autoivy.classpath">
+        <fileset dir="${build.lib}">
+          <include name="**/*.jar" />
+        </fileset>
+        <pathelement location="${build}/ivy-${ivy.version}.jar"/>
+        <path refid="autoivy.ext.classpath"/>
+    </path>
+    <fileset dir="${lib}" id="onelibs">
+      <include name="one-*.jar" />
+    </fileset>
+    <path id="cassandra.classpath">
+        <pathelement location="${cobertura.classes.dir}"/>
+        <pathelement location="${build.classes}"/>
+        <fileset dir="${build.lib}">
+          <include name="**/*.jar" />
+        </fileset>
+    	<fileset refid="onelibs"/>
+        <path refid="autoivy.classpath" />
     </path>
 
     <!-- include user specific build properties -->
     <property file="${user.home}/one.properties"/>
     <property file="${user.home}/one/one.properties"/>
 
-    <target name="ivy-publish" depends="jar">
+	<target name="clean">
+        <ant antfile="build.xml" target="clean" inheritall="false" />
+        
+		<delete dir="${build.classes.stat}"/>
+		
+	</target>
+	
+    <target name="ivy-publish" >
+        <ant antfile="build.xml" target="jar" inheritall="false" />
+        
         <ivy:publish resolver="odkl-publish"
                      pubrevision="${version}"
                      overwrite="true"
@@ -20,4 +66,127 @@
             <artifacts pattern="${build.dir}/[artifact]-[revision].[ext]"/>
         </ivy:publish>
     </target>
+	
+    <target name="build-stat" >
+        <echo message="${ant.project.name}: ${ant.file}"/>
+    	<mkdir dir="${build.classes.stat}"/>
+    	
+        <property file="build.number"/>
+    	
+    	<ant antfile="build.xml" target="jar" inheritall="false">
+    		<property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
+    	</ant>
+    	
+        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes.stat}">
+            <src path="${build.src.stat}"/>
+            <classpath >
+            	<path refid="cassandra.classpath"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <!--
+    The jar target makes cassandra.jar output.
+    -->
+    <target name="stat-jar" depends="build-stat">
+      <mkdir dir="${build.classes.stat}/META-INF"/>
+      <copy file="${build.src.stat}/META-INF/aop.xml" tofile="${build.classes.stat}/META-INF/aop.xml"/>
+      <jar jarfile="${build}/one-cassandra-stats.jar"
+           basedir="${build.classes.stat}">
+        <manifest>
+          <attribute name="Implementation-Title" value="Odkl Cassandra Statistics Agent"/>
+          <attribute name="Implementation-Version" value="${version}"/>
+          <attribute name="Implementation-Vendor" value="Odnoklassniki"/>
+        </manifest>
+      </jar>
+    </target>
+	
+	<target name="build" depends="stat-jar"/>
+	
+    <!-- ============================================================================ -->
+    <!-- MANDATORY TASK -->
+    <!-- Build package release with dependecies -->
+    <!-- ============================================================================ -->
+    <target name="build-release" depends="build">
+    	
+    	<property name="build.deploy.bin" value="${build.deploy}/bin"/>
+        <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
+
+        <mkdir dir="${build.deploy.lib}"/>
+        <copy todir="${build.deploy.lib}">
+            <fileset dir="${lib}">
+              <include name="*.jar" />
+            </fileset>
+            <fileset dir="${build.lib}/jars">
+                <include name="aspectj*.jar" />
+                <include name="commons-logging*.jar" />
+                <include name="log4j*.jar" />
+            </fileset>
+          <fileset dir="${build}">
+            <include name="apache-cassandra-${version}.jar" />
+            <include name="one-cassandra-stats.jar" />
+          </fileset>
+        </copy>
+        <mkdir dir="${build.deploy.bin}"/>
+        <copy todir="${build.deploy.bin}" >
+          <fileset dir="bin"/>
+        </copy>
+        <copy todir="${build.deploy.conf}">
+            <fileset dir="conf"/>
+            <fileset dir="stat/conf"/>
+        </copy>   
+        <copy todir="${build.deploy}/interface">
+          <fileset dir="interface">
+            <include name="**/*.thrift" />
+          </fileset>
+        </copy>      
+    	
+        <copy file="${ant.file}" tofile="${build.deploy}/build.xml" />
+    	
+    </target>
+
+    <!-- ============================================================================ -->
+    <!-- MANDATORY TASK -->
+    <!-- Deploy package release -->
+    <!-- ============================================================================ -->
+    <target name="deploy-release">
+        <mkdir dir="${root.dir}"/>
+    	<!--
+    	cassandra
+        clustertool
+        json2sstable
+        nodeprobe
+        nodetool
+        sstable2json
+        sstablekeys
+        stop-server
+    	
+    	-->
+
+        <!-- prepare lib -->
+        <property name="lib.service.dir" value="${root.dir}/lib"/>
+        <mkdir dir="${lib.service.dir}"/>
+
+        <move todir="${lib.service.dir}">
+            <fileset dir="${build.deploy.lib}" includes="*.jar"/>
+        </move>
+
+        <!-- prepare configuration -->
+        <property name="conf.service.dir" value="${root.dir}/conf"/>
+        <mkdir dir="${conf.service.dir}"/>
+
+        <antcall target="build-conf">
+            <param name="build-conf.src.dir" value="${build.deploy.conf}" />
+            <param name="build-conf.path" value="prod" />
+            <param name="build-conf.dest.dir" value="${conf.service.dir}" />
+        </antcall>
+
+        <antcall target="filter-property">
+            <param name="filter.conf.dir" value="${conf.service.dir}" />
+        </antcall>
+
+        <delete dir="${build}"/>
+    </target>
+	
+	
 </project>
