@@ -143,7 +143,6 @@
           <fileset dir="bin"/>
         </copy>
         <copy todir="${build.deploy.conf}">
-            <fileset dir="conf"/>
             <fileset dir="stat/conf"/>
         </copy>   
         <copy todir="${build.deploy}/interface">
@@ -182,6 +181,25 @@
             <fileset dir="${build.deploy.lib}" includes="*.jar"/>
         </move>
 
+        <!-- prepare bin -->
+        <property name="bin.service.dir" value="${root.dir}/bin"/>
+        <mkdir dir="${bin.service.dir}"/>
+
+        <move todir="${bin.service.dir}">
+            <fileset dir="${build.deploy.bin}" includes="*"/>
+        </move>
+    	<chmod perm="+x" dir="${bin.service.dir}">
+            <include name="cassandra"/>
+            <include name="clustertool"/>
+    	    <include name="json2sstable"/>
+    	    <include name="nodeprobe"/>
+    	    <include name="nodetool"/>
+            <include name="sstable2json"/>
+            <include name="sstablekeys"/>
+            <include name="stop-server"/>
+            <include name="logreplay"/>
+    	</chmod>
+
         <!-- prepare configuration -->
         <property name="conf.service.dir" value="${root.dir}/conf"/>
         <mkdir dir="${conf.service.dir}"/>
@@ -199,5 +217,14 @@
         <delete dir="${build}"/>
     </target>
 	
+    <target name="filter-property">
+        <replace dir="${filter.conf.dir}">
+            <replacefilter token="{db.url.log}" value="${db.url.log}"/>
+            <replacefilter token="{db.driver}" value="${db.driver}"/>
+
+            <replacefilter token="{db.username}" value="${db.username}"/>
+            <replacefilter token="{db.password}" value="${db.password}"/>
+        </replace>
+    </target>
 	
 </project>
