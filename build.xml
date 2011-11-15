@@ -74,7 +74,7 @@
     </target-->
 	
     <target name="ivy-prepare-for-publish" if="ivy.enabled">
-    	<copy file="${build}/*-${version}.jar" todir="${ivy.deliver.dir}/jar"/>
+    	<copy file="${build}/apache-cassandra-${build.number.str}.jar" todir="${ivy.deliver.dir}/jar"/>
     </target>
 
 	
@@ -102,7 +102,7 @@
     <target name="stat-jar" depends="build-stat">
       <mkdir dir="${build.classes.stat}/META-INF"/>
       <copy file="${build.src.stat}/META-INF/aop.xml" tofile="${build.classes.stat}/META-INF/aop.xml"/>
-      <jar jarfile="${build}/one-cassandra-stats.jar"
+      <jar jarfile="${build}/odkl-cassandra-stats.jar"
            basedir="${build.classes.stat}">
         <manifest>
           <attribute name="Implementation-Title" value="Odkl Cassandra Statistics Agent"/>
@@ -135,7 +135,7 @@
             </fileset>
           <fileset dir="${build}">
             <include name="apache-cassandra-${version}.jar" />
-            <include name="one-cassandra-stats.jar" />
+            <include name="odkl-cassandra-stats.jar" />
           </fileset>
         </copy>
         <mkdir dir="${build.deploy.bin}"/>
