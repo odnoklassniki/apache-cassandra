@@ -57,8 +57,9 @@
 	</target>
 	
     <target name="ivy-publish" >
+        <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
         <ant antfile="build-cs.xml" target="jar" inheritall="false">
-            <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
+            <property name="version" value="${version}"/>
         </ant>
         
         <ivy:publish resolver="odkl-publish"
