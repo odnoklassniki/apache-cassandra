@@ -57,11 +57,15 @@
 	</target>
 	
     <target name="ivy-publish" >
-        <ant antfile="build-cs.xml" target="jar" inheritall="false" />
+        <ant antfile="build-cs.xml" target="jar" inheritall="false">
+            <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
+        </ant>
         
         <ivy:publish resolver="odkl-publish"
                      pubrevision="${version}"
                      overwrite="true"
+                     organisation="apache-cassandra"
+        	         module="cassandra"
                      forcedeliver="true">
             <artifacts pattern="${build.dir}/[artifact]-[revision].[ext]"/>
         </ivy:publish>
