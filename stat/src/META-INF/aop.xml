@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<aspectj>
+
+    <weaver options="-verbose">
+
+        <!-- only weave classes in our application-specific packages -->
+        <include within="org.apache.cassandra..*"/>
+        <include within="odkl.cassandra.stat..*"/>
+        <!-- dump within="org.apache.cassandra..*"/  -->
+
+    </weaver>
+
+    <aspects>
+
+        <!-- weave in just this aspect -->        
+        <aspect name="odkl.cassandra.stat.StoreLatencyTrackerAspect"/>
+        <aspect name="odkl.cassandra.stat.StorageProxyStatsAspect"/>
+        <aspect name="odkl.cassandra.stat.HintedHandoffStatsAspect"/>
+        <aspect name="odkl.cassandra.stat.DataStatsAspect"/>
+
+    </aspects>
+
+</aspectj>

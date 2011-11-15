@@ -35,6 +35,12 @@
     <dependency org="org.apache.rat" name="apache-rat" rev="0.6" />
 
     <dependency org="net.java.dev.jna" name="jna" rev="3.2.7"/>
+    
+    <!-- odkl statistics collection -->
+    <dependency org="org.aspectj" name="aspectjrt" rev="1.6.10" />
+    <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.10"/>
+    <dependency org="log4j" name="log4j" rev="1.2.16" />
+   
   </dependencies>
 </ivy-module>
 
