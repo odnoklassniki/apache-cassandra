@@ -66,6 +66,7 @@
                      overwrite="true"
                      organisation="apache-cassandra"
         	         module="cassandra"
+        	         revision="${version}"
                      forcedeliver="true">
             <artifacts pattern="${build.dir}/[artifact]-[revision].[ext]"/>
         </ivy:publish>
