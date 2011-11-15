@@ -183,6 +183,7 @@
 
         <!-- prepare bin -->
         <property name="bin.service.dir" value="${root.dir}/bin"/>
+        <property name="build.deploy.bin" value="${build.deploy}/bin"/>
         <mkdir dir="${bin.service.dir}"/>
 
         <move todir="${bin.service.dir}">
