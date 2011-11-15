@@ -56,7 +56,7 @@
 		
 	</target>
 	
-    <target name="ivy-publish" >
+    <!--target name="ivy-publish" >
         <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
         <ant antfile="build-cs.xml" target="jar" inheritall="false">
             <property name="version" value="${version}"/>
@@ -71,7 +71,7 @@
                      forcedeliver="true">
             <artifacts pattern="${build.dir}/[artifact]-[revision].[ext]"/>
         </ivy:publish>
-    </target>
+    </target-->
 	
     <target name="build-stat" >
         <echo message="${ant.project.name}: ${ant.file}"/>
