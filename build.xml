@@ -5,7 +5,7 @@
         ]>
 
 
-<project name="apache-cassandra-odkl" default="build-stat" basedir="."
+<project name="apache-cassandra" default="build-stat" basedir="."
         xmlns:ivy="antlib:org.apache.ivy.ant">
     <property name="one-deploy.location" location="../one-deploy"/>
     <property name="build.src.stat" value="${basedir}/stat/src"/>
