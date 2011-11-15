@@ -5,7 +5,7 @@
         ]>
 
 
-<project name="apache-cassandra-odkl" default="build-stat" basedir="."
+<project name="apache-cassandra" default="build-stat" basedir="."
         xmlns:ivy="antlib:org.apache.ivy.ant">
     <property name="one-deploy.location" location="../one-deploy"/>
     <property name="build.src.stat" value="${basedir}/stat/src"/>
@@ -74,7 +74,7 @@
     </target-->
 	
     <target name="ivy-prepare-for-publish" if="ivy.enabled">
-    	<copy file="${build}/*-${version}.jar" todir="${ivy.deliver.dir}/jar"/>
+    	<copy file="${build}/apache-cassandra-${build.number.str}.jar" todir="${ivy.deliver.dir}/jar"/>
     </target>
 
 	
@@ -88,7 +88,7 @@
     		<property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
     	</ant>
     	
-        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes.stat}">
+        <javac debug="true" debuglevel="lines,vars,source" destdir="${build.classes.stat}">
             <src path="${build.src.stat}"/>
             <classpath >
             	<path refid="cassandra.classpath"/>
@@ -102,7 +102,7 @@
     <target name="stat-jar" depends="build-stat">
       <mkdir dir="${build.classes.stat}/META-INF"/>
       <copy file="${build.src.stat}/META-INF/aop.xml" tofile="${build.classes.stat}/META-INF/aop.xml"/>
-      <jar jarfile="${build}/one-cassandra-stats.jar"
+      <jar jarfile="${build}/odkl-cassandra-stats.jar"
            basedir="${build.classes.stat}">
         <manifest>
           <attribute name="Implementation-Title" value="Odkl Cassandra Statistics Agent"/>
@@ -118,7 +118,7 @@
     <!-- MANDATORY TASK -->
     <!-- Build package release with dependecies -->
     <!-- ============================================================================ -->
-    <target name="build-release" depends="build">
+    <target name="build-release" depends="build,prepare-build">
     	
     	<property name="build.deploy.bin" value="${build.deploy}/bin"/>
         <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
@@ -135,7 +135,7 @@
             </fileset>
           <fileset dir="${build}">
             <include name="apache-cassandra-${version}.jar" />
-            <include name="one-cassandra-stats.jar" />
+            <include name="odkl-cassandra-stats.jar" />
           </fileset>
         </copy>
         <mkdir dir="${build.deploy.bin}"/>
@@ -143,7 +143,6 @@
           <fileset dir="bin"/>
         </copy>
         <copy todir="${build.deploy.conf}">
-            <fileset dir="conf"/>
             <fileset dir="stat/conf"/>
         </copy>   
         <copy todir="${build.deploy}/interface">
@@ -182,6 +181,26 @@
             <fileset dir="${build.deploy.lib}" includes="*.jar"/>
         </move>
 
+        <!-- prepare bin -->
+        <property name="bin.service.dir" value="${root.dir}/bin"/>
+        <property name="build.deploy.bin" value="${build.deploy}/bin"/>
+        <mkdir dir="${bin.service.dir}"/>
+
+        <move todir="${bin.service.dir}">
+            <fileset dir="${build.deploy.bin}" includes="*"/>
+        </move>
+    	<chmod perm="+x" dir="${bin.service.dir}">
+            <include name="cassandra"/>
+            <include name="clustertool"/>
+    	    <include name="json2sstable"/>
+    	    <include name="nodeprobe"/>
+    	    <include name="nodetool"/>
+            <include name="sstable2json"/>
+            <include name="sstablekeys"/>
+            <include name="stop-server"/>
+            <include name="logreplay"/>
+    	</chmod>
+
         <!-- prepare configuration -->
         <property name="conf.service.dir" value="${root.dir}/conf"/>
         <mkdir dir="${conf.service.dir}"/>
@@ -199,5 +218,14 @@
         <delete dir="${build}"/>
     </target>
 	
+    <target name="filter-property">
+        <replace dir="${filter.conf.dir}">
+            <replacefilter token="{db.url.log}" value="${db.url.log}"/>
+            <replacefilter token="{db.driver}" value="${db.driver}"/>
+
+            <replacefilter token="{db.username}" value="${db.username}"/>
+            <replacefilter token="{db.password}" value="${db.password}"/>
+        </replace>
+    </target>
 	
 </project>
