@@ -118,7 +118,7 @@
     <!-- MANDATORY TASK -->
     <!-- Build package release with dependecies -->
     <!-- ============================================================================ -->
-    <target name="build-release" depends="build">
+    <target name="build-release" depends="build,prepare-build">
     	
     	<property name="build.deploy.bin" value="${build.deploy}/bin"/>
         <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
