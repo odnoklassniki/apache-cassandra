@@ -20,7 +20,7 @@
   <info organisation="apache-cassandra" module="cassandra"/>
 
   <publications>
-      <artifact name="apache-cassandra-odkl"/>
+      <artifact name="apache-cassandra"/>
   </publications>
 
   <dependencies>
