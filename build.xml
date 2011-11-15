@@ -88,7 +88,7 @@
     		<property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
     	</ant>
     	
-        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes.stat}">
+        <javac debug="true" debuglevel="lines,vars,source" destdir="${build.classes.stat}">
             <src path="${build.src.stat}"/>
             <classpath >
             	<path refid="cassandra.classpath"/>
