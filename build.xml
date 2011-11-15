@@ -50,14 +50,14 @@
     <property file="${user.home}/one/one.properties"/>
 
 	<target name="clean">
-        <ant antfile="build.xml" target="clean" inheritall="false" />
+        <ant antfile="build-cs.xml" target="clean" inheritall="false" />
         
 		<delete dir="${build.classes.stat}"/>
 		
 	</target>
 	
     <target name="ivy-publish" >
-        <ant antfile="build.xml" target="jar" inheritall="false" />
+        <ant antfile="build-cs.xml" target="jar" inheritall="false" />
         
         <ivy:publish resolver="odkl-publish"
                      pubrevision="${version}"
@@ -73,7 +73,7 @@
     	
         <property file="build.number"/>
     	
-    	<ant antfile="build.xml" target="jar" inheritall="false">
+    	<ant antfile="build-cs.xml" target="jar" inheritall="false">
     		<property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
     	</ant>
     	
@@ -141,7 +141,7 @@
           </fileset>
         </copy>      
     	
-        <copy file="${ant.file}" tofile="${build.deploy}/build.xml" />
+        <!--copy file="${ant.file}" tofile="${build.deploy}/build.xml" /-->
     	
     </target>
 
