@@ -51,7 +51,7 @@ public class StorageProxyStatsAspect extends SystemArchitectureAspect
     public void hintTracker(ProceedingJoinPoint join) throws Throwable
     {
         // this is inside column family store
-        join.proceed(new Object[] { buildTracker("HINT.WRITE") });
+        join.proceed(new Object[] { buildTracker("WRITE.HINTING") });
     }
     
     @Around("proxyRangeLatencyTrackerPointcut()")

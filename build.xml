@@ -33,7 +33,8 @@
         <path refid="autoivy.ext.classpath"/>
     </path>
     <fileset dir="${lib}" id="onelibs">
-      <include name="one-*.jar" />
+        <include name="one-*.jar" />
+        <include name="google-collections*.jar" />
     </fileset>
     <path id="cassandra.classpath">
         <pathelement location="${cobertura.classes.dir}"/>
@@ -131,7 +132,9 @@
             <fileset dir="${build.lib}/jars">
                 <include name="aspectj*.jar" />
                 <include name="commons-logging*.jar" />
+                <include name="commons-pool*.jar" />
                 <include name="log4j*.jar" />
+                <include name="Sprinta*.jar" />
             </fileset>
           <fileset dir="${build}">
             <include name="apache-cassandra-${version}.jar" />

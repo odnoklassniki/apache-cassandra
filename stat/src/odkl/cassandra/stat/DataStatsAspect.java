@@ -43,16 +43,17 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
 
     private static final int MB=1024*1024;
 
+    /**
+     * Statistic values are logged for each CF
+     * 
+     */
     enum Msg { 
+        // mbytes of data in CF
         LoadMBytes, 
-//        TPRowRead, TPRowMutation, 
-//        TPHintedHandoff, TPStream, 
-//        TPFlushWriter, TPFlushSorter, TPCommitLogWriter ,
+        // number of completed compactions, total compacted (read) Mbytes
         Compactions, CompactedMBytes,
         
-        // by CF
-        ReadLatencyMicros, WriteLatencyMicros,
-        WriteCount, ReadCount, RowCacheHitRate, RowCacheSize, KeyCacheHitRate, KeyCacheSize,
+        // RowCacheHitRate, RowCacheSize, KeyCacheHitRate, KeyCacheSize, - these are not implemented at the moment
 
         // mean and max size of the row
         RowSize
@@ -68,7 +69,6 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     private ColumnFamilyStore compactingStore = null;
     private CompactionIterator compactingIterator = null;
     private long compactionStartedMillis ;
-    private long compactedBytesLogged = 0L; 
     
     @After("cassandraStart()")
     public void start()
@@ -99,7 +99,19 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @After("compactionCompletedPointcut()")
     public void compactionCompleted()
     {
-        // TODO logging 
+        if (compactingStore==null)
+            return;
+        
+        if (compactingIterator.getBytesRead()==0)
+            return; // this was just check for possible compaction
+        
+        String clusterName = DatabaseDescriptor.getClusterName();
+        String serverName = FBUtilities.getLocalAddress().getHostAddress();
+        String cfNameForLogging = cfNameForLogging(compactingStore.getTable().name, compactingStore);
+        
+        LoggerUtil.operationsSuccess(opLogger, (System.currentTimeMillis()-compactionStartedMillis)*1000000, 1, "COMPACTION",clusterName,serverName,cfNameForLogging);
+        LoggerUtil.operationData(msgLogger, Msg.CompactedMBytes.name(), clusterName, serverName,cfNameForLogging,compactingIterator.getBytesRead()/MB);
+
         compactingStore = null;
         compactingIterator = null;
         compactionStartedMillis = 0;
@@ -112,8 +124,6 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @Override
     public void run()
     {
-        log.info("Epta!");
-        
         String clusterName = DatabaseDescriptor.getClusterName();
         String serverName = FBUtilities.getLocalAddress().getHostAddress();
         
