@@ -47,6 +47,8 @@ public abstract class SystemArchitectureAspect
     // proxy (coodinator node) statistic points
     @Pointcut("set( org.apache.cassandra.utils.LatencyTracker org.apache.cassandra.service.StorageProxy.range* )")
     public void proxyRangeLatencyTrackerPointcut() {}
+    // how long node waited for write to be acked by all endpoints
+    // to decide on hint write
     @Pointcut("set( org.apache.cassandra.utils.LatencyTracker org.apache.cassandra.service.StorageProxy.hint* )")
     public void proxyHintLatencyTrackerPointcut() {}
 
