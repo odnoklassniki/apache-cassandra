@@ -101,6 +101,9 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
         if (compactingStore==null)
             return;
         
+        if (compactingIterator.getBytesRead()==0)
+            return; // this was just check for possible compaction
+        
         String clusterName = DatabaseDescriptor.getClusterName();
         String serverName = FBUtilities.getLocalAddress().getHostAddress();
         String cfNameForLogging = cfNameForLogging(compactingStore.getTable().name, compactingStore);
