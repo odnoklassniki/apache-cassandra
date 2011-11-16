@@ -33,7 +33,8 @@
         <path refid="autoivy.ext.classpath"/>
     </path>
     <fileset dir="${lib}" id="onelibs">
-      <include name="one-*.jar" />
+        <include name="one-*.jar" />
+        <include name="google-collections*.jar" />
     </fileset>
     <path id="cassandra.classpath">
         <pathelement location="${cobertura.classes.dir}"/>
