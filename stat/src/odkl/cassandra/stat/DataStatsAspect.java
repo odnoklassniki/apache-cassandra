@@ -98,6 +98,9 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @After("compactionCompletedPointcut()")
     public void compactionCompleted()
     {
+        if (compactingStore==null)
+            return;
+        
         String clusterName = DatabaseDescriptor.getClusterName();
         String serverName = FBUtilities.getLocalAddress().getHostAddress();
         String cfNameForLogging = cfNameForLogging(compactingStore.getTable().name, compactingStore);
