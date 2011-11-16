@@ -386,10 +386,7 @@ public class Table
         initExecutor.shutdown();
 
         // check 10x as often as the lifetime, so we can exceed lifetime by 10% at most
-//        int checkMs = DatabaseDescriptor.getMemtableLifetimeMS() / 10;
-        // MM: it will flush all low traffic memtables during half of configured memtable flush
-        // period. This is to avoid memtable flush storms, which slow down disks
-        int checkMs = DatabaseDescriptor.getMemtableLifetimeMS() / columnFamilyStores.size() /2;
+        int checkMs = DatabaseDescriptor.getMemtableLifetimeMS() / 10;
         flushTimer.schedule(new TimerTask()
         {
             public void run()
@@ -398,13 +395,14 @@ public class Table
                 {
                     try
                     {
-                        // MM: flush at most 1 expired table per iteration
-                        // to avoid flush storms
-                        if (cfs.forceFlushIfExpired())
-                            break;
+                        cfs.forceFlushIfExpired();
                     }
                     catch (IOException e)
                     {
+                        throw new RuntimeException(e);
+                    } catch (ExecutionException e) {
+                        throw new RuntimeException(e);
+                    } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                 }
