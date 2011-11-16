@@ -49,6 +49,7 @@ import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.FileUtils;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
@@ -129,6 +130,14 @@ public class HintLog
                 
                 public void run()
                 {
+                    
+                    // wait for ring stabilization first
+                    try {
+                        Thread.sleep(StorageService.RING_DELAY);
+                    } catch (InterruptedException e1) {
+                        logger.error("err",e1);
+                    }
+                    
                     while (true)
                     {
                         try
