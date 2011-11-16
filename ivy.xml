@@ -42,6 +42,7 @@
     <dependency org="log4j" name="log4j" rev="1.2.16" />
     
     <dependency org="com.inet.tds" name="Sprinta" rev="605a" />
+    <dependency org="commons-pool" name="commons-pool" rev="1.5.6"/>
    
   </dependencies>
 </ivy-module>

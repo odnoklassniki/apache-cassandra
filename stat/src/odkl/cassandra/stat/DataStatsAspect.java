@@ -68,7 +68,6 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     private ColumnFamilyStore compactingStore = null;
     private CompactionIterator compactingIterator = null;
     private long compactionStartedMillis ;
-    private long compactedBytesLogged = 0L; 
     
     @After("cassandraStart()")
     public void start()
@@ -99,7 +98,13 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @After("compactionCompletedPointcut()")
     public void compactionCompleted()
     {
-        // TODO logging 
+        String clusterName = DatabaseDescriptor.getClusterName();
+        String serverName = FBUtilities.getLocalAddress().getHostAddress();
+        String cfNameForLogging = cfNameForLogging(compactingStore.getTable().name, compactingStore);
+        
+        LoggerUtil.operationsSuccess(opLogger, (System.currentTimeMillis()-compactionStartedMillis)*1000000, 1, "COMPACTION",clusterName,serverName,cfNameForLogging);
+        LoggerUtil.operationData(msgLogger, Msg.LoadMBytes.name(), clusterName, serverName,cfNameForLogging,compactingIterator.getBytesRead()/MB);
+
         compactingStore = null;
         compactingIterator = null;
         compactionStartedMillis = 0;
@@ -112,15 +117,13 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @Override
     public void run()
     {
-        log.info("Epta!");
-        
         String clusterName = DatabaseDescriptor.getClusterName();
         String serverName = FBUtilities.getLocalAddress().getHostAddress();
         
         // Collect statistics for CassandraStat
         
         //Load by each node:
-        LoggerUtil.operationData(msgLogger, Msg.LoadMBytes.name(), clusterName, serverName,null,StorageService.instance.getLoad()/MB);
+        LoggerUtil.operationData(msgLogger, Msg.CompactedMBytes.name(), clusterName, serverName,null,StorageService.instance.getLoad()/MB);
         
         //streams pending, completed
         //(MAX seen in 5 minutes)
