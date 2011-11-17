@@ -8,7 +8,6 @@ package odkl.cassandra.stat;
 import java.net.InetAddress;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -72,9 +71,9 @@ public class HintedHandoffStatsAspect extends SystemArchitectureAspect
         finally
         {
             if (ok)
-                LoggerUtil.operationSuccess(opLogger, time, timeout, opName,DatabaseDescriptor.getClusterName(), endpoint  );
+                LoggerUtil.operationSuccess(opLogger, time, timeout, opName,DatabaseDescriptor.getClusterName(), endpoint.getHostAddress()  );
             else
-                LoggerUtil.operationFailure(opLogger, time,timeout, opName,DatabaseDescriptor.getClusterName(), endpoint );
+                LoggerUtil.operationFailure(opLogger, time,timeout, opName,DatabaseDescriptor.getClusterName(), endpoint.getHostAddress() );
         }
     }
 
