@@ -467,49 +467,55 @@ public class CommitLog
         {
             CommitLogSegment segment = iter.next();
             CommitLogHeader header = segment.getHeader();
-            if (segment.equals(context.getSegment()))
+            if (segment.equals(context.getSegment())) // is this segment grabbed at memtable flush ?
             {
-                // we can't just mark the segment where the flush happened clean,
-                // since there may have been writes to it between when the flush
-                // started and when it finished. so mark the flush position as
-                // the replay point for this CF, instead.
-                if (logger.isDebugEnabled())
-                    logger.debug("Marking replay position " + context.position + " on commit log " + segment);
-                header.turnOn(id, context.position);
-                segment.writeHeader();
+                // Only unmark this segment if there were not write since the
+                // ReplayPosition was grabbed.
+                header.turnOffIfNotWritten(id, context.position);
+
+                maybeDiscardSegment(iter,segment,header);
+                
                 break;
             }
 
             header.turnOff(id);
-            if (header.isSafeToDelete())
+
+            maybeDiscardSegment(iter, segment, header);
+        }
+    }
+
+    private void maybeDiscardSegment(Iterator<CommitLogSegment> iter,
+            CommitLogSegment segment, CommitLogHeader header)
+            throws IOException
+    {
+        if ( header.isSafeToDelete() && segment!=currentSegment() )
+        {
+
+            if (DatabaseDescriptor.isLogArchiveActive())
             {
+                logger.info("Archiving obsolete commit log:" + segment);
+                segment.close();
 
-                if (DatabaseDescriptor.isLogArchiveActive())
-                {
-                    logger.info("Archiving obsolete commit log:" + segment);
-                    segment.close();
-
-                    archiveLogfile(segment.getPath());
-                }
-                else
-                {
-                    logger.info("Discarding obsolete commit log:" + segment);
-                    segment.close();
-                }
-           
-                DeletionService.submitDelete(segment.getHeaderPath());
-                DeletionService.submitDelete(segment.getPath());
-                // usually this will be the first (remaining) segment, but not always, if segment A contains
-                // writes to a CF that is unflushed but is followed by segment B whose CFs are all flushed.
-                iter.remove();
+                archiveLogfile(segment.getPath());
             }
             else
             {
-                if (logger.isDebugEnabled())
-                    logger.debug("Not safe to delete commit log " + segment + "; dirty is " + header.dirtyString());
-
-                segment.writeHeader();
+                logger.info("Discarding obsolete commit log:" + segment);
+                segment.close();
             }
+         
+            DeletionService.submitDelete(segment.getHeaderPath());
+            DeletionService.submitDelete(segment.getPath());
+            // usually this will be the first (remaining) segment, but not always, if segment A contains
+            // writes to a CF that is unflushed but is followed by segment B whose CFs are all flushed.
+            iter.remove();
+        }
+        else
+        {
+            if (logger.isDebugEnabled())
+                logger.debug("Not safe to delete commit log " + segment + "; dirty is " + header.dirtyString());
+
+            segment.writeHeader();
         }
     }
     
@@ -562,6 +568,26 @@ public class CommitLog
         currentSegment().sync();
     }
     
+    /**
+     * for unit tests
+     */
+    public void resetUnsafe()
+    {
+        for (CommitLogSegment segment : segments)
+            segment.close();
+        segments.clear();
+        int cfSize = Table.TableMetadata.getColumnFamilyCount();
+
+        segments.add(new CommitLogSegment(cfSize));
+    }
+
+    // for tests mainly
+    public int segmentsCount()
+    {
+        return segments.size();
+    }
+
+
     public void forceNewSegment()
     {
         Callable task = new Callable()

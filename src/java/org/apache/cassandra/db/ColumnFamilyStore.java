@@ -476,6 +476,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             oldMemtable.freeze();
 
             // dont wait with write lock held for commit log queue - only obtain future and continue
+            // the future due to the single threaded nature of commit log will position itself in queue
+            // after all mutations which possibly have been written to flushing memtable and
+            // on get() will return commit log position of memtable flush start
             final Future<CommitLogContext> ctx = writeCommitLog ? CommitLog.instance().getContext() : null;
 //            logger_.info(columnFamily_ + " has reached its threshold; switching in a fresh Memtable at " + ctx);
             final Condition condition = submitFlush(oldMemtable);

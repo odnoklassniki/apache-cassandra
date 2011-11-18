@@ -20,7 +20,9 @@ package org.apache.cassandra.db;
 
 import org.apache.cassandra.CleanupHelper;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.db.commitlog.CommitLogSegment.CommitLogContext;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.junit.Test;
 
 import java.io.File;
@@ -28,6 +30,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 public class CommitLogTest extends CleanupHelper
 {
@@ -72,4 +75,90 @@ public class CommitLogTest extends CleanupHelper
         //statics make it annoying to test things correctly
         CommitLog.instance().recover(new File[] {tmpFile},false); //CASSANDRA-1119 throws on failure
     }
+    
+    @Test
+    public void testDontDeleteIfDirty() throws Exception
+    {
+        CommitLog.instance().resetUnsafe();
+        CommitLog.instance().setSegmentSize(128 * 1024 * 1024);
+        // Roughly 32 MB mutation
+        RowMutation rm = new RowMutation("Keyspace1", "k");
+        rm.add(new QueryPath("Standard1", null, "c1".getBytes()), new byte[32 * 1024 * 1024], 0);
+        DataOutputBuffer buf = serialize(rm);
+
+        // Adding it 5 times
+        CommitLog.instance().add(rm,buf);
+        CommitLog.instance().add(rm,buf);
+        CommitLog.instance().add(rm,buf);
+        CommitLog.instance().add(rm,buf);
+        CommitLog.instance().add(rm,buf);
+
+        // Adding new mutation on another CF
+        RowMutation rm2 = new RowMutation("Keyspace1", "k");
+        rm2.add(new QueryPath("Standard2", null, "c1".getBytes()), new byte[4], 0);
+        DataOutputBuffer buf2 = serialize(rm2);
+        CommitLog.instance().add(rm2,buf2);
+
+        assert CommitLog.instance().segmentsCount() == 2 : "Expecting 2 segments, got " + CommitLog.instance().segmentsCount();
+        
+        Table table = Table.open(rm2.getTable());
+        String cf = rm2.getColumnFamilies().iterator().next().name();
+        CommitLog.instance().discardCompletedSegments(rm2.getTable(), cf, CommitLog.instance().getContext().get());
+
+        // Assert we still have both our segment
+        assert CommitLog.instance().segmentsCount() == 2 : "Expecting 2 segments, got " + CommitLog.instance().segmentsCount();
+    }
+
+    private DataOutputBuffer serialize(RowMutation rm2) throws IOException
+    {
+        DataOutputBuffer buf2 = new DataOutputBuffer();
+        RowMutation.serializer().serialize(rm2, buf2);
+        return buf2;
+    }
+
+    @Test
+    public void testDeleteIfNotDirty() throws Exception
+    {
+        CommitLog.instance().resetUnsafe();
+        CommitLog.instance().setSegmentSize(128 * 1024 * 1024);
+        // Roughly 32 MB mutation
+        RowMutation rm = new RowMutation("Keyspace1", "k");
+        rm.add(new QueryPath("Standard1", null, "c1".getBytes()), new byte[32 * 1024 * 1024], 0);
+
+        // Adding it twice (won't change segment)
+        DataOutputBuffer buffer = serialize(rm);
+        CommitLog.instance().add(rm,buffer);
+        CommitLog.instance().add(rm,buffer);
+
+        assert CommitLog.instance().segmentsCount() == 1 : "Expecting 1 segment, got " + CommitLog.instance().segmentsCount();
+
+        // "Flush": this won't delete anything
+        Table table = Table.open(rm.getTable());
+        String cf = rm.getColumnFamilies().iterator().next().name();
+        CommitLog.instance().discardCompletedSegments(rm.getTable(), cf, CommitLog.instance().getContext().get());
+
+        assert CommitLog.instance().segmentsCount() == 1 : "Expecting 1 segment, got " + CommitLog.instance().segmentsCount();
+
+        // Adding new mutation on another CF so that a new segment is created
+        RowMutation rm2 = new RowMutation("Keyspace1", "k");
+        rm2.add(new QueryPath("Standard2", null, "c1".getBytes()), new byte[64 * 1024 * 1024], 0);
+        DataOutputBuffer buffer2 = serialize(rm2);
+        CommitLog.instance().add(rm2,buffer2);
+        CommitLog.instance().add(rm2,buffer2);
+
+        assert CommitLog.instance().segmentsCount() == 2 : "Expecting 2 segments, got " + CommitLog.instance().segmentsCount();
+
+
+        // "Flush" second cf: The first segment should be deleted since we
+        // didn't write anything on cf1 since last flush (and we flush cf2)
+
+        table = Table.open(rm2.getTable());
+        cf = rm2.getColumnFamilies().iterator().next().name();
+        CommitLog.instance().discardCompletedSegments(rm2.getTable(), cf, CommitLog.instance().getContext().get());
+
+        // Assert we still have both our segment
+        assert CommitLog.instance().segmentsCount() == 1 : "Expecting 1 segment, got " + CommitLog.instance().segmentsCount();
+    }
+
+    
 }

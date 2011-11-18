@@ -81,15 +81,15 @@ public class CommitLogSegment
             Table table = Table.open(rowMutation.getTable());
 
             // update header
+            boolean writePending = false;
             for (ColumnFamily columnFamily : rowMutation.getColumnFamilies())
             {
                 int id = table.getColumnFamilyId(columnFamily.name());
-                if (!header.isDirty(id))
-                {
-                    header.turnOn(id, logWriter.getFilePointer());
-                    writeHeader();
-                }
+                writePending|=header.turnOn(id, logWriter.getFilePointer());
             }
+            
+            if (writePending)
+                writeHeader();
 
             // write mutation, w/ checksum
             Checksum checkum = new CRC32();
@@ -200,4 +200,15 @@ public class CommitLogSegment
                    ')';
         }
     }
+
+    /**
+     * @param name
+     * @return
+     */
+    public static boolean possibleCommitLogFile(String filename)
+    {
+        return filename.matches("CommitLog-\\d+.log");
+    }
+
+
 }

@@ -21,6 +21,8 @@ package org.apache.cassandra.db.commitlog;
 import java.io.*;
 import java.util.Arrays;
 import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.io.ICompactSerializer;
@@ -28,7 +30,7 @@ import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.BitSetSerializer;
 
-class CommitLogHeader
+public class CommitLogHeader
 {
     public static String getHeaderPathFromSegment(CommitLogSegment segment)
     {
@@ -39,6 +41,12 @@ class CommitLogHeader
     {
         return segmentPath + ".header";
     }
+
+    public static boolean possibleCommitLogHeaderFile(String filename)
+    {
+        return filename.matches("CommitLog-\\d+.log.header");
+    }
+    
 
     private static CommitLogHeaderSerializer serializer = new CommitLogHeaderSerializer();
 
@@ -65,12 +73,15 @@ class CommitLogHeader
 
     private BitSet dirty; // columnfamilies with un-flushed data in this CommitLog
     private int[] cfDirtiedAt; // position at which each CF was last flushed
+    private int[] cfLastWriteAt; // position at which last write was done per CF
     
     CommitLogHeader(int size)
     {
         dirty = new BitSet(size);
         cfDirtiedAt = new int[size];
         Arrays.fill(cfDirtiedAt, -1);
+        cfLastWriteAt = new int[size];
+        Arrays.fill(cfLastWriteAt, -1);
     }
     
     /*
@@ -94,16 +105,45 @@ class CommitLogHeader
         return cfDirtiedAt[index];
     }
     
-    void turnOn(int index, long position)
+    /**
+     * Turns on dirty flag for specific CF, if neccessary or just renews last written position
+     * 
+     * @param index
+     * @param position
+     * @return true - if dirty flag was really turned on (consider write of the header to disk)
+     */
+    boolean turnOn(int index, long position)
     {
-        dirty.set(index);
-        cfDirtiedAt[index] = (int) position;
+        cfLastWriteAt[index] = (int) position;
+
+        if (!isDirty(index))
+        {
+            dirty.set(index);
+            cfDirtiedAt[index] = (int) position;
+            
+            return true;
+        }
+        
+        return false;
     }
 
     void turnOff(int index)
     {
         dirty.set(index, false);
         cfDirtiedAt[index] = -1;
+    }
+
+    /**
+     * Turn the dirty bit off only if there has been no write since the flush
+     * position was grabbed.
+     * 
+     * @param index cf id
+     * @param position flush position grabbed at memtable flush
+     */
+    void turnOffIfNotWritten(int index, long position)
+    {
+        if (isDirty(index) && cfLastWriteAt[index] < position)
+            turnOff(index);
     }
 
     boolean isSafeToDelete() throws IOException
@@ -138,11 +178,25 @@ class CommitLogHeader
         {
             if (dirty.get(i))
             {
-                sb.append(i).append(", ");
+                sb.append(Table.TableMetadata.getColumnFamilyName(i)).append(", ");
             }
         }
         return sb.toString();
     }
+
+    public Map<Integer, Integer> dirtyCFs()
+    {
+        HashMap<Integer,Integer> map = new HashMap<Integer, Integer>();
+        for ( int i = 0; i < dirty.size(); ++i )
+        {
+            if (dirty.get(i))
+            {
+                map.put(i,cfDirtiedAt[i]);
+            }
+        }
+        return map;
+    }
+
 
     static void writeCommitLogHeader(CommitLogHeader header, String headerFile) throws IOException
     {
@@ -164,7 +218,7 @@ class CommitLogHeader
         }
     }
 
-    static CommitLogHeader readCommitLogHeader(String headerFile) throws IOException
+    public static CommitLogHeader readCommitLogHeader(String headerFile) throws IOException
     {
         DataInputStream reader = null;
         try
