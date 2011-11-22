@@ -73,7 +73,7 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @After("cassandraStart()")
     public void start()
     {
-        execFuture  = exec.scheduleWithFixedDelay(this, 10, 10, TimeUnit.SECONDS);
+        execFuture  = exec.scheduleWithFixedDelay(this, 1, 1, TimeUnit.MINUTES);
         log.info("Statistics collection daemon started");
     }
     
@@ -124,68 +124,68 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
     @Override
     public void run()
     {
-        String clusterName = DatabaseDescriptor.getClusterName();
-        String serverName = FBUtilities.getLocalAddress().getHostAddress();
-        
-        // Collect statistics for CassandraStat
-        
-        //Load by each node:
-        LoggerUtil.operationData(msgLogger, Msg.LoadMBytes.name(), clusterName, serverName,null,StorageService.instance.getLoad()/MB);
-        
-        //streams pending, completed
-        //(MAX seen in 5 minutes)
-//        LoggerUtil.operationData(msgLogger, Msg.TPStream.name(), clusterName, serverName,null,streamStageMBean.getPendingTasks(),streamStageMBean.getCompletedTasks());
-        
-        
-        // per CF statistics
-        HashMap<String,long[]> loads = new HashMap<String, long[]>();
-        for (String table : DatabaseDescriptor.getNonSystemTables())
-            try {
-                for (ColumnFamilyStore cf : Table.open(table).getColumnFamilyStores() )
-                {
-                    String columnFamilyName = cfNameForLogging(table, cf);
+        try {
+            String clusterName = DatabaseDescriptor.getClusterName();
+            String serverName = FBUtilities.getLocalAddress().getHostAddress();
 
-                    long[] array = loads.get(columnFamilyName);
-                    if (array==null)
-                        loads.put(columnFamilyName,array=new long[5]);
-                    
-                    array[0]+=cf.getLiveDiskSpaceUsed();
-                    array[1]+=cf.getMemtableDataSize();
-                    array[2]+=cf.getMeanRowCompactedSize();
-                    array[3]++;
-                    
-                    array[4] = Math.max(array[4],cf.getMaxRowCompactedSize());
+            // Collect statistics for CassandraStat
+            //streams pending, completed
+            //(MAX seen in 5 minutes)
+            //        LoggerUtil.operationData(msgLogger, Msg.TPStream.name(), clusterName, serverName,null,streamStageMBean.getPendingTasks(),streamStageMBean.getCompletedTasks());
 
-                    // row caches
-                    //hits.label row cache hit rate (avg) and size (max seen)
-//                JMXInstrumentedCacheMBean cache = caches.get(table+'.'+columnFamilyName+".row");
-//                if (cache.getSize()>0)
-//                {
-//                    LoggerUtil.operationData(msgLogger, Msg.RowCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
-//                    LoggerUtil.operationData(msgLogger, Msg.RowCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
-//                }
 
-                    // key caches
-                    //hits.label key cache hit rate and size
-//                cache = caches.get(table+'.'+columnFamilyName+".key");
-//                if (cache.getSize()>0)
-//                {
-//                    LoggerUtil.operationData(msgLogger, Msg.KeyCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
-//                    LoggerUtil.operationData(msgLogger, Msg.KeyCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
-//                }
-                }
-            } catch (IOException e) {
-                log.error("",e);
-            }          
+            // per CF statistics
+            HashMap<String,long[]> loads = new HashMap<String, long[]>();
+            for (String table : DatabaseDescriptor.getNonSystemTables())
+                try {
+                    for (ColumnFamilyStore cf : Table.open(table).getColumnFamilyStores() )
+                    {
+                        String columnFamilyName = cfNameForLogging(table, cf);
 
-        for (Entry<String, long[]> en : loads.entrySet()) 
+                        long[] array = loads.get(columnFamilyName);
+                        if (array==null)
+                            loads.put(columnFamilyName,array=new long[5]);
+
+                        array[0]+=cf.getLiveDiskSpaceUsed();
+                        array[1]+=cf.getMemtableDataSize();
+                        array[2]+=cf.getMeanRowCompactedSize();
+                        array[3]++;
+
+                        array[4] = Math.max(array[4],cf.getMaxRowCompactedSize());
+
+                        // row caches
+                        //hits.label row cache hit rate (avg) and size (max seen)
+                        //                JMXInstrumentedCacheMBean cache = caches.get(table+'.'+columnFamilyName+".row");
+                        //                if (cache.getSize()>0)
+                        //                {
+                        //                    LoggerUtil.operationData(msgLogger, Msg.RowCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
+                        //                    LoggerUtil.operationData(msgLogger, Msg.RowCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
+                        //                }
+
+                        // key caches
+                        //hits.label key cache hit rate and size
+                        //                cache = caches.get(table+'.'+columnFamilyName+".key");
+                        //                if (cache.getSize()>0)
+                        //                {
+                        //                    LoggerUtil.operationData(msgLogger, Msg.KeyCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
+                        //                    LoggerUtil.operationData(msgLogger, Msg.KeyCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
+                        //                }
+                    }
+                } catch (IOException e) {
+                    log.error("",e);
+                }          
+
+            for (Entry<String, long[]> en : loads.entrySet()) 
+            {
+                long[] array=en.getValue();
+                String columnFamilyName = en.getKey();
+                LoggerUtil.operationData(msgLogger, Msg.LoadMBytes.name(), clusterName, serverName,columnFamilyName,array[0]/MB, array[1]/MB);
+                LoggerUtil.operationData(msgLogger, Msg.RowSize.name(), clusterName, serverName,columnFamilyName,array[2]/array[3], array[4]);
+            }
+        } catch (Throwable e)
         {
-            long[] array=en.getValue();
-            String columnFamilyName = en.getKey();
-            LoggerUtil.operationData(msgLogger, Msg.LoadMBytes.name(), clusterName, serverName,columnFamilyName,array[0]/MB, array[1]/MB);
-            LoggerUtil.operationData(msgLogger, Msg.RowSize.name(), clusterName, serverName,columnFamilyName,array[2]/array[3], array[4]);
+            log.error("Cannot collect statistics data",e);
         }
-        
     }
 
     private String cfNameForLogging(String table, ColumnFamilyStore cf)
