@@ -33,7 +33,6 @@
         <path refid="autoivy.ext.classpath"/>
     </path>
     <fileset dir="${lib}" id="onelibs">
-        <include name="one-*.jar" />
         <include name="google-collections*.jar" />
     </fileset>
     <path id="cassandra.classpath">
@@ -130,6 +129,7 @@
               <include name="*.jar" />
             </fileset>
             <fileset dir="${build.lib}/jars">
+                <include name="one-*.jar" />
                 <include name="aspectj*.jar" />
                 <include name="commons-logging*.jar" />
                 <include name="commons-pool*.jar" />
