@@ -287,12 +287,30 @@ public class StorageProxy implements StorageProxyMBean
                         }
                         else
                         {
-                            Message hintedMessage = addHintHeader(
-                                    rm,
-                                    destination,
-                                    targets);
-                            
-                            MessagingService.instance.sendOneWay(hintedMessage, destination);
+                            if (destination.equals(FBUtilities.getLocalAddress()))
+                            {
+                                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                                DataOutputStream dos = new DataOutputStream( bos );
+                                RowMutation.serializer().serialize(rm, dos);
+                                byte[] bytes = bos.toByteArray();
+
+                                for (InetAddress target : targets)
+                                {
+                                    if (!target.equals(destination))
+                                    {
+                                        HintedHandOffManager.instance().storeHint(target, rm, bytes);
+                                    }
+                                }
+
+                            } else
+                            {
+                                Message hintedMessage = addHintHeader(
+                                        rm,
+                                        destination,
+                                        targets);
+
+                                MessagingService.instance.sendOneWay(hintedMessage, destination);
+                            }
                         }
                     }
                 }
