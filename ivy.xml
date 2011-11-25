@@ -50,6 +50,7 @@
     <dependency org="javax.mail" name="mail" rev="1.4.1"/>
     <dependency org="org.apache.geronimo.specs" name="geronimo-jms_1.1_spec" rev="1.0"/>
     <dependency org="javax.activation" name="activation" rev="1.1"/>
+    <dependency org="org.apache.hadoop" name="libthrift" rev="0.6"/>
 
     <!-- odkl statistics collection -->
     <dependency org="org.aspectj" name="aspectjrt" rev="1.6.10" />
