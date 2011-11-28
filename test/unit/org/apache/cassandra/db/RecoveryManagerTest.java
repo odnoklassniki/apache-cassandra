@@ -25,6 +25,8 @@ import org.junit.Test;
 
 import org.apache.cassandra.CleanupHelper;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.db.filter.IdentityQueryFilter;
+import org.apache.cassandra.db.filter.QueryPath;
 
 import static org.apache.cassandra.Util.column;
 import static org.apache.cassandra.db.TableTest.assertColumns;
@@ -66,4 +68,101 @@ public class RecoveryManagerTest extends CleanupHelper
         assertColumns(table1.get("keymulti", "Standard1"), "col1");
         assertColumns(table2.get("keymulti", "Standard3"), "col2");
     }
+    
+    @Test
+    public void testPartialReplay() throws IOException, ExecutionException, InterruptedException
+    {
+
+        Table table = Table.open("Keyspace1");
+        ColumnFamilyStore store1 = table.getColumnFamilyStore("Standard1");
+        ColumnFamilyStore store2 = table.getColumnFamilyStore("Standard2");
+
+        genCommits(store1, store2);
+        
+        // now replaying with max timestamp = 5. only 5 mutations must be applied
+
+        CommitLog.instance().forcedRecover(5);
+        
+        ColumnFamily cf1 = store1.getColumnFamily(new IdentityQueryFilter("key33", new QueryPath("Standard1")));
+
+        for (int i = 1; i < 10; i++)
+        {
+            IColumn c = cf1.getColumn(("Column33"+i).getBytes());
+            if (i>5)
+                assert c == null;
+            if (i<=5)
+                assert c.timestamp()==i;
+        }
+        
+        ColumnFamily cf2 = store2.getColumnFamily(new IdentityQueryFilter("key33", new QueryPath("Standard2")));
+        assert cf2.getColumn("Column33".getBytes()).timestamp()==5;
+
+        store1 = table.getColumnFamilyStore("Standard1");
+        store2 = table.getColumnFamilyStore("Standard2");
+        genCommits(store1, store2);
+        
+        // now replaying with max timestamp = 0. no mutations must be applied
+
+        CommitLog.instance().forcedRecover(0);
+
+        cf1 = store1.getColumnFamily(new IdentityQueryFilter("key33", new QueryPath("Standard1")));
+        for (int i = 1; i < 10; i++)
+        {
+            IColumn c = cf1.getColumn(("Column33"+i).getBytes());
+            
+            assert c == null : c.toString();
+        }
+
+        cf2 = store2.getColumnFamily(new IdentityQueryFilter("key33", new QueryPath("Standard2")));
+        assert cf2.getColumn("Column33".getBytes()).timestamp() == 0l;
+
+        genCommits(store1, store2);
+
+        // now replaying with no max timestamp. all mutations must be there
+
+        CommitLog.instance().forcedRecover(Long.MAX_VALUE);
+
+        cf1 = store1.getColumnFamily(new IdentityQueryFilter("key33", new QueryPath("Standard1")));
+        for (int i = 1; i < 10; i++)
+        {
+            IColumn c = cf1.getColumn(("Column33"+i).getBytes());
+            
+            assert c.timestamp()==i;
+        }
+
+        cf2 = store2.getColumnFamily(new IdentityQueryFilter("key33", new QueryPath("Standard2")));
+        assert cf2.getColumn("Column33".getBytes()).timestamp() == 9;
+        
+    }
+
+    private void genCommits(ColumnFamilyStore store1, ColumnFamilyStore store2)
+            throws IOException
+    {
+        store1.clearUnsafe();
+        store2.clearUnsafe();
+        CommitLog.instance().resetUnsafe();
+        
+        assert CommitLog.instance().getSegmentCount() == 1;
+        CommitLog.setSegmentSize(10000000);
+        
+        RowMutation rm;
+        byte[] value = new byte[501];
+
+        // add data.  use relatively large values to force quick segment creation since we have a low flush threshold in the test config.
+        for (int i = 0; i < 10; i++)
+        {
+            rm = new RowMutation("Keyspace1", "key33");
+            rm.add(new QueryPath("Standard1", null, ("Column33"+i).getBytes()), value, i);
+            rm.add(new QueryPath("Standard2", null, "Column33".getBytes()), value, i);
+            rm.apply();
+        }
+        assert CommitLog.instance().getSegmentCount() == 1;
+
+        CommitLog.instance().forceNewSegment();
+
+        store1.clearUnsafe();
+        store2.clearUnsafe();
+    }
+    
+ 
 }

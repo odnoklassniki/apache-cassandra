@@ -61,6 +61,13 @@ public class ReplayLogs
                 if (!"-normal".equalsIgnoreCase(args[0]))
                     throw new IllegalArgumentException("You must specify either -forced or -normal as 1st argument");
         
+        long timestamp = Long.MAX_VALUE;
+        if (args.length>1)
+        {
+            timestamp = Long.parseLong(args[1]);
+            logger.info("Will stop replay as soon as any column is seen with timestamp > "+timestamp);
+        }
+        
         // initialize keyspaces
         try {
             for (String table : DatabaseDescriptor.getTables())
@@ -87,9 +94,9 @@ public class ReplayLogs
 
             // replay the log if necessary and check for compaction candidates
             if (forcedMode)
-                CommitLog.forcedRecover();
+                CommitLog.forcedRecover(timestamp);
             else
-                CommitLog.recover();
+                CommitLog.recover(timestamp);
 
             if (compact)
             {
@@ -113,6 +120,7 @@ public class ReplayLogs
             }
             
             System.gc();
+            System.gc();
 
             logger.info("Log replay completed. All replayed log files were removed from "+DatabaseDescriptor.getLogFileLocation()+".");
             System.exit(0);
@@ -129,9 +137,13 @@ public class ReplayLogs
     {
         HelpFormatter hf = new HelpFormatter();
         
-        hf.printHelp("logreplay <option>",new Options()
+        hf.printHelp("logreplay <option> maxtimestamp",new Options()
                 .addOption("forced", false, "Replay all logs. Used to restore by rolling all logs to previously snap shotted data files")
                 .addOption("forcedcompact", false, "Replay all logs, like -forced do and do a major compaction. ")
-                .addOption("normal", false, "Apply commit logs to datafiles like cassandra does normally on startup and exit."));
+                .addOption("normal", false, "Apply commit logs to datafiles like cassandra does normally on startup and exit.")
+                .addOption("maxtimestamp", false, "Max column timestamp value to replay commit log until (as soon as any mutation seen with column fresher than this one - replay stops).\n"+
+                                                  "Beware: This is client supplied value. It can differ for different clusters. You should better ask programmer about this value.")
+                )
+                ;
     }
 }

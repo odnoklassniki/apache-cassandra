@@ -33,6 +33,7 @@ import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLogSegment.CommitLogContext;
@@ -158,6 +159,11 @@ public class CommitLog
 
     public static void recover() throws IOException
     {
+        recover(Long.MAX_VALUE);
+    }
+    
+    public static void recover(long maxReplayTimestamp) throws IOException
+    {
         String directory = DatabaseDescriptor.getLogFileLocation();
         File file = new File(directory);
         File[] files = file.listFiles(new FilenameFilter()
@@ -172,7 +178,7 @@ public class CommitLog
 
         Arrays.sort(files, new FileUtils.FileComparator());
         logger.info("Replaying " + StringUtils.join(files, ", "));
-        recover(files,false);
+        recover(files,false,maxReplayTimestamp);
         
         archiveLogFiles(files);
         
@@ -183,10 +189,11 @@ public class CommitLog
      * This is forced version of log replay. It is needed when data files 
      * are not in sync with commit log files headers, e.g. when youre replaying
      * shipped logs using file copies restored from backups.
+     * @param maxReplayTimestamp 
      * 
      * @throws IOException
      */
-    public static void forcedRecover() throws IOException
+    public static void forcedRecover(long maxReplayTimestamp) throws IOException
     {
         String directory = DatabaseDescriptor.getLogFileLocation();
         File file = new File(directory);
@@ -203,17 +210,22 @@ public class CommitLog
 
         Arrays.sort(files, new FileUtils.FileComparator());
         logger.info("Forced replay " + StringUtils.join(files, ", "));
-        recover(files,true);
+        recover(files,true,maxReplayTimestamp);
         
         FileUtils.delete(files);
         logger.info("Forced Log replay complete");
     }
     
-
     public static void recover(File[] clogs, boolean forced) throws IOException
+    {
+        recover(clogs,forced,Long.MAX_VALUE);
+    }
+    
+    public static void recover(File[] clogs, boolean forced, long maxReplayTimestamp) throws IOException
     {
         Set<Table> tablesRecovered = new HashSet<Table>();
         List<Future<?>> futures = new ArrayList<Future<?>>();
+        REPLAYLOOP:
         for (File file : clogs)
         {
             // empty log file - just removing it
@@ -301,6 +313,37 @@ public class CommitLog
 
                     /* deserialize the commit log entry */
                     final RowMutation rm = RowMutation.serializer().deserialize(new DataInputStream(bufIn));
+                    
+                    if (maxReplayTimestamp<Long.MAX_VALUE)
+                    {
+                        // inspecting mutation if it has any column with timestamp value greater than max
+                        boolean timestampLimitReached=false;
+                        for (ColumnFamily cf : rm.getColumnFamilies()) 
+                        {
+                            if (cf.isMarkedForDelete() && cf.getMarkedForDeleteAt()>maxReplayTimestamp)
+                            {
+                                timestampLimitReached = true;
+                                break;
+                            }
+                            
+                            for (IColumn c : cf.getSortedColumns())
+                            {
+                                if ( (c.isMarkedForDelete() && c.getMarkedForDeleteAt()>maxReplayTimestamp) || c.timestamp()>maxReplayTimestamp)
+                                {
+                                    timestampLimitReached = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (timestampLimitReached)
+                        {
+                            logger.info("Stopped replay at "+file+", position "+reader.getFilePointer()+" - mutation "+rm+" has timestamp >"+maxReplayTimestamp);
+                            break REPLAYLOOP;
+                        }
+                        
+                    }
+                    
                     if (logger.isDebugEnabled())
                         logger.debug(String.format("replaying mutation for %s.%s: %s",
                                                     rm.getTable(),

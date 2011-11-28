@@ -77,6 +77,11 @@
     	<copy file="${build}/apache-cassandra-${build.number.str}.jar" todir="${ivy.deliver.dir}/jar"/>
     </target>
 
+	<target name="test">
+        <ant antfile="build-cs.xml" target="test" inheritall="false">
+            <property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
+        </ant>
+	</target>
 	
     <target name="build-stat" >
         <echo message="${ant.project.name}: ${ant.file}"/>

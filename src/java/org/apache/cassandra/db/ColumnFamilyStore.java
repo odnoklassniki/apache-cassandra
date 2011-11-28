@@ -1328,6 +1328,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     {
         memtable_.clearUnsafe();
         ssTables_.clearUnsafe();
+        ssTables_.getRowCache().clear();
+        ssTables_.getKeyCache().clear();
     }
 
 
