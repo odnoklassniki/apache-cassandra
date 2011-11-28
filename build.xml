@@ -135,6 +135,7 @@
                 <include name="commons-pool*.jar" />
                 <include name="log4j*.jar" />
                 <include name="Sprinta*.jar" />
+                <include name="libthrift*.jar" />
             </fileset>
           <fileset dir="${build}">
             <include name="apache-cassandra-${version}.jar" />
