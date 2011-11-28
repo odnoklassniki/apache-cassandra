@@ -25,8 +25,7 @@
 
   <dependencies>
     <!-- for Hadoop unit tests -->
-    <dependency org="commons-logging" name="commons-logging" rev="1.1.1" conf="*->default"/>
-
+    <dependency org="commons-logging" name="commons-logging" rev="1.0" conf="*->default"/>
     <!-- FIXME: paranamer can be dropped after we're depending on avro 
     (since it depends on them). -->
     <dependency org="com.thoughtworks.paranamer"

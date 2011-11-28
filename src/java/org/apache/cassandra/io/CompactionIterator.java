@@ -245,6 +245,14 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     {
         return major;
     }
+    
+    /**
+     * @return currently read rows count
+     */
+    public long getRow()
+    {
+        return row;
+    }
 
     public static class CompactedRow
     {

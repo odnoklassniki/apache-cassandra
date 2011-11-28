@@ -51,7 +51,7 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
         // mbytes of data in CF
         LoadMBytes, 
         // number of completed compactions, total compacted (read) Mbytes
-        Compactions, CompactedMBytes,
+        Compactions, CompactedMBytes, CompactedRows,
         
         // RowCacheHitRate, RowCacheSize, KeyCacheHitRate, KeyCacheSize, - these are not implemented at the moment
 
@@ -111,6 +111,7 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
         
         LoggerUtil.operationsSuccess(opLogger, (System.currentTimeMillis()-compactionStartedMillis)*1000000, 1, "COMPACTION",clusterName,serverName,cfNameForLogging);
         LoggerUtil.operationData(msgLogger, Msg.CompactedMBytes.name(), clusterName, serverName,cfNameForLogging,compactingIterator.getBytesRead()/MB);
+        LoggerUtil.operationData(msgLogger, Msg.CompactedRows.name(), clusterName, serverName,cfNameForLogging,compactingIterator.getRow());
 
         compactingStore = null;
         compactingIterator = null;
