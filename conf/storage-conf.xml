@@ -177,6 +177,21 @@
         
     </Keyspace>
   </Keyspaces>
+  
+  <!--  
+    Declaration of column families, which are local to this node - i.e. no
+    replication, bootstrap, etc are performed on this column families.
+    Such column families can be used only by custom logic inside the cassandra server node.
+    
+    All these column families are forcibly placed to 'system' keyspace.
+   -->
+  <LocalStores>
+      <ColumnFamily Name="LocalCF" CompareWith="BytesType"
+                    KeysCached="1000"
+                    RowsCached="100"
+                    RowCacheSavePeriodInSeconds="0"
+                    KeyCacheSavePeriodInSeconds="3600"/>
+  </LocalStores>
 
   <!--
    ~ Authenticator: any IAuthenticator may be used, including your own as long

@@ -675,6 +675,9 @@ public class DatabaseDescriptor
                                                                                     null,null
                                                                                     ));
 
+            // Configured local storages
+            readLocalStoragesFromXml();
+            
             /* Load the seeds for node contact points */
             String[] seedsxml = xmlUtils.getNodeValues("/Storage/Seeds/Seed");
             if (seedsxml.length <= 0)
@@ -882,137 +885,208 @@ public class DatabaseDescriptor
                 {
                     throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName + " " + e.getMessage());
                 }
+                
                 String xqlTable = "/Storage/Keyspaces/Keyspace[@Name='" + ksName + "']/";
-                NodeList columnFamilies = xmlUtils.getRequestedNodeList(xqlTable + "ColumnFamily");
 
                 KSMetaData meta = new KSMetaData(ksName, repStratClass, repFact, epSnitch);
 
-                //NodeList columnFamilies = xmlUtils.getRequestedNodeList(table, "ColumnFamily");
-                int size2 = columnFamilies.getLength();
-
-                for ( int j = 0; j < size2; ++j )
-                {
-                    Node columnFamily = columnFamilies.item(j);
-                    String tableName = ksName;
-                    String cfName = XMLUtils.getAttributeValue(columnFamily, "Name");
-                    if (cfName == null)
-                    {
-                        throw new ConfigurationException("ColumnFamily name attribute is required");
-                    }
-                    if (cfName.contains("-"))
-                    {
-                        throw new ConfigurationException("ColumnFamily names cannot contain hyphens");
-                    }
-                    String xqlCF = xqlTable + "ColumnFamily[@Name='" + cfName + "']/";
-
-                    // Parse out the column type
-                    String rawColumnType = XMLUtils.getAttributeValue(columnFamily, "ColumnType");
-                    String columnType = ColumnFamily.getColumnType(rawColumnType);
-                    if (columnType == null)
-                    {
-                        throw new ConfigurationException("ColumnFamily " + cfName + " has invalid type " + rawColumnType);
-                    }
-
-                    if (XMLUtils.getAttributeValue(columnFamily, "ColumnSort") != null)
-                    {
-                        throw new ConfigurationException("ColumnSort is no longer an accepted attribute.  Use CompareWith instead.");
-                    }
-
-                    // Parse out the column comparator
-                    AbstractType comparator = getComparator(columnFamily, "CompareWith");
-                    AbstractType subcolumnComparator = null;
-                    if (columnType.equals("Super"))
-                    {
-                        subcolumnComparator = getComparator(columnFamily, "CompareSubcolumnsWith");
-                    }
-                    else if (XMLUtils.getAttributeValue(columnFamily, "CompareSubcolumnsWith") != null)
-                    {
-                        throw new ConfigurationException("CompareSubcolumnsWith is only a valid attribute on super columnfamilies (not regular columnfamily " + cfName + ")");
-                    }
-
-                    double keyCacheSize = CFMetaData.DEFAULT_KEY_CACHE_SIZE;
-                    if ((value = XMLUtils.getAttributeValue(columnFamily, "KeysCachedFraction")) != null)
-                    {
-                        keyCacheSize = Double.valueOf(value);
-                        // TODO: KeysCachedFraction deprecated: remove in 1.0
-                        logger.warn("KeysCachedFraction is deprecated: use KeysCached instead.");
-                    }
-                    if ((value = XMLUtils.getAttributeValue(columnFamily, "KeysCached")) != null)
-                    {
-                        keyCacheSize = FBUtilities.parseDoubleOrPercent(value);
-                    }
-
-                    double rowCacheSize = CFMetaData.DEFAULT_ROW_CACHE_SIZE;
-                    if ((value = XMLUtils.getAttributeValue(columnFamily, "RowsCached")) != null)
-                    {
-                        rowCacheSize = FBUtilities.parseDoubleOrPercent(value);
-                    }
-                    
-                    // MM: parse out bloom columns for this CF
-                    boolean bloomColumns = false;
-                    if ((value = XMLUtils.getAttributeValue(columnFamily, "BloomColumns")) != null)
-                    {
-                        bloomColumns = Boolean.valueOf(value);
-                        if (bloomColumns)
-                        {
-                            if (columnType.equals("Super"))
-                            {
-                                throw new ConfigurationException("bloomColumns mode is not implemented for super columns");
-                            }
-
-                            logger.info("Column level bloom filter in on for "+cfName);
-                        }
-                    }                    
-                    // MM: parse out domain split for this CF
-                    boolean splitByDomain = false;
-                    if ((value = XMLUtils.getAttributeValue(columnFamily, "SplitByDomain")) != null)
-                    {
-                        splitByDomain = Boolean.valueOf(value);
-                        if (splitByDomain)
-                        {
-                            if (cfName.contains("_"))
-                            {
-                                throw new ConfigurationException("ColumnFamily split by domain names cannot contain underscores");
-                            }
-                            if (! (DatabaseDescriptor.getPartitioner() instanceof OdklDomainPartitioner) )
-                            {
-                                throw new ConfigurationException("SplitByDomain mode is possible only with OdklDomainPartitioner");
-                            }
-
-                            logger.info("Splitting "+cfName+" by domain of keys");
-                        }
-                    }                    
-
-                    // Parse out user-specified logical names for the various dimensions
-                    // of a the column family from the config.
-                    String comment = xmlUtils.getNodeValue(xqlCF + "Comment");
-                    
-                    // insert it into the table dictionary.
-                    String rowCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "RowCacheSavePeriodInSeconds");
-                    String keyCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "KeyCacheSavePeriodInSeconds");
-                    int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
-                    int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
-                    
-                    if (splitByDomain)
-                    {
-                        // generating CFs postfixed with _{0-255}
-                        for (int domain =0;domain<256;domain++)
-                        {
-                            Token domainToken = getPartitioner().getToken(Integer.toHexString(domain));
-                            String postfix='_'+domainToken.toString();
-                            domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
-                            Token domainMax = domain==255 ? getPartitioner().getToken(Integer.toHexString(0)) : getPartitioner().getToken(Integer.toHexString(domain+1));
-                            meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax));
-                        }
-                    }
-                    else
-                    {
-                        meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null));
-                    }
-                }
+                readColumnFamiliesFromXml(
+                        xmlUtils,
+                        ksName,
+                        xqlTable,
+                        meta);
 
                 tables.put(meta.name, meta);
             }
+            
+            
+        }
+        catch (XPathExpressionException e)
+        {
+            ConfigurationException ex = new ConfigurationException(e.getMessage());
+            ex.initCause(e);
+            throw ex;
+        }
+        catch (TransformerException e)
+        {
+            ConfigurationException ex = new ConfigurationException(e.getMessage());
+            ex.initCause(e);
+            throw ex;
+        }
+    }
+
+    private static void readColumnFamiliesFromXml(XMLUtils xmlUtils, String ksName,
+            String xqlTable, KSMetaData meta)
+            throws TransformerException, ConfigurationException,
+            XPathExpressionException
+    {
+        NodeList columnFamilies = xmlUtils.getRequestedNodeList(xqlTable + "ColumnFamily");
+        String value;
+        int size2 = columnFamilies.getLength();
+
+        for ( int j = 0; j < size2; ++j )
+        {
+            Node columnFamily = columnFamilies.item(j);
+            String tableName = ksName;
+            String cfName = XMLUtils.getAttributeValue(columnFamily, "Name");
+            if (cfName == null)
+            {
+                throw new ConfigurationException("ColumnFamily name attribute is required");
+            }
+            if (cfName.contains("-"))
+            {
+                throw new ConfigurationException("ColumnFamily names cannot contain hyphens");
+            }
+            String xqlCF = xqlTable + "ColumnFamily[@Name='" + cfName + "']/";
+
+            // Parse out the column type
+            String rawColumnType = XMLUtils.getAttributeValue(columnFamily, "ColumnType");
+            String columnType = ColumnFamily.getColumnType(rawColumnType);
+            if (columnType == null)
+            {
+                throw new ConfigurationException("ColumnFamily " + cfName + " has invalid type " + rawColumnType);
+            }
+
+            if (XMLUtils.getAttributeValue(columnFamily, "ColumnSort") != null)
+            {
+                throw new ConfigurationException("ColumnSort is no longer an accepted attribute.  Use CompareWith instead.");
+            }
+
+            // Parse out the column comparator
+            AbstractType comparator = getComparator(columnFamily, "CompareWith");
+            AbstractType subcolumnComparator = null;
+            if (columnType.equals("Super"))
+            {
+                subcolumnComparator = getComparator(columnFamily, "CompareSubcolumnsWith");
+            }
+            else if (XMLUtils.getAttributeValue(columnFamily, "CompareSubcolumnsWith") != null)
+            {
+                throw new ConfigurationException("CompareSubcolumnsWith is only a valid attribute on super columnfamilies (not regular columnfamily " + cfName + ")");
+            }
+
+            double keyCacheSize = CFMetaData.DEFAULT_KEY_CACHE_SIZE;
+            if ((value = XMLUtils.getAttributeValue(columnFamily, "KeysCachedFraction")) != null)
+            {
+                keyCacheSize = Double.valueOf(value);
+                // TODO: KeysCachedFraction deprecated: remove in 1.0
+                logger.warn("KeysCachedFraction is deprecated: use KeysCached instead.");
+            }
+            if ((value = XMLUtils.getAttributeValue(columnFamily, "KeysCached")) != null)
+            {
+                keyCacheSize = FBUtilities.parseDoubleOrPercent(value);
+            }
+
+            double rowCacheSize = CFMetaData.DEFAULT_ROW_CACHE_SIZE;
+            if ((value = XMLUtils.getAttributeValue(columnFamily, "RowsCached")) != null)
+            {
+                rowCacheSize = FBUtilities.parseDoubleOrPercent(value);
+            }
+            
+            // MM: parse out bloom columns for this CF
+            boolean bloomColumns = false;
+            if ((value = XMLUtils.getAttributeValue(columnFamily, "BloomColumns")) != null)
+            {
+                bloomColumns = Boolean.valueOf(value);
+                if (bloomColumns)
+                {
+                    if (columnType.equals("Super"))
+                    {
+                        throw new ConfigurationException("bloomColumns mode is not implemented for super columns");
+                    }
+
+                    logger.info("Column level bloom filter in on for "+cfName);
+                }
+            }                    
+            // MM: parse out domain split for this CF
+            boolean splitByDomain = false;
+            if ((value = XMLUtils.getAttributeValue(columnFamily, "SplitByDomain")) != null)
+            {
+                splitByDomain = Boolean.valueOf(value);
+                if (splitByDomain)
+                {
+                    if (cfName.contains("_"))
+                    {
+                        throw new ConfigurationException("ColumnFamily split by domain names cannot contain underscores");
+                    }
+                    if (! (DatabaseDescriptor.getPartitioner() instanceof OdklDomainPartitioner) )
+                    {
+                        throw new ConfigurationException("SplitByDomain mode is possible only with OdklDomainPartitioner");
+                    }
+
+                    logger.info("Splitting "+cfName+" by domain of keys");
+                }
+            }                    
+
+            // Parse out user-specified logical names for the various dimensions
+            // of a the column family from the config.
+            String comment = xmlUtils.getNodeValue(xqlCF + "Comment");
+            
+            // insert it into the table dictionary.
+            String rowCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "RowCacheSavePeriodInSeconds");
+            String keyCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "KeyCacheSavePeriodInSeconds");
+            int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
+            int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
+            
+            if (splitByDomain)
+            {
+                // generating CFs postfixed with _{0-255}
+                for (int domain =0;domain<256;domain++)
+                {
+                    Token domainToken = getPartitioner().getToken(Integer.toHexString(domain));
+                    String postfix='_'+domainToken.toString();
+                    domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
+                    Token domainMax = domain==255 ? getPartitioner().getToken(Integer.toHexString(0)) : getPartitioner().getToken(Integer.toHexString(domain+1));
+                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax));
+                }
+            }
+            else
+            {
+                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null));
+            }
+        }
+        
+    }
+    
+    private static void readLocalStoragesFromXml() throws ConfigurationException
+    {
+        XMLUtils xmlUtils = null;
+        try
+        {
+            xmlUtils = new XMLUtils(configFileURI);
+        }
+        catch (ParserConfigurationException e)
+        {
+            ConfigurationException ex = new ConfigurationException(e.getMessage());
+            ex.initCause(e);
+            throw ex;
+        }
+        catch (SAXException e)
+        {
+            ConfigurationException ex = new ConfigurationException(e.getMessage());
+            ex.initCause(e);
+            throw ex;
+        }
+        catch (IOException e)
+        {
+            ConfigurationException ex = new ConfigurationException(e.getMessage());
+            ex.initCause(e);
+            throw ex;
+        }
+
+        /* Read the table related stuff from config */
+        try
+        {
+                
+                String xqlTable = "/Storage/LocalStores/";
+
+                KSMetaData meta = tables.get(Table.SYSTEM_TABLE);
+
+                readColumnFamiliesFromXml(
+                        xmlUtils,
+                        Table.SYSTEM_TABLE,
+                        xqlTable,
+                        meta);
+
         }
         catch (XPathExpressionException e)
         {
