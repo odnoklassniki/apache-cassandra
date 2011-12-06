@@ -56,6 +56,7 @@
      </Keyspace>
      <Keyspace Name = "Keyspace2">
        <ColumnFamily Name="Standard1"/>
+       <ColumnFamily Name="Standard1c" RowsCached="10%" KeysCached="0" BloomColumn="true"/>
        <ColumnFamily Name="Standard3"/>
        <ColumnFamily ColumnType="Super" Name="Super3"/>
        <ColumnFamily ColumnType="Super" CompareSubcolumnsWith="TimeUUIDType" Name="Super4"/>

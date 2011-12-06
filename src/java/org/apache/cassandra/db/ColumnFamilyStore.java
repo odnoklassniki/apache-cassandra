@@ -126,6 +126,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     private Runnable rowCacheWriteTask;
     private Runnable keyCacheWriteTask;
 
+    // if !null will receive notifications about new data arriving to this store
+    private IStoreApplyListener storeApplyListener;
+
     ColumnFamilyStore(String table, String columnFamilyName, boolean isSuper, int indexValue) throws IOException
     {
         table_ = table;
@@ -521,6 +524,13 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         binaryMemtable_.set(new BinaryMemtable(this));
         binaryMemtable_.get().put(key, buffer);
     }
+    
+    public void setStoreApplyListener(IStoreApplyListener applyListener)
+    {
+        assert applyListener==null || this.storeApplyListener == null;
+        
+        this.storeApplyListener = applyListener;
+    }
 
     public void forceFlushIfExpired() throws IOException, ExecutionException, InterruptedException
     {
@@ -561,6 +571,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     Memtable apply(String key, ColumnFamily columnFamily) throws IOException
     {
         long start = System.nanoTime();
+        
+        if (storeApplyListener!=null)
+            storeApplyListener.apply(key, columnFamily);
 
         boolean flushRequested = memtable_.isThresholdViolated();
         memtable_.put(key, columnFamily);

@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.lang.ArrayUtils;
 import static org.junit.Assert.assertNull;
@@ -38,14 +39,48 @@ import java.net.InetAddress;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.CollatingOrderPreservingPartitioner;
+import org.apache.cassandra.db.filter.ColumnsMayExistQueryFilter;
+import org.apache.cassandra.db.filter.FastRowMayExistQueryFilter;
 import org.apache.cassandra.db.filter.IdentityQueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.filter.NamesQueryFilter;
+import org.apache.cassandra.db.filter.ColumnsMayExistQueryFilter.ColumnCollector;
 import org.apache.cassandra.io.SSTableReader;
 
 public class ColumnFamilyStoreTest extends CleanupHelper
 {
+    /**
+     * @author Oleg Anastasyev<oa@hq.one.lv>
+     *
+     */
+    private final class ColumnCollectorImplementation implements
+            ColumnCollector
+    {
+        int c=0;
+
+        @Override
+        public boolean isCollected(byte[] name)
+        {
+            return c>0 && Arrays.equals(name,"Column1".getBytes());
+        }
+
+        @Override
+        public void collect(byte[] name)
+        {
+            assert Arrays.equals(name,"Column1".getBytes()) : "Collected "+new String(name);
+            c++;
+        }
+
+        /**
+         * @return the c
+         */
+        public int getC()
+        {
+            return c;
+        }
+    }
+
     static byte[] bytes1, bytes2;
 
     static
@@ -104,6 +139,107 @@ public class ColumnFamilyStoreTest extends CleanupHelper
         };
 
         TableTest.reTest(store, r);
+    }
+
+    @Test
+    public void testFastRowMayExist() throws Exception
+    {
+        final ColumnFamilyStore store = insert("row777");
+
+        Runnable r = new WrappedRunnable()
+        {
+            public void runMayThrow() throws IOException
+            {
+                FastRowMayExistQueryFilter filter = new FastRowMayExistQueryFilter("row777", new QueryPath("Standard1", null, null));
+                ColumnFamily cf = store.getColumnFamily(filter);
+                assert filter.mayExist();
+                assert cf == null;
+
+                filter = new FastRowMayExistQueryFilter("row778", new QueryPath("Standard1", null, null));
+                cf = store.getColumnFamily(filter);
+                assert !filter.mayExist();
+                assert cf == null;
+
+            }
+        };
+
+        TableTest.reTest(store, r);
+    }
+
+    @Test
+    public void testColumnsMayExist() throws Exception
+    {
+        final ColumnFamilyStore store = insertc("row7779");
+
+        Runnable r = new WrappedRunnable()
+        {
+            public void runMayThrow() throws IOException
+            {
+                ColumnCollectorImplementation cc = new ColumnCollectorImplementation();
+                
+                ColumnsMayExistQueryFilter filter = new ColumnsMayExistQueryFilter("row7779", new QueryPath("Standard1c"),
+                        Arrays.asList(new byte[][] {"Column1".getBytes(),"Column3".getBytes(),"Column4".getBytes()}), cc, 3);
+                ColumnFamily cf = store.getColumnFamily(filter);
+                assert cc.getC() == 1;
+                assert cf == null;
+
+                cc = new ColumnCollectorImplementation();
+                filter = new ColumnsMayExistQueryFilter("row7779", new QueryPath("Standard1c"),
+                        Arrays.asList(new byte[][] {"Column1".getBytes(),"Column3".getBytes(),"Column4".getBytes()}), cc, 0);
+                cf = store.getColumnFamily(filter);
+                assert cc.getC() == 0;
+                assert cf == null;
+
+                cc = new ColumnCollectorImplementation();
+                filter = new ColumnsMayExistQueryFilter("row7779", new QueryPath("Standard1c"),
+                        Arrays.asList(new byte[][] {"Column1".getBytes(),"Column1".getBytes(),"Column4".getBytes()}), cc, 3);
+                cf = store.getColumnFamily(filter);
+                assert cc.getC() == 1 :" c="+cc.getC();
+                assert cf == null;
+
+                cc = new ColumnCollectorImplementation();
+                filter = new ColumnsMayExistQueryFilter("row7780", new QueryPath("Standard1c"),
+                        Arrays.asList(new byte[][] {"Column1".getBytes(),"Column3".getBytes(),"Column4".getBytes()}), cc, 3);
+                cf = store.getColumnFamily(filter);
+                assert cc.getC() == 0;
+                assert cf == null;
+
+            }
+        };
+
+        TableTest.reTest(store, r);
+    }
+
+    @Test
+    public void testListener() throws Exception
+    {
+        final ColumnFamilyStore store = insert("row7777");
+        final AtomicInteger i = new AtomicInteger();
+
+        store.setStoreApplyListener(new IStoreApplyListener()
+        {
+            
+            @Override
+            public void apply(String key, ColumnFamily data)
+            {
+                assert key.equals("row7778");
+                assert Arrays.equals(data.getColumn("Column1".getBytes()).value(),"asdf".getBytes());
+                
+                i.incrementAndGet();
+            }
+        });
+
+        assert i.get() == 0;
+        
+        insert("row7778");
+
+        assert i.get() == 1;
+
+        insert("row7778");
+
+        assert i.get() == 2;
+        
+        store.setStoreApplyListener(null);
     }
 
     /**
@@ -173,6 +309,20 @@ public class ColumnFamilyStoreTest extends CleanupHelper
         {
             rm = new RowMutation("Keyspace2", key);
             rm.add(new QueryPath("Standard1", null, "Column1".getBytes()), "asdf".getBytes(), 0);
+            rms.add(rm);
+        }
+
+        return Util.writeColumnFamily(rms);
+    }
+
+    private ColumnFamilyStore insertc(String... keys) throws IOException, ExecutionException, InterruptedException
+    {
+        List<RowMutation> rms = new LinkedList<RowMutation>();
+        RowMutation rm;
+        for (String key : keys)
+        {
+            rm = new RowMutation("Keyspace2", key);
+            rm.add(new QueryPath("Standard1c", null, "Column1".getBytes()), "asdf".getBytes(), 0);
             rms.add(rm);
         }
 

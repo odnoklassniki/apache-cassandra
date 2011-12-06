@@ -79,12 +79,24 @@ public class CassandraDaemon
 
     public void setup() throws IOException, TTransportException
     {
-        CLibrary.tryMlockall();
-        
         // log4j
         String file = System.getProperty("storage-config") + File.separator + "log4j.properties";
         PropertyConfigurator.configure(file);
 
+        setupInternals();
+
+        setupServer();
+
+        setupThrift();
+        
+        // start maintenance
+        if (MaintenanceTaskManager.isConfigured())
+            MaintenanceTaskManager.instance.start();
+    }
+
+    protected void setupThrift()
+    {
+        // init thrift server
         int listenPort = DatabaseDescriptor.getThriftPort();
         InetAddress listenAddr = DatabaseDescriptor.getThriftAddress();
         
@@ -95,6 +107,28 @@ public class CassandraDaemon
         if (listenAddr == null)
             listenAddr = FBUtilities.getLocalAddress();
         
+        initThrift(listenAddr, listenPort);
+    }
+
+    protected void setupServer() throws IOException
+    {
+        // start server internals
+        try
+        {
+            StorageService.instance.initServer();
+        }
+        catch (ConfigurationException e)
+        {
+            logger.error("Fatal error: " + e.getMessage());
+            System.err.println("Bad configuration; unable to start server");
+            System.exit(1);
+        }
+    }
+
+    protected void setupInternals() throws IOException
+    {
+        CLibrary.tryMlockall();
+
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
         {
             public void uncaughtException(Thread t, Throwable e)
@@ -129,25 +163,6 @@ public class CassandraDaemon
         // replay the log if necessary and check for compaction candidates
         CommitLog.recover();
         CompactionManager.instance.checkAllColumnFamilies();
-
-        // start server internals
-        try
-        {
-            StorageService.instance.initServer();
-        }
-        catch (ConfigurationException e)
-        {
-            logger.error("Fatal error: " + e.getMessage());
-            System.err.println("Bad configuration; unable to start server");
-            System.exit(1);
-        }
-
-        // init thrift server
-        initThrift(listenAddr, listenPort);
-        
-        // start maintenance
-        if (MaintenanceTaskManager.isConfigured())
-            MaintenanceTaskManager.instance.start();
     }
     
     private void initThrift(InetAddress listenAddr, int listenPort)
