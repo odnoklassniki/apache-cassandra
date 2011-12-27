@@ -76,12 +76,12 @@ public class StageManager
     {
         assert numThreads > 1 : "multi-threaded stages must have at least 2 threads";
         
-        return new JMXConfigurableThreadPoolExecutor(numThreads,
+        return new StageThreadPoolExecutor(numThreads,
                                                      numThreads,
                                                      Integer.MAX_VALUE,
                                                      TimeUnit.SECONDS,
                                                      new LinkedBlockingQueue<Runnable>(),
-                                                     new NamedThreadFactory(name));
+                                                     name);
     }
 
     /**
