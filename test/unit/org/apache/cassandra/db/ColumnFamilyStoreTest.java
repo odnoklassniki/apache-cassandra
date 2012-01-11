@@ -216,11 +216,11 @@ public class ColumnFamilyStoreTest extends CleanupHelper
         final ColumnFamilyStore store = insert("row7777");
         final AtomicInteger i = new AtomicInteger();
 
-        store.setStoreApplyListener(new IStoreApplyListener()
+        store.setFilter(new IStoreApplyFilter()
         {
             
             @Override
-            public void apply(String key, ColumnFamily data)
+            public void filter(String key, ColumnFamily data)
             {
                 assert key.equals("row7778");
                 assert Arrays.equals(data.getColumn("Column1".getBytes()).value(),"asdf".getBytes());
@@ -239,7 +239,11 @@ public class ColumnFamilyStoreTest extends CleanupHelper
 
         assert i.get() == 2;
         
-        store.setStoreApplyListener(null);
+        store.setFilter(null);
+
+        insert("row7778");
+
+        assert i.get() == 2;
     }
 
     /**

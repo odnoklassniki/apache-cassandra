@@ -6,22 +6,25 @@
 package org.apache.cassandra.db;
 
 /**
- * Listener for new data on column family store
+ * Can filter row mutations applied to local column family store
  * 
  * @author Oleg Anastasyev<oa@hq.one.lv>
- * @see ColumnFamilyStore#apply(String, ColumnFamily)
+ * @see ColumnFamilyStore#setStoreApplyListener(IStoreApplyListener)
+ * @see Table#apply(RowMutation, Object, boolean)
  */
-public interface IStoreApplyListener
+public interface IStoreApplyFilter
 {
     /**
      * Called by store just before application of new data to local column family store.
      * Be warned, that same data can arrive several times due to hinted handoffs, RRs etc.
      * 
-     * At the moment of this method invokation mutation is already written to commit log.
+     * You can modify supplied column family data. If after modifications it is empty - whole
+     * mutation will be skipped
      * 
      * @param key row key
      * @param data 
+     * 
      */
-    void apply(String key, ColumnFamily data); 
+    void filter(String key, ColumnFamily data); 
 
 }

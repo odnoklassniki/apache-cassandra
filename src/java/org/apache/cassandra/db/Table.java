@@ -44,6 +44,7 @@ import org.apache.cassandra.io.SSTableDeletingReference;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.CopyOnWriteMap;
 import org.apache.cassandra.utils.FBUtilities;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
@@ -58,7 +59,7 @@ public class Table
 
     private static Timer flushTimer = new Timer("FLUSH-TIMER");
     private final boolean waitForCommitLog;
-
+    
     // This is a result of pushing down the point in time when storage directories get created.  It used to happen in
     // CassandraDaemon, but it is possible to call Table.open without a running daemon, so it made sense to ensure
     // proper directories here.
@@ -185,6 +186,12 @@ public class Table
     private final Table.TableMetadata tableMetadata;
     /* ColumnFamilyStore per column family */
     private final Map<String, ColumnFamilyStore> columnFamilyStores = new HashMap<String, ColumnFamilyStore>();
+    /**
+     * Key: ColumnFamilyStore
+     * Value: its listener
+     */
+    private Map<String, IStoreApplyFilter> storeFilters = null;
+
 
     public static Table open(String table) throws IOException
     {
@@ -441,6 +448,25 @@ public class Table
     public void apply(RowMutation mutation, Object serializedMutation, boolean writeCommitLog) throws IOException
     {
         HashMap<ColumnFamilyStore,Memtable> memtablesToFlush = new HashMap<ColumnFamilyStore, Memtable>(2);
+        
+        if (storeFilters!=null)
+        {
+            // invoke listener prior critical section
+            for (ColumnFamily columnFamily : mutation.getColumnFamilies())
+            {
+                IStoreApplyFilter listener = storeFilters.get( columnFamily.name() );
+                if (listener!=null)
+                {
+                    listener.filter(mutation.key(), columnFamily);
+                    if (columnFamily.getColumnsMap().size()==0 && !columnFamily.isMarkedForDelete())
+                        mutation.removeColumnFamily(columnFamily);
+                }
+            }
+            
+            if (mutation.modifications_.size()==0)
+                return;
+        }
+        
 
         // write the mutation to the commitlog and memtables
         flusherLock.readLock().lock();
@@ -564,5 +590,17 @@ public class Table
             }
         };
         return Iterables.transform(DatabaseDescriptor.getTables(), transformer);
+    }
+    
+    void setStoreFilter(ColumnFamilyStore store, IStoreApplyFilter listener)
+    {
+        assert storeFilters == null || storeFilters.get(store.columnFamily_)==null || listener==null;
+        
+        synchronized (this) {
+            if (storeFilters==null)
+                storeFilters = new CopyOnWriteMap<String, IStoreApplyFilter>();
+            
+            storeFilters.put(store.columnFamily_,listener);
+        }
     }
 }
