@@ -87,7 +87,7 @@ public class StorageProxy implements StorageProxyMBean
      *  
      *  0 -  turn it off
      */
-    private static int     hintedHandoffWriteLatencyThreshold = 1;
+    private static int     hintedHandoffWriteLatencyThreshold = 0;
 
     private StorageProxy() {}
     static

@@ -30,15 +30,21 @@ import java.nio.channels.ServerSocketChannel;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.base.Function;
+import com.sun.xml.internal.rngom.digested.DDataPattern;
+
 import org.apache.log4j.Logger;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.HintedHandOffManager;
+import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.locator.ILatencySubscriber;
 import org.apache.cassandra.net.io.SerializerType;
@@ -46,6 +52,7 @@ import org.apache.cassandra.net.sink.SinkManager;
 import org.apache.cassandra.service.ConsistencyChecker;
 import org.apache.cassandra.service.GCInspector;
 import org.apache.cassandra.service.QuorumResponseHandler;
+import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ExpiringMap;
 import org.apache.cassandra.utils.Pair;
@@ -62,7 +69,7 @@ public class MessagingService
     public static final int PROTOCOL_MAGIC = 0xCA552DFA;
 
     /* This records all the results mapped by message Id */
-    private static ExpiringMap<String, Pair<InetAddress, IMessageCallback>> callbacks;
+    private static ExpiringMap<String, CallbackInfo> callbacks;
 
     /* Lookup table for registering message handlers based on the verb. */
     private static Map<StorageService.Verb, IVerbHandler> verbHandlers_;
@@ -102,16 +109,25 @@ public class MessagingService
         listenGate = new SimpleCondition();
         verbHandlers_ = new HashMap<StorageService.Verb, IVerbHandler>();
 
-        Function<Pair<String, Pair<InetAddress, IMessageCallback>>, ?> timeoutReporter = new Function<Pair<String, Pair<InetAddress, IMessageCallback>>, Object>()
+        Function<Pair<String, CallbackInfo>, ?> timeoutReporter = new Function<Pair<String, CallbackInfo>, Object>()
         {
-            public Object apply(Pair<String, Pair<InetAddress, IMessageCallback>> pair)
+            public Object apply(Pair<String, CallbackInfo> pair)
             {
-                Pair<InetAddress, IMessageCallback> expiredValue = pair.right;
-                maybeAddLatency(expiredValue.right, expiredValue.left, (double) DatabaseDescriptor.getRpcTimeout());
+                CallbackInfo expiredCallbackInfo = pair.right;
+                maybeAddLatency(expiredCallbackInfo.callback, expiredCallbackInfo.target, (double) DatabaseDescriptor.getRpcTimeout());
+
+                // hintlog v2
+                if (expiredCallbackInfo.shouldHint())
+                {
+                    // Trigger hints for expired mutation message.
+                    assert expiredCallbackInfo.message != null;
+                    scheduleMutationHint(expiredCallbackInfo.message, expiredCallbackInfo.target);
+                }
+
                 return null;
             }
         };
-        callbacks = new ExpiringMap<String, Pair<InetAddress, IMessageCallback>>((long) (1.1 * DatabaseDescriptor.getRpcTimeout()), timeoutReporter);
+        callbacks = new ExpiringMap<String, CallbackInfo>((long) (1.1 * DatabaseDescriptor.getRpcTimeout()), timeoutReporter);
 
         defaultExecutor_ = new JMXEnabledThreadPoolExecutor("MISCELLANEOUS-POOL");
         streamExecutor_ = new JMXEnabledThreadPoolExecutor("MESSAGE-STREAMING-POOL");
@@ -125,6 +141,19 @@ public class MessagingService
         };
         Timer timer = new Timer("DroppedMessagesLogger");
         timer.schedule(logDropped, LOG_DROPPED_INTERVAL_IN_MS, LOG_DROPPED_INTERVAL_IN_MS);
+    }
+
+    private Future<?> scheduleMutationHint(Message mutationMessage, InetAddress mutationTarget)
+    {
+        try
+        {
+            HintedHandOffManager.instance().storeHint(mutationTarget, null, mutationMessage.getMessageBody());
+        }
+        catch (IOException e)
+        {
+            logger_.error("Unable to deserialize mutation when writting hint for: " + mutationTarget);
+        }
+        return null;
     }
 
     /**
@@ -235,9 +264,16 @@ public class MessagingService
         return verbHandlers_.get(type);
     }
 
-    private void addCallback(IMessageCallback cb, String messageId, InetAddress to)
+    private void addCallback(IMessageCallback cb, Message message, InetAddress to, boolean hintEnabled)
     {
-        Pair<InetAddress, IMessageCallback> previous = callbacks.put(messageId, new Pair<InetAddress, IMessageCallback>(to, cb));
+        CallbackInfo previous;
+
+        // If HH is enabled and this is a mutation message => store the message to track for potential hints.
+        if (hintEnabled && message.getVerb() == StorageService.Verb.MUTATION)
+            previous = callbacks.put(message.getMessageId(), new CallbackInfo(to, cb, message));
+        else
+            previous = callbacks.put(message.getMessageId(), new CallbackInfo(to, cb));
+
         assert previous == null;
     }
 
@@ -253,8 +289,13 @@ public class MessagingService
      */
     public String sendRR(Message message, InetAddress to, IAsyncCallback cb)
     {        
+        return sendRR(message,to,cb,DatabaseDescriptor.hintedHandoffEnabled());
+    }
+
+    public String sendRR(Message message, InetAddress to, IAsyncCallback cb, boolean hintEnabled)
+    {        
         String messageId = message.getMessageId();
-        addCallback(cb, messageId, to);
+        addCallback(cb, message, to,hintEnabled);
         sendOneWay(message, to);
         return messageId;
     }
@@ -305,8 +346,13 @@ public class MessagingService
     
     public IAsyncResult sendRR(Message message, InetAddress to)
     {
+        return sendRR(message,to,DatabaseDescriptor.hintedHandoffEnabled());
+    }
+    
+    public IAsyncResult sendRR(Message message, InetAddress to, boolean hintEnabled)
+    {
         IAsyncResult iar = new AsyncResult();
-        addCallback(iar, message.getMessageId(), to);
+        addCallback(iar, message, to, hintEnabled);
         sendOneWay(message, to);
         return iar;
     }
@@ -380,7 +426,7 @@ public class MessagingService
         }
     }
 
-    public static Pair<InetAddress, IMessageCallback> removeRegisteredCallback(String messageId)
+    public static CallbackInfo removeRegisteredCallback(String messageId)
     {
         return callbacks.remove(messageId);
     }

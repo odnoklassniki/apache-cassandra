@@ -114,7 +114,7 @@ public class HintLogHandoffManager extends HintedHandOffManager
     {
         Message message = RowMutation.makeRowMutationMessage(rm);
         WriteResponseHandler responseHandler = new WriteResponseHandler(1, 1, RowMutation.tableNameSerializer_().deserialize(new DataInputStream(new ByteArrayInputStream(rm))));
-        MessagingService.instance.sendRR(message, endPoint, responseHandler);
+        MessagingService.instance.sendRR(message, endPoint, responseHandler,false /* we dont want this hint to be saved again on timeout **/);
         try
         {
             responseHandler.get();

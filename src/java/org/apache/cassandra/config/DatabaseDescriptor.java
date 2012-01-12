@@ -724,11 +724,21 @@ public class DatabaseDescriptor
             hintedHandoffManager = null;
         else if (hintedHandOffStr.equalsIgnoreCase("true"))
         {
-            hintedHandoffManager = HintedHandOffManager.class;
+            hintedHandoffManager = HintLogHandoffManager.class;
+
+            logger.info("HintLog Handoff activated. Will write hint logs to "+hintLogDirectory);
             
         } 
         else
-            throw new ConfigurationException("Unrecognized value for HintedHandoff.  Use 'true','false' or 'hintlog'.");
+            if (hintedHandOffStr.equalsIgnoreCase("stock"))
+            {
+                hintedHandoffManager = HintLogHandoffManager.class;
+
+                logger.info("Stock cassandra HintedHandoff activated. Hope you know what are you doing - its slow and ugly");
+
+            }
+            else
+                throw new ConfigurationException("Unrecognized value for HintedHandoff.  Use 'true','false' or 'hintlog'.");
 
         HintedHandOffManager.setInstance(hintedHandoffManager);
     }

@@ -18,11 +18,7 @@
 
 package org.apache.cassandra.net;
 
-import java.net.InetAddress;
-
 import org.apache.log4j.Logger;
-
-import org.apache.cassandra.utils.Pair;
 
 public class ResponseVerbHandler implements IVerbHandler
 {
@@ -32,23 +28,27 @@ public class ResponseVerbHandler implements IVerbHandler
     {     
         String messageId = message.getMessageId();
         double age = System.currentTimeMillis() - MessagingService.getRegisteredCallbackAge(messageId);
-        Pair<InetAddress, IMessageCallback> pair = MessagingService.removeRegisteredCallback(messageId);
-        if (pair == null)
+        CallbackInfo callbackInfo = MessagingService.removeRegisteredCallback(messageId);
+        if (callbackInfo == null)
+        {
+            if (logger_.isDebugEnabled())
+                logger_.debug("Callback already removed for "+ messageId);
             return;
+        }
 
-        IMessageCallback cb = pair.right;
+        IMessageCallback cb = callbackInfo.callback;
         MessagingService.instance.maybeAddLatency(cb, message.getFrom(), age);
 
         if (cb instanceof IAsyncCallback)
         {
             if (logger_.isDebugEnabled())
-                logger_.debug("Processing response on a callback from " + message.getMessageId() + "@" + message.getFrom());
+                logger_.debug("Processing response on a callback from " + messageId + "@" + message.getFrom());
             ((IAsyncCallback) cb).response(message);
         }
         else
         {
             if (logger_.isDebugEnabled())
-                logger_.debug("Processing response on an async result from " + message.getMessageId() + "@" + message.getFrom());
+                logger_.debug("Processing response on an async result from " + messageId + "@" + message.getFrom());
             ((IAsyncResult) cb).result(message);
         }
     }
