@@ -1,1 +1,1 @@
-for a in 507 508 509 510; do scp build/apache-cassandra-0.6.13-p6.jar  srvd${a}:;done
+for a in 507 508 509 510; do scp -C build/apache-cassandra-0.6.13-p10.jar  srvd${a}:;done
