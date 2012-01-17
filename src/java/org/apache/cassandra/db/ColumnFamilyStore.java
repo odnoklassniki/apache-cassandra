@@ -522,9 +522,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         binaryMemtable_.get().put(key, buffer);
     }
     
-    public void setFilter(IStoreApplyFilter applyFilter)
+    public void setListener(IStoreApplyListener applyFilter)
     {
-        getTable().setStoreFilter(this, applyFilter);
+        getTable().setStoreListener(this, applyFilter);
     }
 
     public void forceFlushIfExpired() throws IOException, ExecutionException, InterruptedException

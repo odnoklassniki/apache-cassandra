@@ -12,19 +12,26 @@ package org.apache.cassandra.db;
  * @see ColumnFamilyStore#setStoreApplyListener(IStoreApplyListener)
  * @see Table#apply(RowMutation, Object, boolean)
  */
-public interface IStoreApplyFilter
+public interface IStoreApplyListener
 {
     /**
      * Called by store just before application of new data to local column family store.
-     * Be warned, that same data can arrive several times due to hinted handoffs, RRs etc.
+     * Beware: same data can arrive several times due to hinted handoffs, RRs etc.
      * 
-     * You can modify supplied column family data. If after modifications it is empty - whole
-     * mutation will be skipped
+     * BEWARE: You CANNOT modify supplied column family data - you'll break things badly. 
      * 
      * @param key row key
      * @param data 
      * 
      */
-    void filter(String key, ColumnFamily data); 
+    void preapply(String key, ColumnFamily data); 
+    
+    /**
+     * Called after changes was successfully applied to local CF store.
+     * 
+     * @param key
+     * @param data
+     */
+    void applied(String key, ColumnFamily data);
 
 }

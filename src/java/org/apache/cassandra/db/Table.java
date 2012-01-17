@@ -190,7 +190,7 @@ public class Table
      * Key: ColumnFamilyStore
      * Value: its listener
      */
-    private Map<String, IStoreApplyFilter> storeFilters = null;
+    private Map<String, IStoreApplyListener> storeFilters = null;
 
 
     public static Table open(String table) throws IOException
@@ -454,20 +454,14 @@ public class Table
             // invoke listener prior critical section
             for (ColumnFamily columnFamily : mutation.getColumnFamilies())
             {
-                IStoreApplyFilter listener = storeFilters.get( columnFamily.name() );
+                IStoreApplyListener listener = storeFilters.get( columnFamily.name() );
                 if (listener!=null)
                 {
-                    listener.filter(mutation.key(), columnFamily);
-                    if (columnFamily.getColumnsMap().size()==0 && !columnFamily.isMarkedForDelete())
-                        mutation.removeColumnFamily(columnFamily);
+                    listener.preapply(mutation.key(), columnFamily);
                 }
             }
-            
-            if (mutation.modifications_.size()==0)
-                return;
         }
         
-
         // write the mutation to the commitlog and memtables
         flusherLock.readLock().lock();
         try
@@ -476,7 +470,7 @@ public class Table
             {
                 CommitLog.instance().add(mutation, serializedMutation);
             }
-        
+
             for (ColumnFamily columnFamily : mutation.getColumnFamilies())
             {
                 Memtable memtableToFlush;
@@ -492,8 +486,23 @@ public class Table
         finally
         {
             flusherLock.readLock().unlock();
+
+            if (storeFilters!=null)
+            {
+                // invoke listener prior critical section
+                for (ColumnFamily columnFamily : mutation.getColumnFamilies())
+                {
+                    IStoreApplyListener listener = storeFilters.get( columnFamily.name() );
+                    if (listener!=null)
+                    {
+                        listener.applied(mutation.key(), columnFamily);
+                    }
+                }
+            }
         }
 
+
+        
         // flush memtables that got filled up.  usually mTF will be empty and this will be a no-op
         for (Map.Entry<ColumnFamilyStore, Memtable> entry : memtablesToFlush.entrySet())
             entry.getKey().maybeSwitchMemtable(entry.getValue(), writeCommitLog);
@@ -592,13 +601,13 @@ public class Table
         return Iterables.transform(DatabaseDescriptor.getTables(), transformer);
     }
     
-    void setStoreFilter(ColumnFamilyStore store, IStoreApplyFilter listener)
+    void setStoreListener(ColumnFamilyStore store, IStoreApplyListener listener)
     {
         assert storeFilters == null || storeFilters.get(store.columnFamily_)==null || listener==null;
         
         synchronized (this) {
             if (storeFilters==null)
-                storeFilters = new CopyOnWriteMap<String, IStoreApplyFilter>();
+                storeFilters = new CopyOnWriteMap<String, IStoreApplyListener>();
             
             storeFilters.put(store.columnFamily_,listener);
         }
