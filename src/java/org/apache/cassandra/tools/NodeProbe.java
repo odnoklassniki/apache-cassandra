@@ -57,6 +57,8 @@ public class NodeProbe
     private static final int defaultPort = 8080;
     private String host;
     private int port;
+    private String username;
+    private String password;
 
     private MBeanServerConnection mbeanServerConn;
     private StorageServiceMBean ssProxy;
@@ -70,12 +72,16 @@ public class NodeProbe
      * 
      * @param host hostname or IP address of the JMX agent
      * @param port TCP port of the remote JMX agent
+     * @param username user name of the remote JMX agent
+     * @param password password of the remote JMX agent
      * @throws IOException on connection failures
      */
-    public NodeProbe(String host, int port) throws IOException, InterruptedException
+    public NodeProbe(String host, int port, String username, String password) throws IOException, InterruptedException
     {
         this.host = host;
         this.port = port;
+        this.username = username;
+        this.password = password;
         connect();
     }
     
@@ -100,7 +106,9 @@ public class NodeProbe
     private void connect() throws IOException
     {
         JMXServiceURL jmxUrl = new JMXServiceURL(String.format(fmtUrl, host, port));
-        JMXConnector jmxc = JMXConnectorFactory.connect(jmxUrl, null);
+        Map<String, Object> env = new HashMap<String, Object>();
+        env.put(JMXConnector.CREDENTIALS, new String[] { username, password });
+        JMXConnector jmxc = JMXConnectorFactory.connect(jmxUrl, env);
         mbeanServerConn = jmxc.getMBeanServerConnection();
         
         try
