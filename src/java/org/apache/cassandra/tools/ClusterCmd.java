@@ -32,6 +32,10 @@ public class ClusterCmd {
     private static final String HOST_OPT_SHORT = "h";
     private static final String PORT_OPT_LONG = "port";
     private static final String PORT_OPT_SHORT = "p";
+    private static final String USERNAME_OPT_LONG = "username";
+    private static final String USERNAME_OPT_SHORT = "u";
+    private static final String PASSWORD_OPT_LONG = "password";
+    private static final String PASSWORD_OPT_SHORT = "pw";
     private static final int defaultPort = 8080;
     private static Options options = null;
     private CommandLine cmd = null;
@@ -46,6 +50,8 @@ public class ClusterCmd {
         optHost.setRequired(true);
         options.addOption(optHost);
         options.addOption(PORT_OPT_SHORT, PORT_OPT_LONG, true, "remote jmx agent port number (defaults to " + defaultPort + ")");
+        options.addOption(USERNAME_OPT_SHORT, USERNAME_OPT_LONG, true, "remote jmx agent user name");
+        options.addOption(PASSWORD_OPT_SHORT, PASSWORD_OPT_LONG, true, "remote jmx agent password");
     }
 
     /**
@@ -77,7 +83,10 @@ public class ClusterCmd {
             this.port = defaultPort;
         }
 
-        probe = new NodeProbe(host, port);
+        String username = cmd.getOptionValue(USERNAME_OPT_LONG);
+        String password = cmd.getOptionValue(PASSWORD_OPT_LONG);
+
+        probe = new NodeProbe(host, port,username,password);
     }
 
     /**
@@ -87,11 +96,11 @@ public class ClusterCmd {
      * @param port TCP port of the remote JMX agent
      * @throws IOException on connection failures
      */
-    public ClusterCmd(String host, int port) throws IOException, InterruptedException
+    public ClusterCmd(String host, int port, String username, String password) throws IOException, InterruptedException
     {
         this.host = host;
         this.port = port;
-        probe = new NodeProbe(host, port);
+        probe = new NodeProbe(host, port,username,password);
     }
 
     /**
@@ -100,9 +109,9 @@ public class ClusterCmd {
      * @param host hostname or IP address of the JMX agent
      * @throws IOException on connection failures
      */
-    public ClusterCmd(String host) throws IOException, InterruptedException
+    public ClusterCmd(String host,String username,String password) throws IOException, InterruptedException
     {
-        this(host, defaultPort);
+        this(host, defaultPort,username,password);
     }
 
     /**
