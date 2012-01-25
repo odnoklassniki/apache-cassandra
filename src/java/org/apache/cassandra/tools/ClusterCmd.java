@@ -42,6 +42,8 @@ public class ClusterCmd {
     private NodeProbe probe;
     private String host;
     private int port;
+    private String username;
+    private String password;
 
     static
     {
@@ -83,8 +85,8 @@ public class ClusterCmd {
             this.port = defaultPort;
         }
 
-        String username = cmd.getOptionValue(USERNAME_OPT_LONG);
-        String password = cmd.getOptionValue(PASSWORD_OPT_LONG);
+        username = cmd.getOptionValue(USERNAME_OPT_LONG);
+        password = cmd.getOptionValue(PASSWORD_OPT_LONG);
 
         probe = new NodeProbe(host, port,username,password);
     }
@@ -179,7 +181,7 @@ public class ClusterCmd {
             try
             {
                 this.host = liveNode;
-                probe = new NodeProbe(host, port);
+                probe = new NodeProbe(host, port,username,password);
                 probe.takeSnapshot(snapshotName);
                 System.out.println(host + " snapshot taken");
             }
@@ -212,7 +214,7 @@ public class ClusterCmd {
             try
             {
                 this.host = liveNode;
-                probe = new NodeProbe(host, port);
+                probe = new NodeProbe(host, port,username,password);
                 probe.clearSnapshot();
                 System.out.println(host + " snapshot cleared");
             }
