@@ -734,7 +734,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
-    void markCompacted(Collection<SSTableReader> sstables) throws IOException
+    public void markCompacted(Collection<SSTableReader> sstables) throws IOException
     {
         ssTables_.markCompacted(sstables);
     }
