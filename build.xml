@@ -10,6 +10,7 @@
     <property name="one-deploy.location" location="../one-deploy"/>
     <property name="build.src.stat" value="${basedir}/stat/src"/>
     <property name="build.classes.stat" value="${basedir}/build/classes-stat"/>
+    <property name="build.components" value="${basedir}/build/"/>
 
     <!-- path to root -->
     <property name="root.dir" value="${basedir}"/>
@@ -236,5 +237,21 @@
             <replacefilter token="{db.password}" value="${db.password}"/>
         </replace>
     </target>
-	
+
+    <target name="ivy-assemble-source-jars">
+        <mkdir dir="${ivy.deliver.source.dir}"/>
+        <jar jarfile="${ivy.deliver.source.dir}/${ant.project.name}.jar">
+            <fileset dir="${src}"/>
+        </jar>
+
+    	<mkdir dir="${ivy.deliver.source.dir}"/>
+        <jar jarfile="${ivy.deliver.source.dir}/odkl-cassandra-stats.jar">
+            <fileset dir="${build.src.stat}"/>
+        </jar>
+    </target>
+
+	<target name="dev" depends="build, ivy-assemble-source-jars">
+        <antcall target="ivy-publish-local"/>
+    </target>
+
 </project>

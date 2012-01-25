@@ -19,8 +19,25 @@
 <ivy-module version="2.0">
   <info organisation="apache-cassandra" module="cassandra"/>
 
+  <configurations>
+        <conf name="default" visibility="public" extends="client"
+              description="only apache cassandra enough for client"/>
+        <conf name="master" visibility="public" extends="client, server"
+              description="contains only artifacts published by this module itself, with no transitive dependencies"/>
+        <conf name="client" visibility="public"
+              description="contains only client artifacts published by this module itself, with no transitive dependencies"/>
+        <conf name="server" visibility="public"
+              description="contains only server artifacts published by this module itself, with no transitive dependencies"/>
+        <conf name="sources" visibility="public"
+              description="this configuration contains the source artifact of this module, if any."/>
+  </configurations>
+  
   <publications>
-      <artifact name="apache-cassandra"/>
+      <artifact name="apache-cassandra" type="jar" conf="client,server"/>
+      <artifact name="odkl-cassandra-stats" type="jar" conf="server"/>
+
+      <artifact name="apache-cassandra" type="source" ext="jar" conf="sources"/>
+      <artifact name="odkl-cassandra-stats" type="source" ext="jar" conf="sources"/>
   </publications>
 
   <dependencies>
