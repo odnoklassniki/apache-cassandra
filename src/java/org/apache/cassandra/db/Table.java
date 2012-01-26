@@ -361,8 +361,9 @@ public class Table
         tableMetadata = Table.TableMetadata.instance(table);
         
         // MM : Speed up startup by parallelling all CF initializations
-        logger.info("Starting "+table+" keyspace using "+DatabaseDescriptor.getAllDataFileLocations().length+" threads");
-        ExecutorService initExecutor = Executors.newFixedThreadPool(DatabaseDescriptor.getAllDataFileLocations().length, new NamedThreadFactory("KS-INIT-"+table));
+        int threads = Math.max( Runtime.getRuntime().availableProcessors(),  DatabaseDescriptor.getAllDataFileLocations().length);
+        logger.info("Starting "+table+" keyspace using "+ threads+" threads");
+        ExecutorService initExecutor = Executors.newFixedThreadPool(threads, new NamedThreadFactory("KS-INIT-"+table));
 
         List<Callable<ColumnFamilyStore>> tasks = new ArrayList<Callable<ColumnFamilyStore>>();
         for (final String columnFamily : tableMetadata.getColumnFamilies())
