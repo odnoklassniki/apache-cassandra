@@ -208,7 +208,7 @@ public class Memtable implements Comparable<Memtable>, IFlushable
         return columnFamilies.isEmpty();
     }
 
-    private String getTableName()
+    public String getTableName()
     {
         return cfs.getTable().name;
     }

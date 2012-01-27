@@ -26,11 +26,12 @@ import org.apache.cassandra.io.SSTableReader;
  */
 public class FastRowMayExistQueryFilter extends QueryFilter
 {
-    private final EmptyColumnIterator EMPTY_COLUMN_ITERATOR = new EmptyColumnIterator();
     /**
      * result is placed here
      */
     private boolean mayExist = false;
+    
+    private EmptyColumnIterator emptyColumnIterator;
     
     public FastRowMayExistQueryFilter(String key, QueryPath path)
     {
@@ -52,9 +53,10 @@ public class FastRowMayExistQueryFilter extends QueryFilter
     public ColumnIterator getMemColumnIterator(Memtable memtable,
             ColumnFamily cf, AbstractType comparator)
     {
-        mayExist = cf !=null ;
+       mayExist = cf !=null ;
         
-        return EMPTY_COLUMN_ITERATOR;
+       return this.emptyColumnIterator = new EmptyColumnIterator(memtable.getTableName(), path.columnFamilyName);
+
     }
 
     /* (non-Javadoc)
@@ -70,7 +72,7 @@ public class FastRowMayExistQueryFilter extends QueryFilter
             mayExist=sstable.getBloomFilter().isPresent(key);
         }
         
-        return EMPTY_COLUMN_ITERATOR;
+        return this.emptyColumnIterator;
     }
 
     /* (non-Javadoc)
@@ -102,33 +104,4 @@ public class FastRowMayExistQueryFilter extends QueryFilter
                 "Method FastRowMayExistQueryFilter.filterSuperColumn(superColumn, gcBefore) is not supported");
     }
 
-    private class EmptyColumnIterator extends AbstractColumnIterator
-    {
-        /* (non-Javadoc)
-         * @see java.util.Iterator#hasNext()
-         */
-        @Override
-        public boolean hasNext()
-        {
-            return false;
-        }
-        
-        /* (non-Javadoc)
-         * @see java.util.Iterator#next()
-         */
-        @Override
-        public IColumn next()
-        {
-            return null;
-        }
-        
-        /* (non-Javadoc)
-         * @see org.apache.cassandra.db.filter.ColumnIterator#getColumnFamily()
-         */
-        @Override
-        public ColumnFamily getColumnFamily()
-        {
-            return null;
-        }
-    }
 }

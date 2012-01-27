@@ -27,7 +27,7 @@ import org.apache.cassandra.io.SSTableReader;
  */
 public class ColumnsMayExistQueryFilter extends QueryFilter
 {
-    private final EmptyColumnIterator EMPTY_COLUMN_ITERATOR = new EmptyColumnIterator();
+    private EmptyColumnIterator emptyColumnIterator ;
     private final Iterable<byte[]> names;
     private final ColumnCollector collector;
     private final int limit;
@@ -60,8 +60,10 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
     public ColumnIterator getMemColumnIterator(Memtable memtable,
             ColumnFamily cf, AbstractType comparator)
     {
+        this.emptyColumnIterator = new EmptyColumnIterator(memtable.getTableName(), path.columnFamilyName);
+
         if (cf==null)
-            return EMPTY_COLUMN_ITERATOR; // row not found
+            return emptyColumnIterator; // row not found
         
         Iterator<byte[]> it = names.iterator();
         while (collectedCount<limit && it.hasNext())
@@ -75,7 +77,7 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
             }
         }
         
-        return EMPTY_COLUMN_ITERATOR;
+        return emptyColumnIterator;
     }
 
     /* (non-Javadoc)
@@ -88,7 +90,7 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
         assert sstable.isColumnBloom() : "Only column families with column level bloom filters can use this query";
         
         if (collectedCount>=limit)
-            return EMPTY_COLUMN_ITERATOR; // we already found all columns in memtable
+            return emptyColumnIterator; // we already found all columns in memtable
          
         if (decoratedKey == null)
             decoratedKey = sstable.getPartitioner().decorateKey(key);
@@ -109,7 +111,7 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
             }
         }
         
-        return EMPTY_COLUMN_ITERATOR;
+        return emptyColumnIterator;
     }
 
     /* (non-Javadoc)
@@ -141,36 +143,6 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
                 "Method FastRowMayExistQueryFilter.filterSuperColumn(superColumn, gcBefore) is not supported");
     }
 
-    private class EmptyColumnIterator extends AbstractColumnIterator
-    {
-        /* (non-Javadoc)
-         * @see java.util.Iterator#hasNext()
-         */
-        @Override
-        public boolean hasNext()
-        {
-            return false;
-        }
-        
-        /* (non-Javadoc)
-         * @see java.util.Iterator#next()
-         */
-        @Override
-        public IColumn next()
-        {
-            return null;
-        }
-        
-        /* (non-Javadoc)
-         * @see org.apache.cassandra.db.filter.ColumnIterator#getColumnFamily()
-         */
-        @Override
-        public ColumnFamily getColumnFamily()
-        {
-            return null;
-        }
-    }
-    
     public interface ColumnCollector
     {
         /**
