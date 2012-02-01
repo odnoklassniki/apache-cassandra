@@ -36,16 +36,20 @@ import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.apache.log4j.Logger;
 
-public class ParallelWeakResponseHandler implements IAsyncCallback, ILocalCallback, Runnable
+public class ParallelQuorumResponseHandler implements IAsyncCallback, Runnable, ILocalCallback
 {
-    protected static final Logger logger = Logger.getLogger( ParallelWeakResponseHandler.class );
+    protected static final Logger logger = Logger.getLogger( ParallelQuorumResponseHandler.class );
     protected final Semaphore condition;
     protected final AtomicReferenceArray<Pair<InetAddress, ReadResponse>> responses;
     private SimpleReadResponseResolver responseResolver;
     private final long startTime;
+    private final int responseCount;
+    
+    private ColumnFamily resolvedSuperset;
 
-    public ParallelWeakResponseHandler(int endpointCount, SimpleReadResponseResolver responseResolver)
+    public ParallelQuorumResponseHandler(int endpointCount, int responseCount, SimpleReadResponseResolver responseResolver)
     {
+        this.responseCount = responseCount;
         this.condition= new Semaphore(endpointCount);
         int permits = this.condition.drainPermits();
         
@@ -69,7 +73,7 @@ public class ParallelWeakResponseHandler implements IAsyncCallback, ILocalCallba
         boolean success;
         try
         {
-            success = condition.tryAcquire(timeout, TimeUnit.MILLISECONDS);
+            success = condition.tryAcquire(responseCount, timeout, TimeUnit.MILLISECONDS);
         }
         catch (InterruptedException ex)
         {
@@ -81,13 +85,7 @@ public class ParallelWeakResponseHandler implements IAsyncCallback, ILocalCallba
             throw new TimeoutException("Parallel read operation timed out .");
         }
         
-        // taking the very 1st response
-
-        ReadResponse readResponse = responses.get(0).right;
-        
-        assert !readResponse.isDigestQuery();
-        
-        return readResponse.row();
+        return resolve();
     }
 
     /* (non-Javadoc)
@@ -98,24 +96,58 @@ public class ParallelWeakResponseHandler implements IAsyncCallback, ILocalCallba
     {
         consistencyCheck();
     }
+
+    // only resolving superset WITHOUT sending out repairs for all responses we got so far.
+    private Row resolve()
+    {
+        
+        ArrayList<ColumnFamily> versions = new ArrayList<ColumnFamily>(responses.length());
+        
+        for (int i=0;i<responses.length();i++)
+        {
+            Pair<InetAddress, ReadResponse> pair = responses.get(i);
+            if (pair==null)
+                break;
+            
+            versions.add(pair.right.row().cf);
+        }
+
+        if (versions.size()==responses.length())
+        {
+            // if we've got ALL responses - caching the result of superset resolution,
+            // so consistency stage dont have to do superset resolution again
+            Row row = responseResolver.resolve(versions);
+            this.resolvedSuperset = row.cf;
+            return row;
+        }
+        
+        return responseResolver.resolve(versions);
+    }
     
     /**
      * Waits when all requested endpoints respond and does read repair, if neccessary
      */
     public void consistencyCheck()
     {
-        long timeout = DatabaseDescriptor.getRpcTimeout() - (System.currentTimeMillis() - startTime);
-        try
+        if (this.resolvedSuperset == null)
         {
-            // 1 permit is already acquired by get(). We hit here only after successful get()
-            condition.tryAcquire( responses.length() - 1,timeout, TimeUnit.MILLISECONDS);
-        }
-        catch (InterruptedException ex)
-        {
-            throw new AssertionError(ex);
+            long timeout = DatabaseDescriptor.getRpcTimeout() - (System.currentTimeMillis() - startTime);
+            try
+            {
+                // responseCount permits are already acquired by get(). We hit here only after successful get()
+                boolean success = condition.tryAcquire( responses.length() - responseCount,timeout, TimeUnit.MILLISECONDS);
+                
+                if (success)
+                    StorageProxy.countStrongConsistencyAll();
+                else
+                    StorageProxy.countStrongConsistencyUnder();
+            }
+            catch (InterruptedException ex)
+            {
+                throw new AssertionError(ex);
+            }
         }
 
-        // resolving and submitting repair for all responses we got so far
         ArrayList<InetAddress> endpoints = new ArrayList<InetAddress>(responses.length());
         ArrayList<ColumnFamily> versions = new ArrayList<ColumnFamily>(responses.length());
         for (int i=0;i<responses.length();i++)
@@ -123,21 +155,22 @@ public class ParallelWeakResponseHandler implements IAsyncCallback, ILocalCallba
             Pair<InetAddress, ReadResponse> pair = responses.get(i);
             if (pair==null)
                 break;
-            
+
             endpoints.add(pair.left);
             versions.add(pair.right.row().cf);
         }
-        
-        if (versions.size()==responses.length())
+
+        if (this.resolvedSuperset == null)
         {
-            StorageProxy.countWeakConsistencyAll();
+            // resolving and submitting repair for all responses we got so far
+            responseResolver.resolve(versions, endpoints);
         } else
         {
-            StorageProxy.countWeakConsistencyUnder();
-        }
-        
-        responseResolver.resolve(versions, endpoints);
+            // only submitting repairs reusing precomputed superset
+            responseResolver.maybeScheduleRepairs(this.resolvedSuperset, versions, endpoints);
 
+            StorageProxy.countStrongConsistencyReuseSuperset();
+        }
     }
     
     /**
@@ -157,17 +190,16 @@ public class ParallelWeakResponseHandler implements IAsyncCallback, ILocalCallba
         return -1;
     }
     
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.service.ILocalCallback#localResponse(org.apache.cassandra.db.Row)
+     */
+    @Override
     public void localResponse(Row data)
     {
         ReadResponse readResponse = new ReadResponse(data);
         addResponse(new Pair<InetAddress, ReadResponse>(FBUtilities.getLocalAddress(), readResponse ));
 
         condition.release();
-    }
-    
-    public boolean isServedFromLocal()
-    {
-        return responses.get(0).left.equals(FBUtilities.getLocalAddress());
     }
     
     public void response(Message message)

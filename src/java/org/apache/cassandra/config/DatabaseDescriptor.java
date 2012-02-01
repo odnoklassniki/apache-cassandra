@@ -135,12 +135,12 @@ public class DatabaseDescriptor
     private static float doConsistencyCheck = 1.0f;
     
     /**
-     * MM: Should weak reads be submitted in parallel to all natural endpoints and
+     * MM: Should weak and quorum reads be submitted in parallel to all natural endpoints and
      * served as soon as 1st data response arrived.
      * This differs from default behaviour, which reads data from local node, requesting digests only from
      * remotes. This leads to read response spikes if local node is slow at the moment.
      */
-    private static boolean parallelWeakRead = true;
+    private static boolean parallelReads = true;
     
     /* Job Jar Location */
     private static String jobJarFileLocation;
@@ -1324,17 +1324,17 @@ public class DatabaseDescriptor
         return doConsistencyCheck ;
     }
     
-    public static boolean getParallelWeakRead()
+    public static boolean getParallelReads()
     {
-        return parallelWeakRead;
+        return parallelReads;
     }
     
     /**
      * @param parallelWeakRead the parallelWeakRead to set
      */
-    public static void setParallelWeakRead(boolean parallelWeakRead)
+    public static void setParallelReads(boolean parallelWeakRead)
     {
-        DatabaseDescriptor.parallelWeakRead = parallelWeakRead;
+        parallelReads = parallelWeakRead;
     }
 
     public static String getClusterName()

@@ -77,6 +77,9 @@ public class StorageProxy implements StorageProxyMBean
     private static AtomicLong weakParRemote = new AtomicLong();
     private static AtomicLong weakParConsistencyAll = new AtomicLong();
     private static AtomicLong weakParConsistencyUnder = new AtomicLong();
+    private static AtomicLong strongParConsistencyAll = new AtomicLong();
+    private static AtomicLong strongParConsistencyUnder = new AtomicLong();
+    private static AtomicLong strongParConsistencyReuseSuperset = new AtomicLong();
     private static AtomicLong recentReadRepairs = new AtomicLong();
     
     private static boolean hintedHandoffEnabled = DatabaseDescriptor.hintedHandoffEnabled();
@@ -458,12 +461,12 @@ public class StorageProxy implements StorageProxyMBean
         List<Row> rows;
         if (consistency_level == ConsistencyLevel.ONE)
         {
-            rows = DatabaseDescriptor.getParallelWeakRead() ?  weakReadParallel(commands) : weakRead(commands);
+            rows = DatabaseDescriptor.getParallelReads() ?  weakReadParallel(commands) : weakRead(commands);
         }
         else
         {
             assert consistency_level.getValue() >= ConsistencyLevel.QUORUM.getValue();
-            rows = strongRead(commands, consistency_level);
+            rows = DatabaseDescriptor.getParallelReads() ? strongReadParallel(commands, consistency_level) : strongRead(commands, consistency_level);
         }
 
         readStats.addNano(System.nanoTime() - startTime);
@@ -556,7 +559,7 @@ public class StorageProxy implements StorageProxyMBean
             if (endpointList.size() < responseCount)
                 throw new UnavailableException();
 
-            ReadResponseResolver resolver = new ReadResponseResolver(table, key, responseCount);
+            SimpleReadResponseResolver resolver = new SimpleReadResponseResolver(table, key);
             ParallelWeakResponseHandler parResponseHandler = new ParallelWeakResponseHandler(endpointList.size(), resolver);
             // data-request message is sent to all endpoints, the node that will actually get
             // the data for us. The other replicas are only sent a digest query.
@@ -568,7 +571,7 @@ public class StorageProxy implements StorageProxyMBean
                     if (logger.isDebugEnabled())
                         logger.debug("weakreadPar reading " + command + " locally");
 
-                    Callable<Object> callable = new WeakReadParallelLocalCallable(command,parResponseHandler);
+                    Callable<Object> callable = new ReadParallelLocalCallable(command,parResponseHandler);
                     StageManager.getStage(StageManager.READ_STAGE).submit(callable);
                 } else
                 {
@@ -610,7 +613,7 @@ public class StorageProxy implements StorageProxyMBean
     }
 
     /*
-     * This function executes the read protocol.
+     * This function executes the legacy read protocol. It may work faster for large data.
         // 1. Get the N nodes from storage service where the data needs to be
         // replicated
         // 2. Construct a message for read\write
@@ -711,6 +714,79 @@ public class StorageProxy implements StorageProxyMBean
                     throw new AssertionError(e); // full data requested from each node here, no digests should be sent
                 }
             }
+        }
+
+        return rows;
+    }
+
+    /**
+     * This is parallel quorum read protocol. It is working faster and with less deviance than legacy implementation.
+     * This protocol is best suited for not large requests, because it asks from all nodes for data instead of digest.
+     * 
+     * @param commands
+     * @return
+     * @throws IOException
+     * @throws UnavailableException
+     * @throws TimeoutException
+     */
+    private static List<Row> strongReadParallel(List<ReadCommand> commands, ConsistencyLevel consistency_level) throws IOException, UnavailableException, TimeoutException
+    {
+        List<ParallelQuorumResponseHandler> parResponseHandlers = new ArrayList<ParallelQuorumResponseHandler>(commands.size());
+        List<List<InetAddress>> commandEndPoints = new ArrayList<List<InetAddress>>();
+        List<Row> rows = new ArrayList<Row>();
+
+        // send out read requests
+        for (ReadCommand command: commands)
+        {
+            assert !command.isDigestQuery();
+            
+            final String table = command.table;
+            final String key = command.key;
+            int responseCount = determineBlockFor(DatabaseDescriptor.getReplicationFactor(table), consistency_level);
+            
+            List<InetAddress> endpointList = StorageService.instance.findSuitableEndPoints(table, key);
+            
+            if (endpointList.size() < responseCount)
+                throw new UnavailableException();
+
+            SimpleReadResponseResolver resolver = new SimpleReadResponseResolver(table, key);
+            ParallelQuorumResponseHandler parResponseHandler = new ParallelQuorumResponseHandler(endpointList.size(),responseCount, resolver);
+            // data-request message is sent to all endpoints, the node that will actually get
+            // the data for us. The other replicas are only sent a digest query.
+            for (InetAddress endpoint : endpointList)
+            {
+                if (endpoint.equals(FBUtilities.getLocalAddress()))
+                {
+                    // short cutting for read local to bypass message ser/deser
+                    if (logger.isDebugEnabled())
+                        logger.debug("strongreadPar reading " + command + " locally");
+
+                    Callable<Object> callable = new ReadParallelLocalCallable(command,parResponseHandler);
+                    StageManager.getStage(StageManager.READ_STAGE).submit(callable);
+                } else
+                {
+                    
+                    Message m = command.makeReadMessage();
+                    if (logger.isDebugEnabled())
+                        logger.debug("strongreadPar reading data for " + command + " from " + m.getMessageId() + "@" + endpoint);
+                    MessagingService.instance.sendRR(m, endpoint, parResponseHandler);
+                }
+            }
+            parResponseHandlers.add(parResponseHandler);
+            commandEndPoints.add(endpointList);
+        }
+
+        // read results and make a second pass for any digest mismatches
+        for (ParallelQuorumResponseHandler parResponseHandler : parResponseHandlers)
+        {
+            Row row = parResponseHandler.get();
+
+            if (row != null)
+                rows.add(row);
+
+            // submit the rest of work to consistency pool
+            StorageService.instance.doConsistencyCheck(parResponseHandler);
+
         }
 
         return rows;
@@ -880,6 +956,21 @@ public class StorageProxy implements StorageProxyMBean
         return weakParConsistencyUnder.getAndSet(0);
     }
 
+    public long getRecentStrongConsistencyAll()
+    {
+        return strongParConsistencyAll.getAndSet(0);
+    }
+
+    public long getRecentStrongConsistencyUnder()
+    {
+        return strongParConsistencyUnder.getAndSet(0);
+    }
+
+    public long getRecentStrongConsistencyReuseSuperset()
+    {
+        return strongParConsistencyReuseSuperset.getAndSet(0);
+    }
+
     public static void countWeakConsistencyAll()
     {
         weakParConsistencyAll.incrementAndGet();
@@ -888,6 +979,21 @@ public class StorageProxy implements StorageProxyMBean
     public static void countWeakConsistencyUnder()
     {
         weakParConsistencyUnder.incrementAndGet();
+    }
+
+    public static void countStrongConsistencyAll()
+    {
+        strongParConsistencyAll.incrementAndGet();
+    }
+
+    public static void countStrongConsistencyUnder()
+    {
+        strongParConsistencyUnder.incrementAndGet();
+    }
+
+    public static void countStrongConsistencyReuseSuperset()
+    {
+        strongParConsistencyReuseSuperset.incrementAndGet();
     }
 
     /**
@@ -971,17 +1077,17 @@ public class StorageProxy implements StorageProxyMBean
         return laggedHints.get();
     }
     
-    public boolean getParallelWeakRead()
+    public boolean getParallelReads()
     {
-        return DatabaseDescriptor.getParallelWeakRead();
+        return DatabaseDescriptor.getParallelReads();
     }
     
     /**
      * @param parallelWeakRead the parallelWeakRead to set
      */
-    public void setParallelWeakRead(boolean parallelWeakRead)
+    public void setParallelReads(boolean parallelWeakRead)
     {
-        DatabaseDescriptor.setParallelWeakRead(parallelWeakRead);
+        DatabaseDescriptor.setParallelReads(parallelWeakRead);
     }
     
 
@@ -1013,18 +1119,18 @@ public class StorageProxy implements StorageProxyMBean
      * @author Oleg Anastasyev<oa@hq.one.lv>
      *
      */
-    static class WeakReadParallelLocalCallable implements Callable<Object>
+    static class ReadParallelLocalCallable implements Callable<Object>
     {
         private final ReadCommand command;
-        private final ParallelWeakResponseHandler handler;
+        private final ILocalCallback handler;
         private final long start = System.currentTimeMillis();
         
         /**
          * @param command
          * @param handler
          */
-        private WeakReadParallelLocalCallable(ReadCommand command,
-                ParallelWeakResponseHandler handler)
+        private ReadParallelLocalCallable(ReadCommand command,
+                ILocalCallback handler)
         {
             this.command = command;
             this.handler = handler;
@@ -1039,7 +1145,7 @@ public class StorageProxy implements StorageProxyMBean
         public Object call() throws Exception
         {
             if (logger.isDebugEnabled())
-                logger.debug("weakreadlocalPar reading " + command);
+                logger.debug("readlocalPar reading " + command);
 
             Table table = Table.open(command.table);
             Row row = command.getRow(table);

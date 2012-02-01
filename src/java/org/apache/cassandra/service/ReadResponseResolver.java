@@ -37,29 +37,25 @@ import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.RowMutationMessage;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
-import org.apache.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 /**
  * Turns ReadResponse messages into Row objects, resolving to the most recent
  * version and setting up read repairs as necessary.
  */
-public class ReadResponseResolver implements IResponseResolver<Row>
+public class ReadResponseResolver extends SimpleReadResponseResolver implements IResponseResolver<Row>
 {
-	private static Logger logger_ = Logger.getLogger(ReadResponseResolver.class);
-    private final String table;
-    private final int responseCount;
+	private final int responseCount;
     private final Map<InetAddress, ReadResponse> results = new NonBlockingHashMap<InetAddress, ReadResponse>();
-    private String key;
-
+    
     public ReadResponseResolver(String table, String key, int responseCount)
     {
+        super(table,key);
+        
         assert 1 <= responseCount && responseCount <= DatabaseDescriptor.getReplicationFactor(table)
             : "invalid response count " + responseCount;
 
         this.responseCount = responseCount;
-        this.table = table;
-        this.key = key;
     }
     
     /* (non-Javadoc)
@@ -70,15 +66,6 @@ public class ReadResponseResolver implements IResponseResolver<Row>
     {
         ReadResponse result = parseResponse(message);
         return result.row();
-    }
-
-    public ReadResponse parseResponse(Message message) throws IOException
-    {
-        byte[] body = message.getMessageBody();
-        ByteArrayInputStream bufIn = new ByteArrayInputStream(body);
-
-        ReadResponse result = ReadResponse.serializer().deserialize(new DataInputStream(bufIn));
-        return result;
     }
 
     /*
@@ -143,31 +130,13 @@ public class ReadResponseResolver implements IResponseResolver<Row>
                 logger_.debug("digests verified");
         }
 
-        ColumnFamily resolved = resolve(versions, endPoints);
+        Row resolved = resolve(versions, endPoints);
 
         if (logger_.isDebugEnabled())
             logger_.debug("resolve: " + (System.currentTimeMillis() - startTime) + " ms.");
         
-        return new Row(key, resolved);
+        return resolved;
 	}
-
-    public ColumnFamily resolve(List<ColumnFamily> versions, List<InetAddress> endPoints)
-    {
-        ColumnFamily resolved;
-        if (versions.size() > 1)
-        {
-            resolved = resolveSuperset(versions);
-            if (logger_.isDebugEnabled())
-                logger_.debug("versions merged");
-            maybeScheduleRepairs(resolved, table, key, versions, endPoints);
-        }
-        else
-        {
-            resolved = versions.get(0);
-        }
-
-		return resolved;
-    }
 
     /**
      * For each row version, compare with resolved (the superset of all row versions);

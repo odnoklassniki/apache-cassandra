@@ -75,11 +75,11 @@ public interface StorageProxyMBean
     /**
      * @return
      */
-    boolean getParallelWeakRead();
+    boolean getParallelReads();
     /**
      * @param parallelWeakRead
      */
-    void setParallelWeakRead(boolean parallelWeakRead);
+    void setParallelReads(boolean parallelWeakRead);
     /**
      * @return
      */
@@ -100,6 +100,18 @@ public interface StorageProxyMBean
      * @return
      */
     long getRecentReadRepairs();
+    /**
+     * @return
+     */
+    long getRecentStrongConsistencyAll();
+    /**
+     * @return
+     */
+    long getRecentStrongConsistencyUnder();
+    /**
+     * @return
+     */
+    long getRecentStrongConsistencyReuseSuperset();
     
     
 }
