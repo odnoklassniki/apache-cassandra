@@ -115,7 +115,8 @@ public class ParallelQuorumResponseHandler implements IAsyncCallback, Runnable, 
         if (versions.size()==responses.length())
         {
             // if we've got ALL responses - caching the result of superset resolution,
-            // so consistency stage dont have to do superset resolution again
+            // so consistency stage dont have to do superset resolution again.
+            // this happens in 2-3% of cases whe all nodes are up, and 100% when one of nodes in down (RF=3)
             Row row = responseResolver.resolve(versions);
             this.resolvedSuperset = row.cf;
             return row;
