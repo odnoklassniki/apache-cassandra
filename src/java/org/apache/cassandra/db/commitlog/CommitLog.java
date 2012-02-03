@@ -33,6 +33,7 @@ import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.FSWriteError;
 import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
@@ -231,7 +232,6 @@ public class CommitLog
             // empty log file - just removing it
             if (file.length()==0)
             {
-                file.delete();
                 continue;
             }
             
@@ -422,7 +422,7 @@ public class CommitLog
         return segments.getLast();
     }
     
-    public Future<CommitLogContext> getContext() throws IOException
+    public Future<CommitLogContext> getContext() 
     {
         Callable<CommitLogSegment.CommitLogContext> task = new Callable<CommitLogSegment.CommitLogContext>()
         {
@@ -451,7 +451,7 @@ public class CommitLog
      * of any problems. This way we can assume that the subsequent commit log
      * entry will override the garbage left over by the previous write.
     */
-    public void add(RowMutation rowMutation, Object serializedRow) throws IOException
+    public void add(RowMutation rowMutation, Object serializedRow) 
     {
         executor.add(new LogRecordAdder(rowMutation, serializedRow));
     }
@@ -462,7 +462,7 @@ public class CommitLog
      * The bit flag associated with this column family is set in the
      * header and this is used to decide if the log file can be deleted.
     */
-    public void discardCompletedSegments(final String tableName, final String cf, final CommitLogSegment.CommitLogContext context) throws IOException
+    public void discardCompletedSegments(final String tableName, final String cf, final CommitLogSegment.CommitLogContext context) 
     {
         Callable task = new Callable()
         {
@@ -494,7 +494,7 @@ public class CommitLog
      * param @ id id of the columnFamily being flushed to disk.
      *
     */
-    private void discardCompletedSegmentsInternal(CommitLogSegment.CommitLogContext context, int id) throws IOException
+    private void discardCompletedSegmentsInternal(CommitLogSegment.CommitLogContext context, int id) 
     {
         if (logger.isDebugEnabled())
             logger.debug("discard completed log segments for " + context + ", column family " + id + ". CFIDs are " + Table.TableMetadata.getColumnFamilyIDString());
@@ -529,7 +529,6 @@ public class CommitLog
 
     private void maybeDiscardSegment(Iterator<CommitLogSegment> iter,
             CommitLogSegment segment, CommitLogHeader header)
-            throws IOException
     {
         if ( header.isSafeToDelete() && segment!=currentSegment() )
         {
@@ -558,7 +557,11 @@ public class CommitLog
             if (logger.isDebugEnabled())
                 logger.debug("Not safe to delete commit log " + segment + "; dirty is " + header.dirtyString());
 
-            segment.writeHeader();
+            try {
+                segment.writeHeader();
+            } catch (IOException e) {
+                throw new FSWriteError(e);
+            }
         }
     }
     
@@ -567,8 +570,11 @@ public class CommitLog
         if (DatabaseDescriptor.isLogArchiveActive())
         {
             for (File file : files) {
-                logger.info("Archiving obsolete commit log:" + file);
-                archiveLogfile(file.getPath());
+                if (file.length()>0)
+                {
+                    logger.info("Archiving obsolete commit log:" + file);
+                    archiveLogfile(file.getPath());
+                }
             }
 
         }
@@ -606,7 +612,7 @@ public class CommitLog
         }
     }
 
-    void sync() throws IOException
+    void sync() 
     {
         currentSegment().sync();
     }
@@ -683,7 +689,7 @@ public class CommitLog
             }
             catch (IOException e)
             {
-                throw new IOError(e);
+                throw new FSWriteError(e);
             }
         }
 

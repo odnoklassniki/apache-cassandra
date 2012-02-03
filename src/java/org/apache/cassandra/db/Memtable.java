@@ -148,34 +148,38 @@ public class Memtable implements Comparable<Memtable>, IFlushable
     }
 
 
-    private SSTableReader writeSortedContents() throws IOException
+    private SSTableReader writeSortedContents() 
     {
-        logger.info("Writing " + this);
-        SSTableWriter writer = new SSTableWriter(cfs.getFlushPath(), columnFamilies.size(), StorageService.getPartitioner());
-        
-        boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
-        BloomFilterWriter bloomFilterWriter = writer.getBloomFilterWriter();
-        
-        if (bloomColumns)
-            bloomFilterWriter.setEstimatedColumnCount(getCurrentOperations());
-
-        DataOutputBuffer buffer = new DataOutputBuffer();
-        for (Map.Entry<DecoratedKey, ColumnFamily> entry : columnFamilies.entrySet())
-        {
-            buffer.reset();
-            /* serialize the cf with column indexes */
-            ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer, bloomColumns);
-            /* Now write the key and value to disk */
-            writer.append(entry.getKey(), buffer);
+        try {
+            logger.info("Writing " + this);
+            SSTableWriter writer = new SSTableWriter(cfs.getFlushPath(), columnFamilies.size(), StorageService.getPartitioner());
+            
+            boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
+            BloomFilterWriter bloomFilterWriter = writer.getBloomFilterWriter();
             
             if (bloomColumns)
-                bloomFilterWriter.add(entry.getKey(), entry.getValue());
-        }
+                bloomFilterWriter.setEstimatedColumnCount(getCurrentOperations());
 
-        SSTableReader ssTable = writer.closeAndOpenReader();
-        logger.info(String.format("Completed flushing %s (%d bytes)",
-                                  ssTable.getFilename(), new File(ssTable.getFilename()).length()));
-        return ssTable;
+            DataOutputBuffer buffer = new DataOutputBuffer();
+            for (Map.Entry<DecoratedKey, ColumnFamily> entry : columnFamilies.entrySet())
+            {
+                buffer.reset();
+                /* serialize the cf with column indexes */
+                ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer, bloomColumns);
+                /* Now write the key and value to disk */
+                writer.append(entry.getKey(), buffer);
+                
+                if (bloomColumns)
+                    bloomFilterWriter.add(entry.getKey(), entry.getValue());
+            }
+
+            SSTableReader ssTable = writer.closeAndOpenReader();
+            logger.info(String.format("Completed flushing %s (%d bytes)",
+                                      ssTable.getFilename(), new File(ssTable.getFilename()).length()));
+            return ssTable;
+        } catch (IOException e) {
+            throw new FSWriteError(e);
+        }
     }
 
     public void flushAndSignal(final Condition condition, ExecutorService sorter, final ExecutorService writer)

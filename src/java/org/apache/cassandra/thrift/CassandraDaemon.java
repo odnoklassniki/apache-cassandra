@@ -42,9 +42,12 @@ import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.DatabaseDescriptor.RpcServerTypes;
 import org.apache.cassandra.db.CompactionManager;
+import org.apache.cassandra.db.FSReadError;
+import org.apache.cassandra.db.FSWriteError;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.maint.MaintenanceTaskManager;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.CLibrary;
@@ -131,12 +134,33 @@ public class CassandraDaemon
 
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler()
         {
+            private volatile boolean shutdown = false;
+            
             public void uncaughtException(Thread t, Throwable e)
             {
                 logger.error("Uncaught exception in thread " + t, e);
                 if (e instanceof OutOfMemoryError)
                 {
                     System.exit(100);
+                }
+                if (e instanceof FSReadError || e instanceof FSWriteError)
+                {
+                    synchronized (this)
+                    {
+                        if (shutdown)
+                            return;
+                        
+                        logger.error("Filesystem errors detected, shutting down gossip and rpc server");
+                        stop();
+                        try {
+                            Thread.sleep(DatabaseDescriptor.getRpcTimeout()*2);
+                        } catch (InterruptedException e1) {
+                            logger.error("Hm",e1);
+                        }
+                        
+                        Gossiper.instance.stop();
+                        shutdown=true;
+                    }
                 }
             }
         });

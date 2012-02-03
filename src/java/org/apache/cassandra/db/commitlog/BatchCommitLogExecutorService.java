@@ -92,15 +92,8 @@ class BatchCommitLogExecutorService extends AbstractCommitLogExecutorService imp
             taskValues.add(task.getRawCallable().call());
         }
 
-        // now sync and set the tasks' values (which allows thread calling get() to proceed)
-        try
-        {
-            CommitLog.instance().sync();
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
+        CommitLog.instance().sync();
+        
         for (int i = 0; i < incompleteTasks.size(); i++)
         {
             incompleteTasks.get(i).set(taskValues.get(i));

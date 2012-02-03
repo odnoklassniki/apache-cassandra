@@ -29,6 +29,8 @@ import java.util.zip.Checksum;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.FSReadError;
+import org.apache.cassandra.db.FSWriteError;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
@@ -57,7 +59,7 @@ public class CommitLogSegment
         }
         catch (IOException e)
         {
-            throw new IOError(e);
+            throw new FSWriteError(e);
         }
     }
 
@@ -120,9 +122,14 @@ public class CommitLogSegment
         }
     }
 
-    public void sync() throws IOException
+    public void sync() 
     {
-        logWriter.sync();
+        
+        try {
+            logWriter.sync();
+        } catch (IOException e) {
+            throw new FSWriteError(e);
+        }
     }
 
     public CommitLogContext getContext()
@@ -153,7 +160,7 @@ public class CommitLogSegment
         }
         catch (IOException e)
         {
-            throw new IOError(e);
+            throw new FSReadError(e);
         }
     }
 
@@ -165,7 +172,7 @@ public class CommitLogSegment
         }
         catch (IOException e)
         {
-            throw new IOError(e);
+            throw new FSWriteError(e);
         }
         
     }

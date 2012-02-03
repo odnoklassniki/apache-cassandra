@@ -573,15 +573,19 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         return ColumnFamilyStore.getGenerationFromFileName(path) - ColumnFamilyStore.getGenerationFromFileName(o.path);
     }
 
-    public void markCompacted() throws IOException
+    public void markCompacted() 
     {
         if (logger.isDebugEnabled())
             logger.debug("Marking " + path + " compacted");
-        if (!new File(compactedFilename()).createNewFile())
-        {
-            throw new IOException("Unable to create compaction marker");
+        try {
+            if (!new File(compactedFilename()).createNewFile())
+            {
+                throw new IOException("Unable to create compaction marker");
+            }
+            phantomReference.deleteOnCleanup();
+        } catch (IOException e) {
+            throw new FSWriteError(e);
         }
-        phantomReference.deleteOnCleanup();
     }
 
     /** obviously only for testing */

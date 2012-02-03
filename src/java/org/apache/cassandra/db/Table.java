@@ -405,10 +405,7 @@ public class Table
                     {
                         cfs.forceFlushIfExpired();
                     }
-                    catch (IOException e)
-                    {
-                        throw new RuntimeException(e);
-                    } catch (ExecutionException e) {
+                    catch (ExecutionException e) {
                         throw new RuntimeException(e);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
@@ -528,7 +525,7 @@ public class Table
      * @return
      * @throws IOException
      */
-    public void flushAndWait() throws IOException
+    public void flushAndWait() 
     {
         for (String cfName : columnFamilyStores.keySet())
         {
@@ -595,7 +592,7 @@ public class Table
                 }
                 catch (IOException e)
                 {
-                    throw new RuntimeException(e);
+                    throw new FSReadError(e);
                 }
             }
         };

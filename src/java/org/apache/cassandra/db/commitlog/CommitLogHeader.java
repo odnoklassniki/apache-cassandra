@@ -146,7 +146,7 @@ public class CommitLogHeader
             turnOff(index);
     }
 
-    boolean isSafeToDelete() throws IOException
+    boolean isSafeToDelete() 
     {
         return dirty.isEmpty();
     }

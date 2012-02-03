@@ -77,7 +77,7 @@ public class SystemTable
         }
         catch (IOException e)
         {
-            throw new IOError(e);
+            throw new FSWriteError(e);
         }
     }
 
@@ -98,7 +98,7 @@ public class SystemTable
         }
         catch (IOException e)
         {
-            throw new IOError(e);
+            throw new FSWriteError(e);
         }
         metadata.setToken(token);
     }
@@ -301,7 +301,7 @@ public class SystemTable
         }
         catch (IOException e)
         {
-            throw new RuntimeException(e);
+            throw new FSReadError(e);
         }
     }
 
@@ -317,7 +317,7 @@ public class SystemTable
         }
         catch (IOException e)
         {
-            throw new RuntimeException(e);
+            throw new FSWriteError(e);
         }
     }
 

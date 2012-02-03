@@ -254,14 +254,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         int keyCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).keyCacheSavePeriodInSeconds;
 
         long start = System.currentTimeMillis();
-        try
+        for (String key : readSavedCache(DatabaseDescriptor.getSerializedRowCachePath(table_, columnFamily_), true))
         {
-            for (String key : readSavedCache(DatabaseDescriptor.getSerializedRowCachePath(table_, columnFamily_), true))
-                cacheRow(key);
-        }
-        catch (IOException ioe)
-        {
-            logger_.warn("error loading " + msgSuffix, ioe);
+            cacheRow(key);
         }
         if (ssTables_.getRowCache().getSize() > 0)
             logger_.info(String.format("completed loading (%d ms; %d keys) %s",
@@ -459,7 +454,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     }
 
     /** flush the given memtable and swap in a new one for its CFS, if it hasn't been frozen already.  threadsafe. */
-    Future<?> maybeSwitchMemtable(Memtable oldMemtable, final boolean writeCommitLog) throws IOException
+    Future<?> maybeSwitchMemtable(Memtable oldMemtable, final boolean writeCommitLog) 
     {
         /**
          *  If we can get the writelock, that means no new updates can come in and 
@@ -516,7 +511,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
-    void switchBinaryMemtable(String key, byte[] buffer) throws IOException
+    void switchBinaryMemtable(String key, byte[] buffer) 
     {
         binaryMemtable_.set(new BinaryMemtable(this));
         binaryMemtable_.get().put(key, buffer);
@@ -527,13 +522,13 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         getTable().setStoreListener(this, applyFilter);
     }
 
-    public void forceFlushIfExpired() throws IOException, ExecutionException, InterruptedException
+    public void forceFlushIfExpired() throws ExecutionException, InterruptedException
     {
         if (memtable_.isExpired())
             forceBlockingFlush();
     }
 
-    public Future<?> forceFlush() throws IOException
+    public Future<?> forceFlush() 
     {
         if (memtable_.isClean())
             return null;
@@ -541,7 +536,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return maybeSwitchMemtable(memtable_, true);
     }
 
-    public void forceBlockingFlush() throws IOException, ExecutionException, InterruptedException
+    public void forceBlockingFlush() throws ExecutionException, InterruptedException
     {
         Future<?> future = forceFlush();
         if (future != null)
@@ -579,7 +574,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
      * needs to be used. param @ key - key for update/insert param @
      * columnFamily - columnFamily changes
      */
-    void applyBinary(String key, byte[] buffer) throws IOException
+    void applyBinary(String key, byte[] buffer) 
     {
         long start = System.nanoTime();
         binaryMemtable_.get().put(key, buffer);
@@ -730,7 +725,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
         catch (IOException e)
         {
-            throw new RuntimeException(e);
+            throw new FSReadError(e);
         }
     }
 
@@ -745,7 +740,6 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     }
 
     void replaceCompactedSSTables(Collection<SSTableReader> sstables, Iterable<SSTableReader> replacements)
-            throws IOException
     {
         ssTables_.replace(sstables, replacements);
     }
@@ -884,17 +878,17 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         return writeStats_.getRecentLatencyHistogramMicros();
     }
 
-    public ColumnFamily getColumnFamily(String key, QueryPath path, byte[] start, byte[] finish, boolean reversed, int limit) throws IOException
+    public ColumnFamily getColumnFamily(String key, QueryPath path, byte[] start, byte[] finish, boolean reversed, int limit) 
     {
         return getColumnFamily(new SliceQueryFilter(key, path, start, finish, reversed, limit));
     }
 
-    public ColumnFamily getColumnFamily(QueryFilter filter) throws IOException
+    public ColumnFamily getColumnFamily(QueryFilter filter) 
     {
         return getColumnFamily(filter, CompactionManager.getDefaultGCBefore());
     }
 
-    private ColumnFamily cacheRow(String key) throws IOException
+    private ColumnFamily cacheRow(String key) 
     {
         ColumnFamily cached;
         if ((cached = ssTables_.getRowCache().get(key)) == null)
@@ -912,7 +906,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
      * only the latest version of a column is returned.
      * @return null if there is no data and no tombstones; otherwise a ColumnFamily
      */
-    public ColumnFamily getColumnFamily(QueryFilter filter, int gcBefore) throws IOException
+    public ColumnFamily getColumnFamily(QueryFilter filter, int gcBefore) 
     {
         assert columnFamily_.equals(filter.getColumnFamilyName());
 
@@ -975,7 +969,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
-    private ColumnFamily getTopLevelColumns(QueryFilter filter, int gcBefore) throws IOException
+    private ColumnFamily getTopLevelColumns(QueryFilter filter, int gcBefore) 
     {
         // we are querying top-level columns, do a merging fetch with indexes.
         List<ColumnIterator> iterators = new ArrayList<ColumnIterator>();
@@ -1023,6 +1017,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             Iterator collated = IteratorUtils.collatedIterator(comparator, iterators);
             filter.collectCollatedColumns(returnCF, collated, gcBefore);
             return removeDeleted(returnCF, gcBefore);
+        } catch (IOException e) {
+            throw new FSReadError(e);
         }
         finally
         {
@@ -1051,7 +1047,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
        would be better.
      */
     private void getKeyRange(List<String> keys, final AbstractBounds range, int maxResults)
-    throws IOException, ExecutionException, InterruptedException
+    throws ExecutionException, InterruptedException
     {
         final DecoratedKey startWith = new DecoratedKey(range.left, null);
         final DecoratedKey stopAt = new DecoratedKey(range.right, null);
@@ -1078,32 +1074,36 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             iterators.add(Iterators.filter(memtable.getKeyIterator(startWith), p));
         }
 
-        // sstables
-        for (SSTableReader sstable : ssTables_)
-        {
-            final SSTableScanner scanner = sstable.getScanner(KEY_RANGE_FILE_BUFFER_SIZE);
-            scanner.seekTo(startWith);
-            Iterator<DecoratedKey> iter = new CloseableIterator<DecoratedKey>()
+        try {
+            // sstables
+            for (SSTableReader sstable : ssTables_)
             {
-                public boolean hasNext()
+                final SSTableScanner scanner = sstable.getScanner(KEY_RANGE_FILE_BUFFER_SIZE);
+                scanner.seekTo(startWith);
+                Iterator<DecoratedKey> iter = new CloseableIterator<DecoratedKey>()
                 {
-                    return scanner.hasNext();
-                }
-                public DecoratedKey next()
-                {
-                    return scanner.next().getKey();
-                }
-                public void remove()
-                {
-                    throw new UnsupportedOperationException();
-                }
-                public void close() throws IOException
-                {
-                    scanner.close();
-                }
-            };
-            assert iter instanceof Closeable; // otherwise we leak FDs
-            iterators.add(iter);
+                    public boolean hasNext()
+                    {
+                        return scanner.hasNext();
+                    }
+                    public DecoratedKey next()
+                    {
+                        return scanner.next().getKey();
+                    }
+                    public void remove()
+                    {
+                        throw new UnsupportedOperationException();
+                    }
+                    public void close() throws IOException
+                    {
+                        scanner.close();
+                    }
+                };
+                assert iter instanceof Closeable; // otherwise we leak FDs
+                iterators.add(iter);
+            }
+        } catch (IOException e) {
+            throw new FSReadError(e);
         }
 
         Iterator<DecoratedKey> collated = IteratorUtils.collatedIterator(DecoratedKey.comparator, iterators);
@@ -1152,7 +1152,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             {
                 if (iter instanceof Closeable)
                 {
-                    ((Closeable)iter).close();
+                    try {
+                        ((Closeable)iter).close();
+                    } catch (IOException e) {
+                        logger_.error("",e);
+                    }
                 }
             }
         }
@@ -1165,12 +1169,11 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
      * @param keyMax maximum number of keys to process, regardless of startKey/finishKey
      * @param sliceRange may be null if columnNames is specified. specifies contiguous columns to return in what order.
      * @param columnNames may be null if sliceRange is specified. specifies which columns to return in what order.      @return list of key->list<column> tuples.
-     * @throws IOException
      * @throws ExecutionException
      * @throws InterruptedException
      */
     public RangeSliceReply getRangeSlice(byte[] super_column, final AbstractBounds range, int keyMax, SliceRange sliceRange, List<byte[]> columnNames)
-    throws IOException, ExecutionException, InterruptedException
+    throws ExecutionException, InterruptedException
     {
         List<String> keys = new ArrayList<String>();
         assert range instanceof Bounds

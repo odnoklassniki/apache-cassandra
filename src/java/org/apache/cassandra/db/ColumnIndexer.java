@@ -74,7 +74,7 @@ public class ColumnIndexer
         }
         catch (IOException e)
         {
-            throw new RuntimeException(e);
+            throw new FSWriteError(e);
         }
 	}
     
