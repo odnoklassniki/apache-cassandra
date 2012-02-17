@@ -36,6 +36,8 @@ import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.cassandra.thrift.ConsistencyLevel;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 /**
  * This class contains a helper method that will be used by
@@ -46,21 +48,66 @@ public abstract class AbstractReplicationStrategy
 {
     protected static final Logger logger_ = Logger.getLogger(AbstractReplicationStrategy.class);
 
-    private TokenMetadata tokenMetadata_;
+    protected TokenMetadata tokenMetadata_;
     protected final IEndPointSnitch snitch_;
 
     AbstractReplicationStrategy(TokenMetadata tokenMetadata, IEndPointSnitch snitch)
     {
         tokenMetadata_ = tokenMetadata;
         snitch_ = snitch;
+        
+        tokenMetadata_.register(this);
+    }
+
+    private final Map<Pair<String, Token>, ArrayList<InetAddress>> cachedEndpoints = new NonBlockingHashMap<Pair<String, Token>, ArrayList<InetAddress>>();
+
+    public ArrayList<InetAddress> getCachedEndpoints(String table, Token t)
+    {
+        return cachedEndpoints.get(new Pair<String, Token>(table,t));
+    }
+
+    public void cacheEndpoint(String table, Token t, ArrayList<InetAddress> addr)
+    {
+        cachedEndpoints.put(new Pair<String, Token>(table,t), addr);
+    }
+
+    public void clearEndpointCache()
+    {
+        logger_.debug("clearing cached endpoints");
+        cachedEndpoints.clear();
     }
 
     /**
-     * get the endpoints that should store the given Token, for the given table.
+     * get the (possibly cached) endpoints that should store the given Token.
      * Note that while the endpoints are conceptually a Set (no duplicates will be included),
-     * we return a List to avoid an extra allocation when sorting by proximity later.
+     * we return a List to avoid an extra allocation when sorting by proximity later
+     * @param searchPosition the position the natural endpoints are requested for
+     * @return a copy of the natural endpoints for the given token
      */
-    public abstract ArrayList<InetAddress> getNaturalEndpoints(Token token, TokenMetadata metadata, String table);
+    public ArrayList<InetAddress> getNaturalEndpoints(Token token, TokenMetadata metadata, String table)
+    {
+        Token keyToken = TokenMetadata.firstToken(metadata.sortedTokens(), token);
+        ArrayList<InetAddress> endpoints = getCachedEndpoints(table,keyToken);
+        if (endpoints == null)
+        {
+            TokenMetadata tokenMetadataClone = metadata.cloneOnlyTokenMap();
+            keyToken = TokenMetadata.firstToken(tokenMetadataClone.sortedTokens(), token);
+            endpoints = new ArrayList<InetAddress>(calculateNaturalEndpoints(token, tokenMetadataClone, table));
+            cacheEndpoint(table,keyToken, endpoints);
+        }
+
+        return new ArrayList<InetAddress>(endpoints);
+    }
+
+    /**
+     * calculate the natural endpoints for the given token
+     *
+     * @see #getNaturalEndpoints(org.apache.cassandra.dht.RingPosition)
+     *
+     * @param searchToken the token the natural endpoints are requested for
+     * @return a copy of the natural endpoints for the given token
+     */
+    public abstract ArrayList<InetAddress> calculateNaturalEndpoints(Token searchToken, TokenMetadata tokenMetadata, String table);
     
     public WriteResponseHandler getWriteResponseHandler(int blockFor, int endpointCount, ConsistencyLevel consistency_level, String table)
     {
@@ -157,7 +204,7 @@ public abstract class AbstractReplicationStrategy
         for (Token token : metadata.sortedTokens())
         {
             Range range = metadata.getPrimaryRangeFor(token);
-            for (InetAddress ep : getNaturalEndpoints(token, metadata, table))
+            for (InetAddress ep : calculateNaturalEndpoints(token, metadata, table))
             {
                 map.put(ep, range);
             }
@@ -173,7 +220,7 @@ public abstract class AbstractReplicationStrategy
         for (Token token : metadata.sortedTokens())
         {
             Range range = metadata.getPrimaryRangeFor(token);
-            for (InetAddress ep : getNaturalEndpoints(token, metadata, table))
+            for (InetAddress ep : calculateNaturalEndpoints(token, metadata, table))
             {
                 map.put(range, ep);
             }

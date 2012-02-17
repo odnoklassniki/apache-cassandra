@@ -152,7 +152,7 @@ public class RackUnawareStrategyTest
 
             for (int i = 0; i < keyTokens.length; i++)
             {
-                Collection<InetAddress> endPoints = strategy.getWriteEndpoints(keyTokens[i], table, strategy.getNaturalEndpoints(keyTokens[i], table));
+                Collection<InetAddress> endPoints = strategy.getWriteEndpoints(keyTokens[i], table, strategy.calculateNaturalEndpoints(keyTokens[i], strategy.tokenMetadata_ ,table));
                 assertTrue(endPoints.size() >= replicationFactor);
 
                 for (int j = 0; j < replicationFactor; j++)

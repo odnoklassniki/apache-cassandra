@@ -20,6 +20,7 @@ package org.apache.cassandra.locator;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
 
 /**
  * A simple endpoint snitch implementation that assumes rack and dc information is encoded
@@ -27,7 +28,7 @@ import java.net.UnknownHostException;
  */
 public class EndPointSnitch extends AbstractEndpointSnitch
 {
-    public boolean isOnSameRack(InetAddress host, InetAddress host2) throws UnknownHostException
+    public boolean isOnSameRack(InetAddress host, InetAddress host2) 
     {
         /*
          * Look at the IP Address of the two hosts. Compare 
@@ -40,7 +41,7 @@ public class EndPointSnitch extends AbstractEndpointSnitch
         return ip[2] == ip2[2];
     }
 
-    public boolean isInSameDataCenter(InetAddress host, InetAddress host2) throws UnknownHostException
+    public boolean isInSameDataCenter(InetAddress host, InetAddress host2) 
     {
         /*
          * Look at the IP Address of the two hosts. Compare 
@@ -53,9 +54,28 @@ public class EndPointSnitch extends AbstractEndpointSnitch
         return ip[1] == ip2[1];
     }
 
-    public String getLocation(InetAddress endpoint) throws UnknownHostException
+    public String getRack(InetAddress endpoint)
     {
-        throw new UnknownHostException("Not Supported");
+        return "rack1";
+    }
+
+    public String getDatacenter(InetAddress endpoint)
+    {
+        return "datacenter1";
+    }
+
+    @Override
+    public List<InetAddress> sortByProximity(final InetAddress address, List<InetAddress> addresses)
+    {
+        // Optimization to avoid walking the list
+        return addresses;
+    }
+
+    public int compareEndpoints(InetAddress target, InetAddress a1, InetAddress a2)
+    {
+        // Making all endpoints equal ensures we won't change the original ordering (since
+        // Collections.sort is guaranteed to be stable)
+        return 0;
     }
 
 }

@@ -22,6 +22,7 @@ import java.net.InetAddress;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -58,6 +59,9 @@ public class TokenMetadata
     /* Use this lock for manipulating the token map */
     private final ReadWriteLock lock = new ReentrantReadWriteLock(true);
     private List<Token> sortedTokens;
+
+    /* list of subscribers that are notified when the tokenToEndpointMap changed */
+    private final CopyOnWriteArrayList<AbstractReplicationStrategy> subscribers = new CopyOnWriteArrayList<AbstractReplicationStrategy>();
 
     public TokenMetadata()
     {
@@ -108,6 +112,7 @@ public class TokenMetadata
                 sortedTokens = sortTokens();
             }
             leavingEndPoints.remove(endpoint);
+            invalidateCaches();
         }
         finally
         {
@@ -183,6 +188,7 @@ public class TokenMetadata
             tokenToEndPointMap.inverse().remove(endpoint);
             leavingEndPoints.remove(endpoint);
             sortedTokens = sortTokens();
+            invalidateCaches();
         }
         finally
         {
@@ -389,17 +395,15 @@ public class TokenMetadata
         return leavingEndPoints;
     }
 
-    /**
-     * iterator over the Tokens in the given ring, starting with the token for the node owning start
-     * (which does not have to be a Token in the ring)
-     * @param includeMin True if the minimum token should be returned in the ring even if it has no owner.
-     */
-    public static Iterator<Token> ringIterator(final List ring, Token start, boolean includeMin)
+    public static Token firstToken(final List<Token> ring, Token start)
+    {
+        return ring.get(firstTokenIndex(ring, start, false));
+    }
+
+    public static int firstTokenIndex(final List ring, Token start, boolean insertMin)
     {
         assert ring.size() > 0;
         // insert the minimum token (at index == -1) if we were asked to include it and it isn't a member of the ring
-        final boolean insertMin = (includeMin && !ring.get(0).equals(StorageService.getPartitioner().getMinimumToken())) ? true : false;
-
         int i = Collections.binarySearch(ring, start);
         if (i < 0)
         {
@@ -407,8 +411,21 @@ public class TokenMetadata
             if (i >= ring.size())
                 i = insertMin ? -1 : 0;
         }
+        return i;
+    }
 
-        final int startIndex = i;
+    /**
+     * iterator over the Tokens in the given ring, starting with the token for the node owning start
+     * (which does not have to be a Token in the ring)
+     * @param includeMin True if the minimum token should be returned in the ring even if it has no owner.
+     */
+    public static Iterator<Token> ringIterator(final List<Token> ring, Token start, boolean includeMin)
+    {
+        // insert the minimum token (at index == -1) if we were asked to include it and it isn't a member of the ring
+        final boolean insertMin = (includeMin && !ring.get(0).equals(StorageService.getPartitioner().getMinimumToken())) ? true : false;
+
+
+        final int startIndex = firstTokenIndex(ring, start, insertMin);
         return new AbstractIterator<Token>()
         {
             int j = startIndex;
@@ -444,6 +461,7 @@ public class TokenMetadata
         tokenToEndPointMap.clear();
         leavingEndPoints.clear();
         pendingRanges.clear();
+        invalidateCaches();
     }
 
     public String toString()
@@ -519,4 +537,23 @@ public class TokenMetadata
 
         return sb.toString();
     }
+    
+    public void invalidateCaches()
+    {
+        for (AbstractReplicationStrategy subscriber : subscribers)
+        {
+            subscriber.clearEndpointCache();
+        }
+    }
+
+    public void register(AbstractReplicationStrategy subscriber)
+    {
+        subscribers.add(subscriber);
+    }
+
+    public void unregister(AbstractReplicationStrategy subscriber)
+    {
+        subscribers.remove(subscriber);
+    }
+
 }

@@ -84,19 +84,14 @@ public class DynamicEndpointSnitch extends AbstractEndpointSnitch implements ILa
         }
     }
 
-    public boolean isOnSameRack(InetAddress a1, InetAddress a2) throws UnknownHostException
+    public boolean isOnSameRack(InetAddress a1, InetAddress a2) 
     {
         return subsnitch.isOnSameRack(a1, a2);
     }
 
-    public boolean isInSameDataCenter(InetAddress a1, InetAddress a2) throws UnknownHostException
+    public boolean isInSameDataCenter(InetAddress a1, InetAddress a2) 
     {
         return subsnitch.isInSameDataCenter(a1, a2);
-    }
-
-    public String getLocation(InetAddress endpoint) throws UnknownHostException
-    {
-        return subsnitch.getLocation(endpoint);
     }
 
     public List<InetAddress> getSortedListByProximity(final InetAddress address, Collection<InetAddress> addresses)
@@ -188,6 +183,24 @@ public class DynamicEndpointSnitch extends AbstractEndpointSnitch implements ILa
             }
         }
         return timings;
+    }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.IEndPointSnitch#getRack(java.net.InetAddress)
+     */
+    @Override
+    public String getRack(InetAddress endpoint)
+    {
+        return subsnitch.getRack(endpoint);
+    }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.IEndPointSnitch#getDatacenter(java.net.InetAddress)
+     */
+    @Override
+    public String getDatacenter(InetAddress endpoint)
+    {
+        return subsnitch.getDatacenter(endpoint);
     }
 }
 

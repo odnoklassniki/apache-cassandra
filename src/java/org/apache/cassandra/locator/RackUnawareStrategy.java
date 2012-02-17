@@ -39,7 +39,12 @@ public class RackUnawareStrategy extends AbstractReplicationStrategy
         super(tokenMetadata, snitch);
     }
 
-    public ArrayList<InetAddress> getNaturalEndpoints(Token token, TokenMetadata metadata, String table)
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.AbstractReplicationStrategy#calculateNaturalEndpoints(org.apache.cassandra.dht.Token, org.apache.cassandra.locator.TokenMetadata, java.lang.String)
+     */
+    @Override
+    public ArrayList<InetAddress> calculateNaturalEndpoints(Token token,
+            TokenMetadata metadata, String table)
     {
         int replicas = DatabaseDescriptor.getReplicationFactor(table);
         List<Token> tokens = metadata.sortedTokens();

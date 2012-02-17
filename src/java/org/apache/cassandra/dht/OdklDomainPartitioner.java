@@ -107,4 +107,13 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
     {
         return toStringToken(key);
     }
+    
+    public StringToken toStringToken(int domain)
+    {
+        StringBuilder sb = new StringBuilder(2);
+        if (domain<0x10)
+            sb.append('0');
+        
+        return new StringToken( sb.append(Integer.toHexString(domain)).toString() );
+    }
 }

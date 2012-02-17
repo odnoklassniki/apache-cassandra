@@ -19,30 +19,36 @@
 package org.apache.cassandra.locator;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.Collection;
 import java.util.List;
-
 
 /**
  * This interface helps determine location of node in the data center relative to another node.
  * Give a node A and another node B it can tell if A and B are on the same rack or in the same
  * data center.
- *
- * Not all methods will be germate to all implementations.  Throw UnsupportedOperation as necessary.
  */
 
 public interface IEndPointSnitch
 {
     /**
-     * returns a new List<InetAddress> sorted by proximity to the given endpoint
+     * returns a String repesenting the rack this endpoint belongs to
+     */
+    public String getRack(InetAddress endpoint);
+
+    /**
+     * returns a String representing the datacenter this endpoint belongs to
+     */
+    public String getDatacenter(InetAddress endpoint);
+    
+    /**
+     * returns a new <tt>List</tt> sorted by proximity to the given endpoint
      */
     public List<InetAddress> getSortedListByProximity(InetAddress address, Collection<InetAddress> unsortedAddress);
 
     /**
-     * This method will sort the List<InetAddress> according to the proximity of the given address.
+     * This method will sort the <tt>List</tt> by proximity to the given address.
      */
-    public List<InetAddress> sortByProximity(InetAddress address, List<InetAddress> addresses);
+    public List<InetAddress>  sortByProximity(InetAddress address, List<InetAddress> addresses);
 
     /**
      * compares two endpoints in relation to the target endpoint, returning as Comparator.compare would
@@ -50,15 +56,21 @@ public interface IEndPointSnitch
     public int compareEndpoints(InetAddress target, InetAddress a1, InetAddress a2);
 
     /**
-     * indicates whether two endpoints are on the same rack
+     * called after Gossiper instance exists immediately before it starts gossiping
      */
-    public boolean isOnSameRack(InetAddress a1, InetAddress a2) throws UnknownHostException;
+    public void gossiperStarting();
 
     /**
-     * indicates whether two endpoints are in the same datacenter
+     * @param a1
+     * @param a2
+     * @return
      */
-    public boolean isInSameDataCenter(InetAddress a1, InetAddress a2) throws UnknownHostException;
+    public boolean isOnSameRack(InetAddress a1, InetAddress a2);
 
-    public String getLocation(InetAddress endpoint) throws UnknownHostException;
+    /**
+     * @param a1
+     * @param a2
+     * @return
+     */
+    public boolean isInSameDataCenter(InetAddress a1, InetAddress a2);
 }
-

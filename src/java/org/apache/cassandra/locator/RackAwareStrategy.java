@@ -40,8 +40,10 @@ public class RackAwareStrategy extends AbstractReplicationStrategy
     {
         super(tokenMetadata, snitch);
     }
+    
 
-    public ArrayList<InetAddress> getNaturalEndpoints(Token token, TokenMetadata metadata, String table)
+    public ArrayList<InetAddress> calculateNaturalEndpoints(Token token,
+            TokenMetadata metadata, String table)
     {
         int replicas = DatabaseDescriptor.getReplicationFactor(table);
         ArrayList<InetAddress> endpoints = new ArrayList<InetAddress>(replicas);
@@ -58,35 +60,28 @@ public class RackAwareStrategy extends AbstractReplicationStrategy
         boolean bOtherRack = false;
         while (endpoints.size() < replicas && iter.hasNext())
         {
-            try
+            // First try to find one in a different data center
+            Token t = iter.next();
+            if (!(snitch_).isInSameDataCenter(metadata.getEndPoint(primaryToken), metadata.getEndPoint(t)))
             {
-                // First try to find one in a different data center
-                Token t = iter.next();
-                if (!(snitch_).isInSameDataCenter(metadata.getEndPoint(primaryToken), metadata.getEndPoint(t)))
+                // If we have already found something in a diff datacenter no need to find another
+                if (!bDataCenter)
                 {
-                    // If we have already found something in a diff datacenter no need to find another
-                    if (!bDataCenter)
-                    {
-                        endpoints.add(metadata.getEndPoint(t));
-                        bDataCenter = true;
-                    }
-                    continue;
+                    endpoints.add(metadata.getEndPoint(t));
+                    bDataCenter = true;
                 }
-                // Now  try to find one on a different rack
-                if (!snitch_.isOnSameRack(metadata.getEndPoint(primaryToken), metadata.getEndPoint(t)) &&
-                    snitch_.isInSameDataCenter(metadata.getEndPoint(primaryToken), metadata.getEndPoint(t)))
-                {
-                    // If we have already found something in a diff rack no need to find another
-                    if (!bOtherRack)
-                    {
-                        endpoints.add(metadata.getEndPoint(t));
-                        bOtherRack = true;
-                    }
-                }
+                continue;
             }
-            catch (UnknownHostException e)
+            // Now  try to find one on a different rack
+            if (!snitch_.isOnSameRack(metadata.getEndPoint(primaryToken), metadata.getEndPoint(t)) &&
+                snitch_.isInSameDataCenter(metadata.getEndPoint(primaryToken), metadata.getEndPoint(t)))
             {
-                throw new RuntimeException(e);
+                // If we have already found something in a diff rack no need to find another
+                if (!bOtherRack)
+                {
+                    endpoints.add(metadata.getEndPoint(t));
+                    bOtherRack = true;
+                }
             }
 
         }

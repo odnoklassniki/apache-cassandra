@@ -160,6 +160,13 @@
        ~ org.apache.cassandra.locator.RackAwareStrategy (place one replica in
        ~ a different datacenter, and the others on different racks in the same
        ~ one.)
+       ~
+       ~ OdklEvenStrategy distributing secondary replicas evenly across cluster, so no
+       ~ single endpoint becomes overloaded in case of primary replica node failure.
+       ~ but use of OdklDomainPartitioner AND use of DomainSplit CFs are strongly advised for this strategy.
+       ~
+       ~ RackAwareOdklEvenStrategy in addition to OdklEvenStrategy replicates across racks, so no
+       ~ 2 replicas hit endpoint on the same rack. Number of racks must be equal to your replication factor
       -->
       <ReplicaPlacementStrategy>org.apache.cassandra.locator.RackUnawareStrategy</ReplicaPlacementStrategy>
 
@@ -171,7 +178,9 @@
        ~ AbstractEndpointSnitch, which lets Cassandra know enough
        ~ about your network topology to route requests efficiently.
        ~ Out of the box, Cassandra provides org.apache.cassandra.locator.EndPointSnitch,
-       ~ and PropertyFileEndPointSnitch is available in contrib/.
+       
+       ~ PropertyFileSnitch is expecting to find cassandra-topology.properties file in classpath
+       ~ and will watch for changes there.
       -->
       <EndPointSnitch>org.apache.cassandra.locator.EndPointSnitch</EndPointSnitch>
         
@@ -215,9 +224,12 @@
    ~ ordering.  Use this as an example if you need locale-aware collation.)
    ~ Range queries require using an order-preserving partitioner.
    ~
+   ~ OdklDomainPartitioner partitions by 2 last hex digits of key (which normally is odkl domain)
+   ~
    ~ Achtung!  Changing this parameter requires wiping your data
    ~ directories, since the partitioner can modify the sstable on-disk
    ~ format.
+   ~ 
   -->
   <Partitioner>org.apache.cassandra.dht.RandomPartitioner</Partitioner>
 

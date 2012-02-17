@@ -223,7 +223,7 @@ public class MoveTest extends CleanupHelper
             for (int i = 0; i < keyTokens.size(); i++)
             {
                 endPoints = testStrategy.getWriteEndpoints(keyTokens.get(i), table, testStrategy.getNaturalEndpoints(keyTokens.get(i), table));
-                assertTrue(expectedEndpoints.get(table).get(keyTokens.get(i)).size() == endPoints.size());
+                assertTrue(table+":"+endPoints,expectedEndpoints.get(table).get(keyTokens.get(i)).size() == endPoints.size());
                 assertTrue(expectedEndpoints.get(table).get(keyTokens.get(i)).containsAll(endPoints));
             }
 
