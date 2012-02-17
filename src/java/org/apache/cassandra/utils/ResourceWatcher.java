@@ -59,7 +59,6 @@ public class ResourceWatcher
         {
             try
             {
-                logger.info("C heck"+resource);
                 long lastModified = new File(resource).lastModified();
                 if (lastModified > lastLoaded)
                 {
