@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.cassandra.config.ConfigurationException;
@@ -101,68 +102,55 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         int replicas = DatabaseDescriptor.getReplicationFactor(table);
         ArrayList<InetAddress> endpoints = new ArrayList<InetAddress>(replicas);
 
+        List<Token> tokens = metadata.sortedTokens();
+        if (tokens.isEmpty())
+            return endpoints;
+        
+        Set<String> racks = ringRacks(metadata, tokens);
         do
         {
-            List<Token> tokens = getReplicaTokens(keyToken, metadata, endpoints.size());
-            if (tokens.isEmpty())
-                return endpoints;
-
-            int domain = Integer.parseInt( keyToken.toString(), 16 ) & 0xFF;
+    
             Token t = TokenMetadata.firstToken(tokens, keyToken);
 
             InetAddress endPoint = metadata.getEndPoint(t);
 
             endpoints.add(endPoint);
-    
+            racks.remove(snitch_.getRack(endPoint));
+
+            int domain = Integer.parseInt( keyToken.toString(), 16 ) & 0xFF;
             domain = shuffle( domain );
             keyToken = odklPartitioner.toStringToken(domain);
+            
+            if (!racks.isEmpty())
+                tokens = getReplicaTokens(metadata,racks.iterator().next());
             
         } while (endpoints.size() < replicas);
 
         return endpoints;
     }
-
-    /* (non-Javadoc)
-     * @see org.apache.cassandra.locator.OdklEvenStrategy#getReplicaTokens(org.apache.cassandra.dht.Token, org.apache.cassandra.locator.TokenMetadata, int)
-     */
-    @Override
-    protected List<Token> getReplicaTokens(Token keyToken,
-            TokenMetadata metadata, int replica)
+    
+    private Set<String> ringRacks(TokenMetadata metadata, List<Token> sortedTokens)
     {
-        // searching for the rack we should collect endpoint tokens for
-        List<Token> sortedTokens = metadata.sortedTokens();
-        String rack = null;
-        
         if (snitch_ instanceof PropertyFileSnitch)
         {
-            Iterator<String> racks = ((PropertyFileSnitch)snitch_).getConfiguredRacks().iterator();
-            
-            for (int i=0;i<replica && racks.hasNext();i++)
-                racks.next();
-            
-            if (racks.hasNext())
-                rack = racks.next();
+            return ((PropertyFileSnitch)snitch_).getConfiguredRacks();
             
         } else {
-            Set<String> racks;
-            racks = new HashSet<String>();
+            Set<String> racks = new TreeSet<String>();
             for (Token t : sortedTokens)
             {
-                rack = snitch_.getRack(metadata.getEndPoint(t));
-
-                if (racks.size()>=replica)
-                    break;
-
-                racks.add(rack);
-                rack = null;
+                racks.add(snitch_.getRack(metadata.getEndPoint(t)));
             }
+            
+            return racks;
         }
         
-        if (rack == null)
-        {
-            throw new IllegalStateException("Cannot find rack to store replica number "+replica+". This typically means error in configuration. Number of uniq racks is probably less than RF or you did not configured endpoint snith to prvide replica information");
-        }
+    }
+
+    protected List<Token> getReplicaTokens(TokenMetadata metadata, String rack)
+    {
         
+        List<Token> sortedTokens = metadata.sortedTokens();
         ArrayList<Token> rc = new ArrayList<Token>(sortedTokens.size());
         for (Token t : sortedTokens)
         {
@@ -192,7 +180,6 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             logger_.error("Cannot reconfigure: "+e);
         }
     }
-    
 /*    
     public static void main(String[] args)
     {
@@ -202,32 +189,32 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             OdklDomainPartitioner pp = new OdklDomainPartitioner();
             Properties topology = new Properties();
             
-            for (int i=0;i<255;i++)
-            {
-                meta.updateNormalToken( pp.toStringToken(i)  , InetAddress.getByName("127.0.0."+i) );
-                
-                topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
-            }
+//            for (int i=0;i<255;i++)
+//            {
+//                meta.updateNormalToken( pp.toStringToken(i)  , InetAddress.getByName("127.0.0."+i) );
+//                
+//                topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
+//            }
           
-//          int e=0;
-//          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("15") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("40") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("6a") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("95") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("c0") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("127.0.0."+e++) );
-//          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("127.0.0."+e++) );
-//            
-//          for (int i=0;i<12;i++)
-//          {
-//              topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
-//          }
-//            
+          int e=0;
+          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("15") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("40") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("6a") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("95") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("c0") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("127.0.0."+e++) );
+          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("127.0.0."+e++) );
+            
+          for (int i=0;i<12;i++)
+          {
+              topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
+          }
+            
             RackAwareOdklEvenStrategy o = new RackAwareOdklEvenStrategy(new TokenMetadata(), new PropertyFileSnitch(topology)) {
                 void validate(PropertyFileSnitch pfs)
                         throws ConfigurationException
