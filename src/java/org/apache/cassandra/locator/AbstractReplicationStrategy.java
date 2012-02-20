@@ -24,7 +24,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Multimap;
 import org.apache.log4j.Logger;
 
@@ -197,9 +199,9 @@ public abstract class AbstractReplicationStrategy
      this is fine as long as we don't use this on any critical path.
      (fixing this would probably require merging tokenmetadata into replicationstrategy, so we could cache/invalidate cleanly.)
      */
-    public Multimap<InetAddress, Range> getAddressRanges(TokenMetadata metadata, String table)
+    public ListMultimap<InetAddress, Range> getAddressRanges(TokenMetadata metadata, String table)
     {
-        Multimap<InetAddress, Range> map = HashMultimap.create();
+        ListMultimap<InetAddress, Range> map = ArrayListMultimap.create();
 
         for (Token token : metadata.sortedTokens())
         {
@@ -213,9 +215,9 @@ public abstract class AbstractReplicationStrategy
         return map;
     }
 
-    public Multimap<Range, InetAddress> getRangeAddresses(TokenMetadata metadata, String table)
+    public ListMultimap<Range, InetAddress> getRangeAddresses(TokenMetadata metadata, String table)
     {
-        Multimap<Range, InetAddress> map = HashMultimap.create();
+        ListMultimap<Range, InetAddress> map = ArrayListMultimap.create();
 
         for (Token token : metadata.sortedTokens())
         {
@@ -229,7 +231,7 @@ public abstract class AbstractReplicationStrategy
         return map;
     }
 
-    public Multimap<InetAddress, Range> getAddressRanges(String table)
+    public ListMultimap<InetAddress, Range> getAddressRanges(String table)
     {
         return getAddressRanges(tokenMetadata_, table);
     }

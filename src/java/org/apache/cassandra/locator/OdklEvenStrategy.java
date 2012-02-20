@@ -7,19 +7,23 @@ package org.apache.cassandra.locator;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map.Entry;
+import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.cassandra.config.ConfigurationException;
-import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.dht.OdklDomainPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.StringToken;
 import org.apache.cassandra.dht.Token;
 
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.Multimap;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
 
 /**
  * Unlike other replica strategies, which replicate all data from one endpoint to single another endpoint, this
@@ -147,9 +151,9 @@ public class OdklEvenStrategy extends
      * Overrriden here, because even distribution dont operate in ranges for sencondary replicas, but,
      * instead works on individual domains
     */
-   public Multimap<InetAddress, Range> getAddressRanges(TokenMetadata metadata, String table)
+   public ListMultimap<InetAddress, Range> getAddressRanges(TokenMetadata metadata, String table)
    {
-       Multimap<InetAddress, Range> map = HashMultimap.create();
+       ListMultimap<InetAddress, Range> map = ArrayListMultimap.create();
 
        for (int i=0;i<256;i++)
        {
@@ -163,9 +167,9 @@ public class OdklEvenStrategy extends
        return map;
    }
 
-   public Multimap<Range, InetAddress> getRangeAddresses(TokenMetadata metadata, String table)
+   public ListMultimap<Range, InetAddress> getRangeAddresses(TokenMetadata metadata, String table)
    {
-       Multimap<Range, InetAddress> map = HashMultimap.create();
+       ListMultimap<Range, InetAddress> map = ArrayListMultimap.create();
 
        for (int i=0;i<256;i++)
        {
@@ -206,8 +210,7 @@ public class OdklEvenStrategy extends
        
        return endpoints;
    }
-
-   /**
+/*
    public static void main(String[] args)
     {
         try {
@@ -268,6 +271,15 @@ public class OdklEvenStrategy extends
                 }
             }
             
+            System.out.println("Address ranges:"+o.getAddressRanges(meta,null).asMap().size());
+            for (Entry<InetAddress, Collection<Range>> e : o.getAddressRanges(meta,null).asMap().entrySet()) {
+                System.out.println(e.getKey()+" => "+e.getValue());
+            }
+            
+            System.out.println("Range addresses:"+o.getRangeAddresses(meta,null).asMap().size());
+            for (Entry<Range, Collection<InetAddress>> e : new TreeMap<Range, Collection<InetAddress>>( o.getRangeAddresses(meta,null).asMap() ).entrySet()) {
+                System.out.println(e.getKey()+" => "+e.getValue());
+            }
         } catch (Exception e) {
             e.printStackTrace();
         }
