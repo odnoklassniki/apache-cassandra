@@ -462,7 +462,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     
 
     /**
-     * for a keyspace, return the ranges and corresponding hosts for a given keyspace.
+     * for a keyspace, return the ranges and corresponding hosts for a given keyspace in human friendly form.
      * @param keyspace
      * @return
      */
@@ -475,9 +475,9 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
 
         /* All the ranges for the tokens */
         Map<Range, List<String>> map = new HashMap<Range, List<String>>();
-        for (Entry<Range, Collection<InetAddress>> entry : getRangeToAddressMap(keyspace).entrySet())
+        for (Range range : getAllRanges() )
         {
-            map.put(entry.getKey(), stringify2list(entry.getValue()));
+            map.put(range, stringify(getReplicationStrategy(keyspace).calculateNaturalEndpoints(range.right, tokenMetadata_ , keyspace)));
         }
         return map;
     }
@@ -1033,16 +1033,6 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     private Set<String> stringify(Collection<InetAddress> endPoints)
     {
         Set<String> stringEndPoints = new HashSet<String>();
-        for (InetAddress ep : endPoints)
-        {
-            stringEndPoints.add(ep.getHostAddress());
-        }
-        return stringEndPoints;
-    }
-
-    private List<String> stringify2list(Collection<InetAddress> endPoints)
-    {
-        List<String> stringEndPoints = new ArrayList<String>();
         for (InetAddress ep : endPoints)
         {
             stringEndPoints.add(ep.getHostAddress());
