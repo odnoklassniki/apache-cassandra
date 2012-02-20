@@ -177,7 +177,7 @@ public class AntiEntropyService
     {
         StorageService ss = StorageService.instance;
         Set<InetAddress> neighbors = new HashSet<InetAddress>();
-        Map<Range, List<InetAddress>> replicaSets = ss.getRangeToAddressMap(table);
+        Map<Range, Collection<InetAddress>> replicaSets = ss.getRangeToAddressMap(table);
         for (Range range : ss.getLocalRanges(table))
         {
             // for every range stored locally (replica or original) collect neighbors storing copies
@@ -200,11 +200,11 @@ public class AntiEntropyService
         
         StorageService ss = StorageService.instance;
         Set<InetAddress> neighbors = new HashSet<InetAddress>();
-        Map<Range, List<InetAddress>> replicaSets = ss.getRangeToAddressMap(table);
+        Map<Range, Collection<InetAddress>> replicaSets = ss.getRangeToAddressMap(table);
         for (Range range : ss.getLocalRanges(table))
         {
             // for every range stored locally (replica or original) collect neighbors storing copies
-            List<InetAddress> list = replicaSets.get(range);
+            Collection<InetAddress> list = replicaSets.get(range);
             for (InetAddress inetAddress : list) 
             {
                 if (StorageService.instance.isInRemoteRange(columnFamilyStore, inetAddress))

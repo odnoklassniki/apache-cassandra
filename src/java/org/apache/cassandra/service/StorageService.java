@@ -25,6 +25,7 @@ import java.lang.reflect.Constructor;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
@@ -474,34 +475,18 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
 
         /* All the ranges for the tokens */
         Map<Range, List<String>> map = new HashMap<Range, List<String>>();
-        for (Map.Entry<Range,List<InetAddress>> entry : getRangeToAddressMap(keyspace).entrySet())
+        for (Entry<Range, Collection<InetAddress>> entry : getRangeToAddressMap(keyspace).entrySet())
         {
-            map.put(entry.getKey(), stringify(entry.getValue()));
+            map.put(entry.getKey(), stringify2list(entry.getValue()));
         }
         return map;
     }
 
-    public Map<Range, List<InetAddress>> getRangeToAddressMap(String keyspace)
+    public Map<Range, Collection<InetAddress>> getRangeToAddressMap(String keyspace)
     {
-        List<Range> ranges = getAllRanges(tokenMetadata_.sortedTokens());
-        return constructRangeToEndPointMap(keyspace, ranges);
+        return getReplicationStrategy(keyspace).getRangeAddresses(tokenMetadata_, keyspace).asMap();
     }
 
-    /**
-     * Construct the range to endpoint mapping based on the true view
-     * of the world.
-     * @param ranges
-     * @return mapping of ranges to the replicas responsible for them.
-    */
-    private Map<Range, List<InetAddress>> constructRangeToEndPointMap(String keyspace, List<Range> ranges)
-    {
-        Map<Range, List<InetAddress>> rangeToEndPointMap = new HashMap<Range, List<InetAddress>>();
-        for (Range range : ranges)
-        {
-            rangeToEndPointMap.put(range, getReplicationStrategy(keyspace).calculateNaturalEndpoints(range.right, tokenMetadata_ , keyspace));
-        }
-        return rangeToEndPointMap;
-    }
 
     /*
      * onChange only ever sees one ApplicationState piece change at a time, so we perform a kind of state machine here.
@@ -1045,9 +1030,19 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         return stringify(Gossiper.instance.getUnreachableMembers());
     }
 
-    private Set<String> stringify(Set<InetAddress> endPoints)
+    private Set<String> stringify(Collection<InetAddress> endPoints)
     {
         Set<String> stringEndPoints = new HashSet<String>();
+        for (InetAddress ep : endPoints)
+        {
+            stringEndPoints.add(ep.getHostAddress());
+        }
+        return stringEndPoints;
+    }
+
+    private List<String> stringify2list(Collection<InetAddress> endPoints)
+    {
+        List<String> stringEndPoints = new ArrayList<String>();
         for (InetAddress ep : endPoints)
         {
             stringEndPoints.add(ep.getHostAddress());

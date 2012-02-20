@@ -7,7 +7,9 @@ package org.apache.cassandra.maint;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -139,7 +141,7 @@ public class MajorCompactionTask implements MaintenanceTask
         
         int n = dayOfEpoch % rf; // so every Nth range in ring must compact this day
         
-        Map<Range, List<InetAddress>> rangeToAddressMap = StorageService.instance.getRangeToAddressMap(DatabaseDescriptor.getNonSystemTables().get(0));
+        Map<Range, Collection<InetAddress>> rangeToAddressMap = StorageService.instance.getRangeToAddressMap(DatabaseDescriptor.getNonSystemTables().get(0));
         
         for ( int i = n; i<ringRanges.size(); i+=rf)
         {
@@ -148,7 +150,7 @@ public class MajorCompactionTask implements MaintenanceTask
             if (StorageService.instance.getLocalPrimaryRange().equals(compactingRange))
                 return true; // may primary range is eligible for compaction
 
-            List<InetAddress> endpoints = rangeToAddressMap.get(compactingRange);
+            List<InetAddress> endpoints = new ArrayList<InetAddress>( rangeToAddressMap.get(compactingRange) );
             int replicaPosition=endpoints.indexOf(FBUtilities.getLocalAddress());
             if (replicaPosition>0)
             {
