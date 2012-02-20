@@ -8,10 +8,11 @@ package org.apache.cassandra.locator;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -96,7 +97,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         }
     }
 
-    public ArrayList<InetAddress> calculateNaturalEndpoints(Token keyToken,
+    protected ArrayList<InetAddress> doCalculateEndpoints(Token keyToken,
             TokenMetadata metadata, String table)
     {
         int replicas = DatabaseDescriptor.getReplicationFactor(table);
@@ -111,15 +112,16 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         {
     
             Token t = TokenMetadata.firstToken(tokens, keyToken);
+            String keyTokenString = keyToken.toString();
 
             InetAddress endPoint = metadata.getEndPoint(t);
 
             endpoints.add(endPoint);
             racks.remove(snitch_.getRack(endPoint));
 
-            int domain = Integer.parseInt( keyToken.toString(), 16 ) & 0xFF;
+            int domain = Integer.parseInt( keyTokenString.substring(0,2), 16 ) & 0xFF;
             domain = shuffle( domain );
-            keyToken = odklPartitioner.toStringToken(domain);
+            keyToken = odklPartitioner.toStringToken(domain,keyTokenString);
             
             if (!racks.isEmpty())
                 tokens = getReplicaTokens(metadata,racks.iterator().next());
@@ -180,7 +182,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             logger_.error("Cannot reconfigure: "+e);
         }
     }
-/*    
+
     public static void main(String[] args)
     {
         try {
@@ -196,24 +198,40 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
 //                topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
 //            }
           
-          int e=0;
-          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("15") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("40") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("6a") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("95") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("c0") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("127.0.0."+e++) );
-          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("127.0.0."+e++) );
+            int e=0;
+            meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.36.86") );
+            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
+            meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.36.88") );
+            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
+            meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.10.247") );
+            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
+
+            topology.put("192.168.36.86","DL:RACK1");
+            topology.put("192.168.36.87","DL:RACK2");
+            topology.put("192.168.36.88","DL:RACK3");
+            topology.put("192.168.36.89","DL:RACK1");
+
+            topology.put("192.168.10.247","M100:RACK2");
+            topology.put("192.168.10.248","M100:RACK3");
+
+//          int e=0;
+//          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("15") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("40") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("6a") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("95") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("c0") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("127.0.0."+e++) );
+//          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("127.0.0."+e++) );
             
-          for (int i=0;i<12;i++)
-          {
-              topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
-          }
+//          for (int i=0;i<12;i++)
+//          {
+//              topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
+//          }
             
             RackAwareOdklEvenStrategy o = new RackAwareOdklEvenStrategy(new TokenMetadata(), new PropertyFileSnitch(topology)) {
                 void validate(PropertyFileSnitch pfs)
@@ -266,18 +284,25 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                 System.out.println(i.getKey().toString()+"="+i.getValue());
             }
 
-            System.out.println("Range Addresses:");
-            System.out.println(o.getRangeAddresses(meta, "aaa"));
-            System.out.println("Address Ranges:");
-            System.out.println(o.getAddressRanges(meta, "aaa"));
+            System.out.println("Address ranges:"+o.getAddressRanges(meta,null).asMap().size());
+            for (Entry<InetAddress, Collection<Range>> en : o.getAddressRanges(meta,null).asMap().entrySet()) {
+                System.out.println(en.getKey()+" => "+en.getValue());
+            }
             
-            System.out.println("Range");
-            System.out.println(o.getRangeAddresses(meta, "aaa").get(new Range(new StringToken("00"), new StringToken("02"),pp)));
-            
+            System.out.println("Range addresses:"+o.getRangeAddresses(meta,null).asMap().size());
+            for (Entry<Range, Collection<InetAddress>> en : new TreeMap<Range, Collection<InetAddress>>( o.getRangeAddresses(meta,null).asMap() ).entrySet()) {
+                System.out.println(en.getKey()+" => "+en.getValue());
+
+                StringToken stringToken = new StringToken( en.getKey().left.toString()+"01091" );
+                Set<InetAddress> s1= new HashSet<InetAddress>(o.calculateNaturalEndpoints( stringToken, meta, null)), s2=new HashSet<InetAddress>(en.getValue());
+                if (!s1.equals(s2))
+                    System.out.println("OILOLO: "+s1+" != "+s2+" "+en.getKey().contains(stringToken));
+            }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
      
     }
-    */
+
 }

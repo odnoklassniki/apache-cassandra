@@ -71,7 +71,7 @@ public class OdklEvenStrategy extends
         if (endpoints == null)
         {
             TokenMetadata tokenMetadataClone = metadata.cloneOnlyTokenMap();
-            endpoints = new ArrayList<InetAddress>(calculateNaturalEndpoints(keyToken, tokenMetadataClone, table));
+            endpoints = new ArrayList<InetAddress>(doCalculateEndpoints(keyToken, tokenMetadataClone, table));
             cacheEndpoint(table,keyToken, endpoints);
         }
 
@@ -80,14 +80,40 @@ public class OdklEvenStrategy extends
 
     private StringToken keyToken(Token token)
     {
-        return new StringToken( token.toString().substring(0, 2) );
+        String tokenString = token.toString();
+        
+        if (tokenString.length()<=2)
+            tokenString = prevDomain(tokenString);
+        
+        return new StringToken( tokenString.substring(0, 2)+"0" );
+    }
+
+    /**
+     * @param tokenString
+     * @return
+     */
+    private String prevDomain(String tokenString)
+    {
+        int domain = Integer.parseInt( tokenString, 16 );
+        
+        if (domain==0)
+            domain=0xff;
+        else
+            domain--;
+        
+        return odklPartitioner.toStringToken(domain).toString();
     }
 
     /* (non-Javadoc)
      * @see org.apache.cassandra.locator.AbstractReplicationStrategy#calculateNaturalEndpoints(org.apache.cassandra.dht.Token, org.apache.cassandra.locator.TokenMetadata, java.lang.String)
      */
     @Override
-    public ArrayList<InetAddress> calculateNaturalEndpoints(Token keyToken,
+    public final ArrayList<InetAddress> calculateNaturalEndpoints(Token token, TokenMetadata metadata, String table)
+    {
+        return doCalculateEndpoints( keyToken(token) , metadata, table);
+    }
+
+    protected ArrayList<InetAddress> doCalculateEndpoints(Token keyToken,
             TokenMetadata metadata, String table)
     {
         int replicas = DatabaseDescriptor.getReplicationFactor(table);
@@ -99,7 +125,8 @@ public class OdklEvenStrategy extends
             if (tokens.isEmpty())
                 return endpoints;
 
-            int domain = Integer.parseInt( keyToken.toString(), 16 ) & 0xFF;
+            String keyTokenString = keyToken.toString();
+            int domain = Integer.parseInt( keyTokenString.substring(0,2), 16 ) & 0xFF;
             Iterator<Token> iter = TokenMetadata.ringIterator(tokens, keyToken, false);
             do
             {
@@ -113,7 +140,8 @@ public class OdklEvenStrategy extends
             } while (endpoints.size() < replicas && domain == shuffle( domain ));
 
             domain = shuffle( domain );
-            keyToken = odklPartitioner.toStringToken(domain);
+            
+            keyToken = odklPartitioner.toStringToken(domain,keyTokenString);
             
         } while (endpoints.size() < replicas);
 
@@ -182,7 +210,7 @@ public class OdklEvenStrategy extends
    private Range toRange(int i)
    {
        StringToken token = odklPartitioner.toStringToken(i);
-       Range range = new Range( odklPartitioner.toStringToken( i==0?255:i-1 ), token, odklPartitioner);
+       Range range = new Range( token, odklPartitioner.toStringToken( i==255?0:i+1 ), odklPartitioner);
        return range;
    }
 
