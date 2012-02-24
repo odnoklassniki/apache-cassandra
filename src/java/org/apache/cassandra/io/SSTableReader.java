@@ -53,7 +53,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 
     // `finalizers` is required to keep the PhantomReferences alive after the enclosing SSTR is itself
     // unreferenced.  otherwise they will never get enqueued.
-    private static final Set<Reference<SSTableReader>> finalizers = new HashSet<Reference<SSTableReader>>();
+    private static final Set<Reference<SSTableReader>> finalizers = Collections.synchronizedSet( new HashSet<Reference<SSTableReader>>() );
     private static final ReferenceQueue<SSTableReader> finalizerQueue = new ReferenceQueue<SSTableReader>()
     {{
         Runnable runnable = new Runnable()
