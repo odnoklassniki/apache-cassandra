@@ -18,7 +18,9 @@
 
 package org.apache.cassandra.tools;
 
+import java.io.FileReader;
 import java.io.IOException;
+import java.io.LineNumberReader;
 import java.io.PrintStream;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
@@ -43,9 +45,13 @@ import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.CompactionManagerMBean;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageServiceMBean;
 import org.apache.cassandra.streaming.StreamingService;
 import org.apache.cassandra.streaming.StreamingServiceMBean;
+import org.apache.cassandra.utils.FBUtilities;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 /**
  * JMX client operations for Cassandra.
@@ -54,7 +60,6 @@ public class NodeProbe
 {
     private static final String fmtUrl = "service:jmx:rmi:///jndi/rmi://%s:%d/jmxrmi";
     private static final String ssObjName = "org.apache.cassandra.service:type=StorageService";
-    private static final int defaultPort = 8080;
     private String host;
     private int port;
     private String username;
@@ -94,8 +99,47 @@ public class NodeProbe
     public NodeProbe(String host) throws IOException, InterruptedException
     {
         this.host = host;
-        this.port = defaultPort;
+        this.port = defaultPort();
+        
+        readUsernameAndPassword();
+        
         connect();
+    }
+    
+    private static int defaultPort()
+    {
+        return Integer.parseInt(System.getProperty("jmx.agent.port","8080"));
+    }
+    
+    private void readUsernameAndPassword()
+    {
+        String passwdFile = System.getProperty("com.sun.management.jmxremote.password.file");
+        if ( passwdFile != null )
+        {
+            // there are credentials configured. reading 1st line
+            try {
+                LineNumberReader reader = new LineNumberReader(new FileReader(passwdFile));
+                try {
+                    String line = null;
+                    do {
+                        line = reader.readLine();
+                    } while (line==null || line.trim().length()==0);
+
+                    String[] cred = line.split("\\s+");
+
+                    if (cred.length>1)
+                    {
+                        this.username = cred[0];
+                        this.password = cred[1];
+                    }
+                } finally {
+                    reader.close();
+                }
+            } catch (IOException e)
+            {
+                LogFactory.getLog(NodeProbe.class).error("Cannot read "+passwdFile+" for username and password to connect to "+this.host+". Trying to continue without credentials",e);
+            }
+        }
     }
     
     /**
