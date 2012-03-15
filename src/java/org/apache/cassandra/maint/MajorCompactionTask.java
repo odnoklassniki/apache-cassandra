@@ -8,12 +8,10 @@ package org.apache.cassandra.maint;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -23,17 +21,15 @@ import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.gms.FailureDetector;
-import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.tools.NodeProbe;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
-
-import sun.security.action.GetLongAction;
 
 /**
  * Runs major compactions during maint window, trying to estimate time of compaction not ging beyond it.
  * Ensures that X nodes from all serving every single range is not compacting at all.
+ * 
+ * This is rack unaware version.
  * 
  * Compactions are performed on tables with max number of sstables first.
  * 
@@ -42,7 +38,7 @@ import sun.security.action.GetLongAction;
  */
 public class MajorCompactionTask implements MaintenanceTask
 {
-    private final Logger logger = Logger.getLogger(MaintenanceTaskManager.class);
+    protected final Logger logger = Logger.getLogger(MaintenanceTaskManager.class);
 
     private long lastSuccessfulWindowMillis = 0l;
     
@@ -55,7 +51,7 @@ public class MajorCompactionTask implements MaintenanceTask
     /**
      * How many nodes to leave not compacting in range
      */
-    private int leaveSpareInRange = 1;
+    protected final int leaveSpareInRange;
     
     public MajorCompactionTask(int leaveSpare)
     {
@@ -78,7 +74,7 @@ public class MajorCompactionTask implements MaintenanceTask
             // Reads * Read Latency
             ColumnFamilyStore compactionCandidate = null;
             
-            for (String table : DatabaseDescriptor.getNonSystemTables())
+            for (String table : DatabaseDescriptor.getTables())
             {
                 try {
                     for (ColumnFamilyStore cfs : Table.open(table).getColumnFamilyStores()) 
@@ -128,7 +124,7 @@ public class MajorCompactionTask implements MaintenanceTask
      * @param ctx
      * @return
      */
-    private boolean mayCompactToday(MaintenanceContext ctx)
+    protected boolean mayCompactToday(MaintenanceContext ctx)
     {
         if (StorageService.instance.isBootstrapMode())
             return false;

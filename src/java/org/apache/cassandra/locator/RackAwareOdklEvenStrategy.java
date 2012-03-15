@@ -25,6 +25,7 @@ import org.apache.cassandra.dht.OdklDomainPartitioner;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.StringToken;
 import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.utils.FBUtilities;
 
 /**
  * In addition to even (re)distribution of replicas across all cluster nodes, it ensures no replicas of the same key hit
@@ -131,7 +132,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         return endpoints;
     }
     
-    private Set<String> ringRacks(TokenMetadata metadata, List<Token> sortedTokens)
+    public Set<String> ringRacks(TokenMetadata metadata, List<Token> sortedTokens)
     {
         if (snitch_ instanceof PropertyFileSnitch)
         {
@@ -147,6 +148,16 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             return racks;
         }
         
+    }
+    
+    public String myRack()
+    {
+        return snitch_.getRack(FBUtilities.getLocalAddress());
+    }
+    
+    public String getRack(InetAddress endp)
+    {
+        return snitch_.getRack(endp);
     }
 
     protected List<Token> getReplicaTokens(TokenMetadata metadata, String rack)

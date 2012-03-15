@@ -1,2 +1,2 @@
-for a in 507 508 509 510; do scp -C build/apache-cassandra-0.6.13-p10.jar  srvd${a}:/one/odnoklassniki-like/deploy/lib;done
-for a in 458 459; do scp build/apache-cassandra-0.6.13-p10.jar  srve${a}:/one/odnoklassniki-like/deploy/lib;done
+for a in 507 508 509 510; do scp -C build/apache-cassandra-0.6.13-p11.jar  srvd${a}:/one/odnoklassniki-like/deploy/lib;done
+for a in 458 459; do scp build/apache-cassandra-0.6.13-p11.jar  srve${a}:/one/odnoklassniki-like/deploy/lib;done

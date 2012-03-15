@@ -51,12 +51,14 @@ import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.DynamicEndpointSnitch;
 import org.apache.cassandra.locator.IEndPointSnitch;
+import org.apache.cassandra.locator.RackAwareOdklEvenStrategy;
 import org.apache.cassandra.maint.CleanArchivedLogsTask;
 import org.apache.cassandra.maint.CleanOldSnapshotsTask;
 import org.apache.cassandra.maint.ClusterSnapshotTask;
 import org.apache.cassandra.maint.MaintenanceTask;
 import org.apache.cassandra.maint.MaintenanceTaskManager;
 import org.apache.cassandra.maint.MajorCompactionTask;
+import org.apache.cassandra.maint.RackAwareMajorCompactionTask;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.XMLUtils;
 import org.w3c.dom.Node;
@@ -777,7 +779,13 @@ public class DatabaseDescriptor
         String spareNodes = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/MajorCompaction");
         if (spareNodes!=null)
         {
-            tasks.add(new MajorCompactionTask(Integer.parseInt(spareNodes)));
+            if ( RackAwareOdklEvenStrategy.class.isAssignableFrom( getReplicaPlacementStrategyClass( getNonSystemTables().get(0) )) )
+            {
+                tasks.add(new RackAwareMajorCompactionTask(Integer.parseInt(spareNodes)));
+            } else
+            {
+                tasks.add(new MajorCompactionTask(Integer.parseInt(spareNodes)));
+            }
         }
         
         if (tasks.size()==0)
