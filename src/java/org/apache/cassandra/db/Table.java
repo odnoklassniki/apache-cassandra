@@ -46,6 +46,7 @@ import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.CopyOnWriteMap;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.WrappedRunnable;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 public class Table 
@@ -284,7 +285,17 @@ public class Table
         
         if (DatabaseDescriptor.isDataArchiveEnabled())
         {
-            archiveSnapshot();
+            new Thread(new WrappedRunnable()
+            {
+                
+                @Override
+                protected void runMayThrow() throws Exception
+                {
+                    archiveSnapshot();
+                }
+            },
+            "Archiver of "+name
+            ).start();
         }
     }
 
