@@ -189,7 +189,7 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
 
                 if (bytesSinceCacheFlush >= MAX_BYTES_IN_PAGE_CACHE)
                 {
-                    CLibrary.trySkipCache(this.fd, (int) minBufferOffset, 0);
+                    CLibrary.trySkipCache(this.fd, minBufferOffset, 0);
                     minBufferOffset = bufferOffset;
                     bytesSinceCacheFlush = 0;
                 }
@@ -233,7 +233,7 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
         bytesSinceCacheFlush += read;
         if (skipCache && bytesSinceCacheFlush >= MAX_BYTES_IN_PAGE_CACHE)
         {
-            CLibrary.trySkipCache(this.fd, (int) minBufferOffset, 0);
+            CLibrary.trySkipCache(this.fd, minBufferOffset, 0);
             bytesSinceCacheFlush = 0;
             minBufferOffset = Long.MAX_VALUE;
         }
