@@ -28,6 +28,7 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.utils.RateControl;
 import org.apache.log4j.Logger;
 
 public class StreamingService implements StreamingServiceMBean

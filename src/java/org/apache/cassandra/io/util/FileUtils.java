@@ -19,11 +19,16 @@
 package org.apache.cassandra.io.util;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.text.DecimalFormat;
 import java.util.Comparator;
 import java.util.List;
 
+import org.apache.cassandra.utils.CLibrary;
+import org.apache.cassandra.utils.RateControl;
 import org.apache.log4j.Logger;
 
 
@@ -160,5 +165,76 @@ public class FileUtils
 
         // The directory is now empty so now it can be smoked
         deleteWithConfirm(dir);
+    }
+    
+    /**
+     * Copies one file to another, skippong posix cache and limiting speed of copy.
+     * 
+     * @param from
+     * @param to
+     * @param chunkSize chunk size in bytes
+     * @param chunksPerSec limit speed to no more than this number of chunks per second
+     * @throws IOException
+     */
+    public static long copyFileSkippingCache(File from, File to, int chunkSize, int chunksPerSec) throws IOException
+    {
+        long length = from.length();
+        
+        RateControl rateControl = new RateControl(chunksPerSec);
+        
+        if (!to.getParentFile().exists())
+        {
+            to.getParentFile().mkdirs();
+        }
+        
+        FileInputStream in = new FileInputStream(from);
+        FileOutputStream out = new FileOutputStream(to);
+        
+        try {
+        
+            FileChannel cin = in.getChannel(), cout = out.getChannel();
+            int fdin = CLibrary.getfd(in.getFD()), fdout = CLibrary.getfd(out.getFD());
+            
+            long copied = 0;
+
+            for (long position=0;position<length;position+=chunkSize)
+            {
+                long transferred = cout.transferFrom(cin, position, chunkSize);
+                
+                copied += transferred;
+
+                CLibrary.trySkipCache(fdin, position, chunkSize);
+                CLibrary.trySkipCache(fdout, position, chunkSize);
+
+                rateControl.control();
+            }
+            
+            return copied;
+        } finally {
+            in.close();
+            out.close();
+        }
+        
+    }
+    
+    public static long copyDir(File fromDir, File toDir, int chunkSize, int chunksPerSec) throws IOException
+    {
+        long copied = 0;
+        
+        for (String children : fromDir.list())
+        {
+            File from = new File(fromDir,children);
+            File to = new File(toDir,children);
+            
+            if (from.isDirectory())
+            {
+                copied += copyDir(from, to, chunkSize, chunksPerSec);
+            } else
+            {
+                copied += copyFileSkippingCache(from, to, chunkSize, chunksPerSec);
+            }
+        }
+        
+        return copied;
     }
 }

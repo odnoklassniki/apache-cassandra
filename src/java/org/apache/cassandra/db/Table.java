@@ -281,8 +281,38 @@ public class Table
         {
             cfStore.snapshot(snapshotName);
         }
+        
+        if (DatabaseDescriptor.isDataArchiveEnabled())
+        {
+            archiveSnapshot();
+        }
     }
 
+    /*
+     * Move snapshot files to separate archive disk
+     */
+    public void archiveSnapshot() throws IOException
+    {
+        int chunkSize = 128*1024; // 128kbytes
+        int chunksSec = DatabaseDescriptor.getDataArchiveThrottle()*(1024/128);
+        
+        for (String dataDirPath : DatabaseDescriptor.getAllDataFileLocations())
+        {
+            String snapshotPath = dataDirPath + File.separator + name + File.separator + SNAPSHOT_SUBDIR_NAME;
+            File snapshotDir = new File(snapshotPath);
+            if (snapshotDir.exists())
+            {
+                File archiveLocation = DatabaseDescriptor.getDataArchiveFileLocationForSnapshot(name);
+
+                logger.info("Moving snapshot directory " + snapshotPath + " to " + archiveLocation);
+                
+                long copied = FileUtils.copyDir(snapshotDir, archiveLocation, chunkSize, chunksSec);
+
+                logger.info("Move of "+ (copied/1024/1024) + "MB to "+archiveLocation+" completed. Removing snapshot directory " + snapshotPath);
+                FileUtils.deleteDir(snapshotDir);
+            }
+        }
+    }
 
     /**
      * Clear all the snapshots for a given table.

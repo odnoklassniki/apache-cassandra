@@ -265,6 +265,21 @@
       <DataFileDirectory>/var/lib/cassandra/data</DataFileDirectory>
   </DataFileDirectories>
 
+  <!-- 
+    MM: Activate data archive mode.
+    
+    This mode moves data files right after taking snapshot to another disk.
+    Useful to keep archives on separate slow and rotational disk, especially if your data files
+    are stored on SSD.
+    
+    If this configuration is absent - snapshot files are left on data disks (stock cassandra behavior)
+  
+    <DataArchiveDirectory></DataArchiveDirectory>
+    
+    This is used to limit speed of archive process. By default limited to 10 Mbytes/sec.
+    
+    <DataArchiveThrottle>10</DataArchiveThrottle>
+   -->
 
   <!--
    ~ Addresses of hosts that are deemed contact points. Cassandra nodes
@@ -489,7 +504,7 @@
              -->
             <ClusterSnapshot>night</ClusterSnapshot>
             <!--
-                Clean old snapshots from node
+                Clean old snapshots from data or data archive disk (if configured)
                 Parameter: Days to keep old snapshots: default 3 days 
              -->
             <CleanOldSnapshots>3</CleanOldSnapshots>

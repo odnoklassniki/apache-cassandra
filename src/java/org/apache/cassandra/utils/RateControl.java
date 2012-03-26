@@ -1,9 +1,4 @@
-/*
- * @(#) RateControl.java
- * Created Jul 1, 2010 by oleg
- * (C) ONE, SIA
- */
-package org.apache.cassandra.streaming;
+package org.apache.cassandra.utils;
 
 /**
  * Limits rate of operations to be no more than opsSec by pausing current thread.

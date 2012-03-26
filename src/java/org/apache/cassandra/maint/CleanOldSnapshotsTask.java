@@ -8,6 +8,7 @@ package org.apache.cassandra.maint;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Calendar;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -63,40 +64,54 @@ public class CleanOldSnapshotsTask implements MaintenanceTask, Runnable
             {
                 String snapshotDir = Table.getSnapshotPath(dataDir, table.name, "");
                 
-                File[] obsoleteSnapshotDirs = new File(snapshotDir).listFiles(new FileFilter()
-                {
-                    
-                    @Override
-                    public boolean accept(File dir)
-                    {
-                        try {
-                            return dir.isDirectory() && Long.parseLong(dir.getName().split("-")[0])<=earliestSnapshot;
-                        } catch (Exception e)
-                        {
-                            logger.warn("Snapshot directory is not understood and skipped: "+dir);
-                            return false;
-                        }
-                    }
-
-                });
-                
-                if (obsoleteSnapshotDirs!=null && obsoleteSnapshotDirs.length>0)
-                {
-                    logger.info("Deleting obsolete snapshot directories (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteSnapshotDirs));
-
-                    for (File file : obsoleteSnapshotDirs) {
-                        try {
-                            FileUtils.deleteDir(file);
-                        } catch (IOException e) {
-                            logger.error("Cannot remove "+file,e);
-                        }
-                    }
-                }
+                cleanDir(earliestSnapshot, new File( snapshotDir ));
             }
         }
         
-
+        if (DatabaseDescriptor.isDataArchiveEnabled())
+        {
+            for (Table table : Table.all()) 
+            {
+                File snapshotDir = DatabaseDescriptor.getDataArchiveFileLocationForSnapshot(table.name);
+                
+                cleanDir(earliestSnapshot, snapshotDir);
+            }
+        }
+        
         lastSuccessfulWindowMillis = currentCtx.startedMillis();
+    }
+
+    private void cleanDir(final long earliestSnapshot, File snapshotDir)
+    {
+        File[] obsoleteSnapshotDirs = snapshotDir.listFiles(new FileFilter()
+        {
+            
+            @Override
+            public boolean accept(File dir)
+            {
+                try {
+                    return dir.isDirectory() && Long.parseLong(dir.getName().split("-")[0])<=earliestSnapshot;
+                } catch (Exception e)
+                {
+                    logger.warn("Snapshot directory is not understood and skipped: "+dir);
+                    return false;
+                }
+            }
+
+        });
+        
+        if (obsoleteSnapshotDirs!=null && obsoleteSnapshotDirs.length>0)
+        {
+            logger.info("Deleting obsolete snapshot directories (older than "+daysOld+" days): "+ArrayUtils.toString(obsoleteSnapshotDirs));
+
+            for (File file : obsoleteSnapshotDirs) {
+                try {
+                    FileUtils.deleteDir(file);
+                } catch (IOException e) {
+                    logger.error("Cannot remove "+file,e);
+                }
+            }
+        }
     }
     
     /**

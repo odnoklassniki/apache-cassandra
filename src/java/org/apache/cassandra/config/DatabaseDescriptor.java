@@ -103,6 +103,10 @@ public class DatabaseDescriptor
     private static String logFileArchiveDestination;
     /** MM: where to write hint logs for later delivery **/
     private static String hintLogDirectory;
+    /** MM: where to transfer snapshots for archiving **/
+    private static String dataArchiveDirectory;
+    /** MM: speed of data archive, MBytes/sec **/
+    private static int    dataArchiveThrottle = 10;
 
     private static String savedCachesDirectory;
     private static int consistencyThreads = 4; // not configurable
@@ -582,6 +586,13 @@ public class DatabaseDescriptor
             dataFileDirectories = xmlUtils.getNodeValues("/Storage/DataFileDirectories/DataFileDirectory");
             logFileDirectory = xmlUtils.getNodeValue("/Storage/CommitLogDirectory");
             savedCachesDirectory = xmlUtils.getNodeValue("/Storage/SavedCachesDirectory");
+            dataArchiveDirectory = xmlUtils.getNodeValue("/Storage/DataArchiveDirectory");
+            
+            String dataArThrottleString = xmlUtils.getNodeValue("/Storage/DataArchiveThrottle");
+            if (dataArThrottleString != null)
+            {
+                dataArchiveThrottle = Integer.parseInt(dataArThrottleString);
+            }
 
             for (String datadir : dataFileDirectories)
             {
@@ -1192,6 +1203,11 @@ public class DatabaseDescriptor
             {
                 FileUtils.createDirectory(hintLogDirectory);
             }   
+            
+            if (dataArchiveDirectory != null)
+            {
+                FileUtils.createDirectory(dataArchiveDirectory);
+            }
         }
         catch (ConfigurationException ex) {
             logger.error("Fatal error: " + ex.getMessage());
@@ -1576,6 +1592,28 @@ public class DatabaseDescriptor
         return diskIndex >=0 ? dataDirectoryForTable[diskIndex] : null;
     }
     
+    public static File getDataArchiveFileLocationForSnapshot(String table)
+    {
+        assert dataArchiveDirectory !=null ;
+        
+        File f = new File(dataArchiveDirectory + File.separator + table);
+        
+        if (!f.exists())
+            f.mkdirs();
+        
+        return f;
+    }
+    
+    public static boolean isDataArchiveEnabled()
+    {
+        return dataArchiveDirectory!=null;
+    }
+    
+    public static int getDataArchiveThrottle()
+    {
+        return dataArchiveThrottle;
+    }
+
     public static AbstractType getComparator(String tableName, String cfName)
     {
         assert tableName != null;
