@@ -74,11 +74,7 @@ public class CleanOldSnapshotsTask implements MaintenanceTask, Runnable
             {
                 File snapshotDir = DatabaseDescriptor.getDataArchiveFileLocationForSnapshot(table.name);
                 
-                for (File f : snapshotDir.listFiles())
-                {
-                    if (f.isDirectory())
-                        cleanDir(earliestSnapshot, f);
-                }
+                cleanDir(earliestSnapshot, snapshotDir);
             }
         }
         
