@@ -55,8 +55,13 @@ public class Table
 
     private static final Logger logger = Logger.getLogger(Table.class);
     private static final String SNAPSHOT_SUBDIR_NAME = "snapshots";
-    /* we use this lock to drain updaters before calling a flush. */
-    static final ReentrantReadWriteLock flusherLock = new ReentrantReadWriteLock(true);
+    /**
+     * accesses to CFS.memtable should acquire this for thread safety.
+     * Table.maybeSwitchMemtable should aquire the writeLock; see that method for the full explanation.
+     *
+     * (Enabling fairness in the RRWL is observed to decrease throughput, so we leave it off.)
+     */
+    static final ReentrantReadWriteLock flusherLock = new ReentrantReadWriteLock();
 
     private static Timer flushTimer = new Timer("FLUSH-TIMER");
     private final boolean waitForCommitLog;

@@ -48,7 +48,7 @@ public class Memtable implements Comparable<Memtable>, IFlushable
 {
     private static final Logger logger = Logger.getLogger(Memtable.class);
 
-    private boolean isFrozen;
+    private volatile boolean isFrozen;
 
     private final int THRESHOLD = DatabaseDescriptor.getMemtableThroughput() * 1024*1024; // not static since we might want to change at runtime
     private final int THRESHOLD_COUNT = (int)(DatabaseDescriptor.getMemtableOperations() * 1024*1024);
@@ -124,7 +124,9 @@ public class Memtable implements Comparable<Memtable>, IFlushable
     private void resolve(String key, ColumnFamily cf)
     {
         currentThroughput.addAndGet(cf.size());
-        currentOperations.addAndGet(cf.getColumnCount());
+        currentOperations.addAndGet((cf.getColumnCount() == 0)
+                ? cf.isMarkedForDelete() ? 1 : 0
+                : cf.getColumnCount());
 
         DecoratedKey decoratedKey = partitioner.decorateKey(key);
         ColumnFamily oldCf = columnFamilies.putIfAbsent(decoratedKey, cf);
