@@ -209,21 +209,21 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
 //                topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
 //            }
           
-            int e=0;
-            meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.36.86") );
-            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
-            meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.36.88") );
-            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
-            meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.10.247") );
-            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
-
-            topology.put("192.168.36.86","DL:RACK1");
-            topology.put("192.168.36.87","DL:RACK2");
-            topology.put("192.168.36.88","DL:RACK3");
-            topology.put("192.168.36.89","DL:RACK1");
-
-            topology.put("192.168.10.247","M100:RACK2");
-            topology.put("192.168.10.248","M100:RACK3");
+//            int e=0;
+//            meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.36.86") );
+//            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
+//            meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.36.88") );
+//            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
+//            meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.10.247") );
+//            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
+//
+//            topology.put("192.168.36.86","DL:RACK1");
+//            topology.put("192.168.36.87","DL:RACK2");
+//            topology.put("192.168.36.88","DL:RACK3");
+//            topology.put("192.168.36.89","DL:RACK1");
+//
+//            topology.put("192.168.10.247","M100:RACK2");
+//            topology.put("192.168.10.248","M100:RACK3");
 
 //          int e=0;
 //          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("127.0.0."+e++) );
@@ -239,6 +239,32 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
 //          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("127.0.0."+e++) );
 //          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("127.0.0."+e++) );
             
+          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.38.112") );
+          meta.updateNormalToken( new StringToken("15") , InetAddress.getByName("192.168.11.244") );
+          meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.48.169") );
+          meta.updateNormalToken( new StringToken("40") , InetAddress.getByName("192.168.38.113") );
+          meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.11.245") );
+          meta.updateNormalToken( new StringToken("6a") , InetAddress.getByName("192.168.48.170") );
+          meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.38.114") );
+          meta.updateNormalToken( new StringToken("95") , InetAddress.getByName("192.168.11.246") );
+          meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.48.171") );
+          meta.updateNormalToken( new StringToken("c0") , InetAddress.getByName("192.168.38.115") );
+          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.11.247") );
+          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("192.168.48.172") );
+
+          topology.put("192.168.38.112","DL:DL"    );        
+          topology.put("192.168.11.244","M100:M100");        
+          topology.put("192.168.48.169","KV:KV"    );        
+          topology.put("192.168.38.113","DL:DL"    );        
+          topology.put("192.168.11.245","M100:M100");        
+          topology.put("192.168.48.170","KV:KV"    );        
+          topology.put("192.168.38.114","DL:DL"    );        
+          topology.put("192.168.11.246","M100:M100");        
+          topology.put("192.168.48.171","KV:KV"     );       
+          topology.put("192.168.38.115","DL:DL"    );        
+          topology.put("192.168.11.247","M100:M100");        
+          topology.put("192.168.48.172","KV:KV"    );        
+
 //          for (int i=0;i<12;i++)
 //          {
 //              topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
@@ -252,7 +278,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                 
 //                protected int shuffle(int domain)
 //                {
-//                    return domain;
+//                    return super.shuffle( super.shuffle(domain) );
 //                }
             };
             
@@ -266,7 +292,9 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                 
             });
             
-            for (int i=0;i<256;i++)
+            int startd=0x16, endd=0x2b;
+            
+            for (int i=startd;i<endd;i++)
             {
                 List<InetAddress> endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null);
                 
@@ -281,39 +309,153 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                 }
             }
             
-            for (int i=0;i<256;i++)
-            {
-                List<InetAddress> endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null);
-                
-                System.out.println(i+" => "+Arrays.toString(endpoints.toArray()));
-                
-            }
-
             System.out.println("Per endpoint Counters:");
             
             for (java.util.Map.Entry<InetAddress, AtomicInteger> i : cc.entrySet()) {
                 System.out.println(i.getKey().toString()+"="+i.getValue());
             }
 
-            System.out.println("Address ranges:"+o.getAddressRanges(meta,null).asMap().size());
-            for (Entry<InetAddress, Collection<Range>> en : o.getAddressRanges(meta,null).asMap().entrySet()) {
-                System.out.println(en.getKey()+" => "+en.getValue());
-            }
-            
-            System.out.println("Range addresses:"+o.getRangeAddresses(meta,null).asMap().size());
-            for (Entry<Range, Collection<InetAddress>> en : new TreeMap<Range, Collection<InetAddress>>( o.getRangeAddresses(meta,null).asMap() ).entrySet()) {
-                System.out.println(en.getKey()+" => "+en.getValue());
+            for (Object failed : topology.keySet())
+            {
+                System.out.println("Calls when primary fail:"+failed);
+                cc.clear();
+                for (int i=0;i<256;i++)
+                {
+                    InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null).toArray(new InetAddress[3]);
 
-                StringToken stringToken = new StringToken( en.getKey().left.toString()+"01091" );
-                Set<InetAddress> s1= new HashSet<InetAddress>(o.calculateNaturalEndpoints( stringToken, meta, null)), s2=new HashSet<InetAddress>(en.getValue());
-                if (!s1.equals(s2))
-                    System.out.println("OILOLO: "+s1+" != "+s2+" "+en.getKey().contains(stringToken));
+                    if (endpoints[0].getHostAddress().equals(failed))
+                        endpoints[0]=null;
+                    else
+                        continue;
+
+                    InetAddress end=testChooseEndpoint(i, endpoints, 0);
+                    
+                    if (end.equals(testChooseEndpoint(i, endpoints, 1)))
+                        System.out.println("Dup choosen: "+i+"=>"+end);
+                    
+                    if (topology.get(failed).equals(topology.get(end.getHostAddress()) ) )
+                        continue; // same rack
+
+                    AtomicInteger c = cc.get(end);
+                    if (c==null)
+                        cc.put(end,new AtomicInteger(1));
+                    else
+                        c.incrementAndGet();
+
+                }
+                for (java.util.Map.Entry<InetAddress, AtomicInteger> i : cc.entrySet()) {
+                    System.out.println(i.getKey().toString()+"="+i.getValue());
+                }
             }
+
+            for (Object failed : new HashSet( topology.values() ))
+            {
+                System.out.println("Calls when rack fail:"+failed);
+                cc.clear();
+                for (int i=0;i<256;i++)
+                {
+                    InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null).toArray(new InetAddress[3]);
+
+                    if ( topology.get( endpoints[0].getHostAddress() ).equals(failed))
+                        endpoints[0]=null;
+                    else
+                        continue;
+                    
+                    InetAddress[] copyOf = Arrays.copyOf(endpoints,3);
+                    
+//                    copyOf[1] = testChooseEndpoint(i, endpoints, 0);
+//                    copyOf[2] = testChooseEndpoint(i, endpoints, 1);
+
+                    InetAddress end=testChooseEndpoint(i, copyOf, 0);
+                    
+                    if (end.equals(testChooseEndpoint(i, copyOf, 1)))
+                        System.out.println("Dup choosen: "+i+"=>"+end);
+                    
+                    AtomicInteger c = cc.get(end);
+                    if (c==null)
+                        cc.put(end,new AtomicInteger(1));
+                    else
+                        c.incrementAndGet();
+
+                }
+                for (java.util.Map.Entry<InetAddress, AtomicInteger> i : cc.entrySet()) {
+                    System.out.println(i.getKey().toString()+"="+i.getValue());
+                }
+            }
+//            System.out.println("Calls when 2 fail:");
+//            cc.clear();
+//            for (int i=startd;i<endd;i++)
+//            {
+//                InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null).toArray(new InetAddress[3]);
+//                
+//                endpoints[0]=null;
+//                endpoints[1]=null;
+//                
+//                InetAddress end=testChooseEndpoint(i, endpoints, 0);
+//
+//                AtomicInteger c = cc.get(end);
+//                if (c==null)
+//                    cc.put(end,new AtomicInteger(1));
+//                else
+//                    c.incrementAndGet();
+//                
+//            }
+//
+//            for (java.util.Map.Entry<InetAddress, AtomicInteger> i : cc.entrySet()) {
+//                System.out.println(i.getKey().toString()+"="+i.getValue());
+//            }
+            
+//            System.out.println("Address ranges:"+o.getAddressRanges(meta,null).asMap().size());
+//            for (Entry<InetAddress, Collection<Range>> en : o.getAddressRanges(meta,null).asMap().entrySet()) {
+//                System.out.println(en.getKey()+" => "+en.getValue());
+//            }
+//            
+//            System.out.println("Range addresses:"+o.getRangeAddresses(meta,null).asMap().size());
+//            for (Entry<Range, Collection<InetAddress>> en : new TreeMap<Range, Collection<InetAddress>>( o.getRangeAddresses(meta,null).asMap() ).entrySet()) {
+//                System.out.println(en.getKey()+" => "+en.getValue());
+//
+//                StringToken stringToken = new StringToken( en.getKey().left.toString()+"01091" );
+//                Set<InetAddress> s1= new HashSet<InetAddress>(o.calculateNaturalEndpoints( stringToken, meta, null)), s2=new HashSet<InetAddress>(en.getValue());
+//                if (!s1.equals(s2))
+//                    System.out.println("OILOLO: "+s1+" != "+s2+" "+en.getKey().contains(stringToken));
+//            }
 
         } catch (Exception e) {
             e.printStackTrace();
         }
      
+    }
+    
+    private static InetAddress testChooseEndpoint(int partition,InetAddress[] endpoints,int tryCount)
+    {
+        int cycle = 0;
+        
+        InetAddress endpoint=null;
+        
+        while (endpoint == null && ++cycle<endpoints.length)
+        {
+            int index = ( cycle + tryCount + sh( sh( partition ) ) ) % (endpoints.length-1);
+            
+            endpoint = endpoints[1+index];
+        }
+        
+        return endpoint;
+        
+    }
+
+    private static int sh(int domain)
+    {
+        // these special bit patterns need special cure
+        switch (domain) 
+        { 
+            case 0: return 0x55;
+            case 0x55: return 0xFF;
+            case 0xAA: return 0;
+            case 0xFF: return 0xAA;
+        }
+        
+        // others work good with the following
+        return  ( (domain >> 1) | (domain & 1) << 7 );
     }
 
 }
