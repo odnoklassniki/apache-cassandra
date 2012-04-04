@@ -35,9 +35,6 @@ public class StageThreadPoolExecutor extends JMXConfigurableThreadPoolExecutor
         
     }
 
-    /* (non-Javadoc)
-     * @see java.util.concurrent.ThreadPoolExecutor#execute(java.lang.Runnable)
-     */
     @Override
     public void execute(Runnable runnable)
     {
@@ -51,6 +48,14 @@ public class StageThreadPoolExecutor extends JMXConfigurableThreadPoolExecutor
             }
         }
         
+        super.execute(runnable);
+    }
+
+    /**
+     * @param forceFork true - force runnable to be processed by other thread
+     */
+    public void executeFork(Runnable runnable)
+    {
         super.execute(runnable);
     }
 }
