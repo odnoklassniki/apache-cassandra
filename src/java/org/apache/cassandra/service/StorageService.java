@@ -91,6 +91,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     public final static String STATE_NORMAL = "NORMAL";
     public final static String STATE_LEAVING = "LEAVING";
     public final static String STATE_LEFT = "LEFT";
+    public final static String STATE_HIBERNATE = "hibernate";
 
     public final static String REMOVE_TOKEN = "remove";
 
@@ -187,11 +188,6 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     private void finishBootstrapping()
     {
         isBootstrapMode = false;
-        SystemTable.setBootstrapped(true);
-        setToken(getLocalToken());
-        Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken())));
-        logger_.info("Bootstrap/move completed! Now serving reads.");
-        setMode("Normal", false);
     }
 
     /** This method updates the local token on disk  */
@@ -352,6 +348,11 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         // (we won't be part of the storage ring though until we add a nodeId to our state, below.)
         Gossiper.instance.register(this);
         Gossiper.instance.start(FBUtilities.getLocalAddress(), storageMetadata_.getGeneration()); // needed for node-ring gathering.
+        if (null != DatabaseDescriptor.getReplaceToken())
+        {
+            logger_.info("Will replace node with token = "+DatabaseDescriptor.getReplaceToken());
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_HIBERNATE+Delimiter+"true"));
+        }
 
         MessagingService.instance.listen(FBUtilities.getLocalAddress());
 
@@ -362,6 +363,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 && !SystemTable.isBootstrapped())
             logger_.info("This node will not auto bootstrap because it is configured to be a seed node.");
 
+        InetAddress current = null;
         if (DatabaseDescriptor.isAutoBootstrap()
             && !(DatabaseDescriptor.getSeeds().contains(FBUtilities.getLocalAddress()) || SystemTable.isBootstrapped()))
         {
@@ -369,13 +371,44 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             StorageLoadBalancer.instance.waitForLoadInfo();
             if (logger_.isDebugEnabled())
                 logger_.debug("... got load info");
-            if (tokenMetadata_.isMember(FBUtilities.getLocalAddress()))
+            
+            Token token;
+            
+            if (DatabaseDescriptor.getReplaceToken() == null)
             {
-                String s = "This node is already a member of the token ring; bootstrap aborted. (If replacing a dead node, remove the old one from the ring first.)";
-                throw new UnsupportedOperationException(s);
+                if (tokenMetadata_.isMember(FBUtilities.getLocalAddress()))
+                {
+                    String s = "This node is already a member of the token ring; bootstrap aborted. (If replacing a dead node, remove the old one from the ring first.)";
+                    throw new UnsupportedOperationException(s);
+                }
+                setMode("Joining: getting bootstrap token", true);
+                token = BootStrapper.getBootstrapToken(tokenMetadata_, StorageLoadBalancer.instance.getLoadInfo());
             }
-            setMode("Joining: getting bootstrap token", true);
-            Token token = BootStrapper.getBootstrapToken(tokenMetadata_, StorageLoadBalancer.instance.getLoadInfo());
+            else
+            {
+                token = StorageService.getPartitioner().getTokenFactory().fromString(DatabaseDescriptor.getReplaceToken());
+                
+                if (tokenMetadata_.getEndPoint(token) == null)
+                    throw new UnsupportedOperationException("Token "+token+" is not registered in token ring. Cannot replace a previously unknown token. Are you trying to bootstrap new node ?");
+                
+                setMode("Joining: Preparing to replace a node with token: " + token+". Checking, is node being replaced actually live", true);
+                try
+                {
+                    // Sleeping additionally to make sure that the server actually is not alive
+                    // and giving it more time to gossip if alive.
+                    Thread.sleep(StorageLoadBalancer.BROADCAST_INTERVAL);
+                }
+                catch (InterruptedException e)
+                {
+                    throw new AssertionError(e);
+                }
+                // check for operator errors...
+                current = tokenMetadata_.getEndPoint(token);
+                if (null != current && Gossiper.instance.getEndPointStateForEndPoint(current).getUpdateTimestamp() > (System.currentTimeMillis() - StorageLoadBalancer.BROADCAST_INTERVAL))
+                    throw new UnsupportedOperationException("Cannnot replace a token for a Live node... ");
+                setMode("Joining: Replacing a node with token: " + token, true);
+            }
+
             startBootstrap(token);
             // don't finish startup (enabling thrift) until after bootstrap is done
             while (isBootstrapMode)
@@ -389,6 +422,18 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                     throw new AssertionError(e);
                 }
             }
+            
+            SystemTable.setBootstrapped(true);
+            setToken(getLocalToken());
+
+            // remove the existing info about the replaced node.
+            if (current != null)
+                Gossiper.instance.replacedEndpoint(current);
+
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken())));
+            logger_.info("Bootstrap/move completed! Now serving reads.");
+            setMode("Normal", false);
+
         }
         else
         {
@@ -413,17 +458,27 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     {
         isBootstrapMode = true;
         SystemTable.updateToken(token); // DON'T use setToken, that makes us part of the ring locally which is incorrect until we are done bootstrapping
-        Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_BOOTSTRAPPING + Delimiter + partitioner_.getTokenFactory().toString(token)));
-        setMode("Joining: sleeping " + RING_DELAY + " ms for pending range setup", true);
-        try
+        if (null == DatabaseDescriptor.getReplaceToken())
         {
-            Thread.sleep(RING_DELAY);
-        }
-        catch (InterruptedException e)
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_BOOTSTRAPPING + Delimiter + partitioner_.getTokenFactory().toString(token)));
+            setMode("Joining: sleeping " + RING_DELAY + " ms for pending range setup", true);
+            try
+            {
+                Thread.sleep(RING_DELAY);
+            }
+            catch (InterruptedException e)
+            {
+                throw new AssertionError(e);
+            }
+            setMode("Bootstrapping", true);
+        } 
+        else
         {
-            throw new AssertionError(e);
+            // Dont set any state for the node which is bootstrapping the existing token...
+            tokenMetadata_.updateNormalToken(token, FBUtilities.getLocalAddress());
+            setMode("Bootstrapping (replace token)", true);
         }
-        setMode("Bootstrapping", true);
+
         new BootStrapper(FBUtilities.getLocalAddress(), token, tokenMetadata_).startBootstrap(); // handles token update
     }
 
@@ -514,6 +569,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
      */
     public void onChange(InetAddress endpoint, String apStateName, ApplicationState apState)
     {
+        logger_.info(endpoint+": change gossip state "+apStateName+" --> "+apState.getValue());
+        
         if (!MOVE_STATE.equals(apStateName))
             return;
 
@@ -602,6 +659,9 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             logger_.info(String.format("Nodes %s and %s have the same token %s.  %s is the new owner",
                                        endpoint, currentNode, token, endpoint));
             tokenMetadata_.updateNormalToken(token, endpoint);
+            
+            Gossiper.instance.replacedEndpoint(currentNode);
+            
             if (!isClientMode)
                 SystemTable.updateToken(endpoint, token);
         }
@@ -609,6 +669,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         {
             logger_.info(String.format("Nodes %s and %s have the same token %s.  Ignoring %s",
                                        endpoint, currentNode, token, endpoint));
+
+            Gossiper.instance.replacedEndpoint(endpoint);
         }
 
         if (pieces.length > 2)
@@ -672,6 +734,28 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         calculatePendingRanges();
     }
 
+    /**
+     * Decides is application state reports dead state of the node
+     * 
+     * @param epState
+     * @return true - application is not reported any state yet or reported dead one.
+     */
+    public static boolean isDeadState(EndPointState epState)
+    {
+        ApplicationState apState = epState.getApplicationState(MOVE_STATE);
+        
+        if (apState==null)
+            return true; // every alive server must have MOVESTATE
+        
+        String apStateValue = apState.getValue();
+        String[] pieces = apStateValue.split(DelimiterStr);
+        assert (pieces.length > 0);        
+
+        String moveName = pieces[0];
+
+        return moveName.equals(STATE_HIBERNATE) || moveName.equals(STATE_LEFT);
+    }
+    
     /**
      * Handle node leaving the ring. This can be either because of decommission or loadbalance
      *

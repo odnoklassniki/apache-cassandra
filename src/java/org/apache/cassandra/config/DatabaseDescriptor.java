@@ -1296,6 +1296,11 @@ public class DatabaseDescriptor
     {
       return initialToken;
     }
+  
+    public static String getReplaceToken()
+    {
+        return System.getProperty("cassandra.replace_token", null);
+    }
 
     public static int getMemtableThroughput()
     {
@@ -1722,7 +1727,7 @@ public class DatabaseDescriptor
 
     public static boolean isAutoBootstrap()
     {
-        return autoBootstrap;
+        return autoBootstrap || getReplaceToken()!=null;
     }
 
     public static boolean hintedHandoffEnabled()

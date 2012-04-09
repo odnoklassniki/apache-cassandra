@@ -45,6 +45,7 @@ import java.util.zip.Checksum;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.RowMutation;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
@@ -86,7 +87,7 @@ public class HintLog
         public static HintLog instance = new HintLog();
     }
 
-    private final HashMap<InetAddress,Deque<HintLogSegment>> segments = new HashMap<InetAddress, Deque<HintLogSegment>>();
+    private final HashMap<String,Deque<HintLogSegment>> segments = new HashMap<String, Deque<HintLogSegment>>();
     
     private final PeriodicHintLogExecutorService executor;
     private Thread syncerThread;
@@ -172,7 +173,7 @@ public class HintLog
         {
             public boolean accept(File dir, String name)
             {
-                return name.matches("Hints-\\d+[.]\\d+[.]\\d+[.]\\d+-\\d+.log");
+                return name.matches("Hints-[^-]+-\\d+.log");
             }
         });
         if (files.length == 0)
@@ -185,17 +186,11 @@ public class HintLog
             File f=files[i];
             
             String[] nameElements=f.getName().split("-");
-            InetAddress endpoint;
-            try {
-                 endpoint = InetAddress.getByName(nameElements[1]);
-            } catch (UnknownHostException e) {
-                logger.error("Illegal name of hint log file."+f+". File is skipped",e);
-                continue;
-            }
+            String token = nameElements[1];
             
-            Deque<HintLogSegment> endpSegments = getEndpointSegments(endpoint);
+            Deque<HintLogSegment> endpSegments = getEndpointSegments(token);
 
-            HintLogSegment segment = new HintLogSegment(endpoint, f.getAbsolutePath());
+            HintLogSegment segment = new HintLogSegment(token, f.getAbsolutePath());
             if (!segment.isEmpty() && segment.isFullyReplayed())
             {
                 segment.close();
@@ -244,14 +239,14 @@ public class HintLog
 //        logger.debug("HintLog stopped");
 //    }
 
-    private Deque<HintLogSegment> getEndpointSegments(InetAddress endpoint)
+    private Deque<HintLogSegment> getEndpointSegments(String token)
     {
-        Deque<HintLogSegment> endpSegments = segments.get(endpoint);
+        Deque<HintLogSegment> endpSegments = segments.get(token);
         if (endpSegments==null)
         {
             endpSegments = new ArrayDeque<HintLogSegment>();
-            segments.put(endpoint, endpSegments);
-            endpSegments.add( new HintLogSegment(endpoint) );
+            segments.put(token, endpSegments);
+            endpSegments.add( new HintLogSegment(token) );
         }
         
         return endpSegments;
@@ -259,13 +254,35 @@ public class HintLog
 
 
     /**
+     * Obtains iterator of hint row mutations to send to specified endpoints. This also tries to send
+     * hints made old way (to endpoint address)
+     * 
+     * You must call {@link Iterator#remove()} for all successfully delivered hints to avoid their resending in future.
+     * 
+     * @param destination endpoint to send.
+     * @return iterator (or empty iterator if no hints to deliver)
+     */
+    public Iterator<byte[]> getHintsToDeliver(InetAddress endpoint)
+    {
+        String address = endpoint.getHostAddress();
+        if  (segments.get(address)!=null)
+        {
+            List<HintLogSegment> segments = forceNewSegment(address);
+            if (!segments.isEmpty())
+                return new HintLogReader(address, segments);
+        }
+        
+        return getHintsToDeliver(endpointToToken(endpoint));
+    }
+    
+    /**
      * Obtains iterator of hint row mutations to send to specified endpoints. 
      * You must call {@link Iterator#remove()} for all successfully delivered hints to avoid their resending in future.
      * 
      * @param destination endpoint to send.
      * @return iterator (or empty iterator if no hints to deliver)
      */
-    public Iterator<byte[]> getHintsToDeliver(InetAddress destination)
+    public Iterator<byte[]> getHintsToDeliver(String destination)
     {
         Deque<HintLogSegment> endpSegments = segments.get(destination);
         
@@ -275,9 +292,41 @@ public class HintLog
         return new HintLogReader(destination, forceNewSegment(destination));
     }
     
-    private HintLogSegment currentSegment(InetAddress endpoint)
+    private HintLogSegment currentSegment(String token)
     {
-        return getEndpointSegments(endpoint).getLast();
+        return getEndpointSegments(token).getLast();
+    }
+    
+    /**
+     * 
+     * @param token either 111.222.333.444 or token string value
+     * @return
+     */
+    private InetAddress tokenToEndpoint(String token)
+    {
+        if (token.matches("\\d+[.]\\d+[.]\\d+[.]\\d"))
+        {
+            // this is ip address
+            try {
+                InetAddress ip = InetAddress.getByName(token);
+                
+                return ip;
+            } catch (UnknownHostException e) {
+            }
+        }
+        
+        Token<?> hintToken = StorageService.getPartitioner().getTokenFactory().fromString(token);
+        
+        InetAddress endPoint = StorageService.instance.getTokenMetadata().getEndPoint(hintToken);
+        
+        return endPoint;
+    }
+    
+    private String endpointToToken(InetAddress endpoint)
+    {
+        Token<?> token = StorageService.instance.getTokenMetadata().getToken(endpoint);
+        
+        return StorageService.instance.getPartitioner().getTokenFactory().toString(token);
     }
     
     private void sync()
@@ -295,18 +344,21 @@ public class HintLog
                     if (last.length() >= SEGMENT_SIZE)
                     {
                         last.close();
-                        getEndpointSegments(last.getEndpoint()).add(new HintLogSegment(last.getEndpoint()));
+                        getEndpointSegments(last.getToken()).add(new HintLogSegment(last.getToken()));
                     }
 
                     if ( (deque.size()>1 || !last.isEmpty()) && HINT_DELIVERY_ON_SYNC) {
-                        if (FailureDetector.instance.isAlive(last.getEndpoint()))
+
+                        InetAddress endp = tokenToEndpoint(last.getToken());
+                        
+                        if (FailureDetector.instance.isAlive(endp))
                         {
-                            HintedHandOffManager.instance().deliverHints(last.getEndpoint());
+                            HintedHandOffManager.instance().deliverHints(endp);
                         }
                         else
-                            if (!Gossiper.instance.isKnownEndpoint(last.getEndpoint()))
+                            if (endp==null || !Gossiper.instance.isKnownEndpoint(endp))
                             {
-                                logger.info("Endpoint is not not known "+last.getEndpoint()+" removing hint logs");
+                                logger.info("Endpoint is not not known for token "+last.getToken()+" removing hint logs");
                                 
                                 for (HintLogSegment hintLogSegment : deque) 
                                 {
@@ -315,7 +367,7 @@ public class HintLog
                                 }
 
                                 deque.clear();
-                                deque.add( new HintLogSegment( last.getEndpoint() ) );
+                                deque.add( new HintLogSegment( last.getToken() ) );
                             }
                     }
                         
@@ -356,14 +408,14 @@ public class HintLog
     */
     public void add(InetAddress endpoint, byte[] serializedRow) throws IOException
     {
-        executor.add(new LogRecordAdder(endpoint, serializedRow));
+        executor.add(new LogRecordAdder(endpointToToken(endpoint), serializedRow));
     }
 
 
     /*
      * this is called in HintLogReader to remove hint log segment with all its mutations successfully played back.
     */
-    public void discardPlayedbackSegment(final InetAddress endpoint, final HintLogSegment segment)
+    public void discardPlayedbackSegment(final String token, final HintLogSegment segment)
     {
         Callable task = new Callable()
         {
@@ -371,14 +423,14 @@ public class HintLog
             {
                 assert segment.isFullyReplayed();
                 
-                Deque<HintLogSegment> endpointSegments = getEndpointSegments(endpoint);
+                Deque<HintLogSegment> endpointSegments = getEndpointSegments(token);
                 
                 if (endpointSegments.remove(segment))
                 {
                     segment.delete();
                 } else
                 {
-                    logger.warn("Hm. "+segment+" not found in list of hintlog segments for "+endpoint);
+                    logger.warn("Hm. "+segment+" not found in list of hintlog segments for "+token);
                 }
                 
                 return null;
@@ -398,14 +450,18 @@ public class HintLog
         }
     }
 
-    
     public List<HintLogSegment> forceNewSegment(final InetAddress endpoint)
+    {
+        return forceNewSegment(endpointToToken(endpoint));
+    }
+    
+    public List<HintLogSegment> forceNewSegment(final String token)
     {
         Callable<List<HintLogSegment>> task = new Callable<List<HintLogSegment>>()
         {
             public List<HintLogSegment> call() throws Exception
             {
-                Deque<HintLogSegment> endpointSegments = getEndpointSegments(endpoint);
+                Deque<HintLogSegment> endpointSegments = getEndpointSegments(token);
                 
                 HintLogSegment last = endpointSegments.getLast();
                 if (last==null)
@@ -417,7 +473,7 @@ public class HintLog
 
                     ArrayList<HintLogSegment> readable = new ArrayList<HintLogSegment>(endpointSegments);
                     
-                    endpointSegments.add(new HintLogSegment(endpoint));
+                    endpointSegments.add(new HintLogSegment(token));
                     
                     return readable;
                 } else
@@ -454,12 +510,12 @@ public class HintLog
     // without breaking the fragile CheaterFutureTask in BatchCLES.
     class LogRecordAdder implements Callable, Runnable
     {
-        final InetAddress endpoint;
+        final String token;
         final byte[] serializedRow;
 
-        LogRecordAdder(InetAddress endpoint, byte[] serializedRow)
+        LogRecordAdder(String token, byte[] serializedRow)
         {
-            this.endpoint = endpoint;
+            this.token = token;
             this.serializedRow = serializedRow;
         }
 
@@ -468,7 +524,7 @@ public class HintLog
         {
             try
             {
-                HintLogSegment currentSegment = currentSegment(endpoint);
+                HintLogSegment currentSegment = currentSegment(token);
                 currentSegment.write(serializedRow);
             }
             catch (IOException e)
@@ -486,7 +542,7 @@ public class HintLog
     
     public class HintLogReader implements Iterator<byte[]>, Closeable
     {
-        private final InetAddress destination;
+        private final String token;
         
         private Iterator<HintLogSegment> segments;
         
@@ -504,9 +560,9 @@ public class HintLog
          * @param segments shared queue
          * 
          */
-        public HintLogReader(InetAddress destination, List<HintLogSegment> segments )
+        public HintLogReader(String destination, List<HintLogSegment> segments )
         {
-            this.destination= destination;
+            this.token = destination;
             this.segments = segments.iterator();
             
             nextSegment();
@@ -525,7 +581,7 @@ public class HintLog
                 
                 assert current.isFullyReplayed();
                 
-                discardPlayedbackSegment(destination, current);
+                discardPlayedbackSegment(token, current);
                 
                 current = null;
                 reader = null;
@@ -552,7 +608,7 @@ public class HintLog
                         unwrittedConfirmations = 0;
 
                     } catch (IOException e) {
-                        logger.error("Cannot open "+current+". Skipping its replay. Consider starting repair on this node or "+destination.getHostAddress(),e);
+                        logger.error("Cannot open "+current+". Skipping its replay. Consider starting repair on this node or "+tokenToEndpoint( token ),e);
                         current = null;
                         continue;
                     }
@@ -561,7 +617,7 @@ public class HintLog
                 }
 
                 if (!current.isEmpty())
-                    discardPlayedbackSegment(destination, current);
+                    discardPlayedbackSegment(token, current);
                 
                 current = null;
             }
@@ -715,7 +771,7 @@ public class HintLog
      */
     public int getSegmentCount(InetAddress endpoint)
     {
-        return getEndpointSegments(endpoint).size();
+        return getEndpointSegments( endpointToToken(endpoint) ).size();
     }
 
     /**

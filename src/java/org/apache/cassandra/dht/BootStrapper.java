@@ -96,7 +96,7 @@ public class BootStrapper
             logger.debug("token manually specified as " + DatabaseDescriptor.getInitialToken());
             Token token = StorageService.getPartitioner().getTokenFactory().fromString(DatabaseDescriptor.getInitialToken());
             if (metadata.getEndPoint(token) != null)
-                throw new ConfigurationException("Bootstraping to existing token " + token + " is not allowed (decommission/removetoken the old node first).");
+                throw new ConfigurationException("Bootstraping to existing token " + token + " is not allowed (decommission/removetoken the old node first or initiate replace_token procedure, if you want to replace failed node).");
             return token;
         }
 
@@ -197,7 +197,8 @@ public class BootStrapper
         {
             for (InetAddress source : rangesWithSourceTarget.get(range))
             {
-                if (failureDetector.isAlive(source))
+                // ignore the local IP
+                if (failureDetector.isAlive(source) && !source.equals(FBUtilities.getLocalAddress()))
                 {
                     sources.put(source, range);
                     break;

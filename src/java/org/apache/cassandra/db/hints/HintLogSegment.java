@@ -30,6 +30,7 @@ import java.util.zip.Checksum;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.RowMutation;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.DeletionService;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -53,24 +54,24 @@ public class HintLogSegment
     private HintLogHeader header;
     
     /**
-     * Endpoint, for which this segment stores hinted mutations
+     * Endpoint's token, for which this segment stores hinted mutations
      */
-    private InetAddress endpoint;
+    private String token;
     
     /**
      * File this context stores data in
      */
     private String file;
     
-    public HintLogSegment(InetAddress endpoint)
+    public HintLogSegment(String token)
     {
         this.header = new HintLogHeader();
         
-        this.endpoint = endpoint;
+        this.token = token;
 
     }
     
-    HintLogSegment(InetAddress endpoint, String logFile) 
+    HintLogSegment(String token, String logFile) 
     {
         logger.info("Opening hint log segment " + logFile);
 
@@ -86,7 +87,7 @@ public class HintLogSegment
             logger.debug("exception was", ioe);
         }
 
-        this.endpoint = endpoint;
+        this.token = token;
         this.file = logFile;
     }
 
@@ -94,7 +95,7 @@ public class HintLogSegment
     {
         assert isEmpty();
         
-        this.file = DatabaseDescriptor.getHintLogDirectory() + File.separator + "Hints-" + endpoint.getHostAddress() + "-" + System.currentTimeMillis() + ".log";
+        this.file = DatabaseDescriptor.getHintLogDirectory() + File.separator + "Hints-" + token.toString() + "-" + System.currentTimeMillis() + ".log";
 
         logger.info("Creating new hint log segment " + file);
         try
@@ -238,11 +239,11 @@ public class HintLogSegment
     }
 
     /**
-     * @return
+     * @return primary endpoint token in ring this hintlog was created for
      */
-    public InetAddress getEndpoint()
+    public String getToken()
     {
-        return endpoint;
+        return token;
     }
 
 }

@@ -433,9 +433,20 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
         }
     }
 
-    EndPointState getEndPointStateForEndPoint(InetAddress ep)
+    public EndPointState getEndPointStateForEndPoint(InetAddress ep)
     {
         return endPointStateMap_.get(ep);
+    }
+    
+    /**
+     * Remove the Endpoint and evict immediately, to avoid gossiping about this node.
+     * This should only be called when a token is taken over by a new IP address.
+     * @param endpoint The endpoint that has been replaced
+     */
+    public void replacedEndpoint(InetAddress endpoint)
+    {
+        removeEndPoint(endpoint);
+        evictFromMembership(endpoint);
     }
 
     synchronized EndPointState getStateForVersionBiggerThan(InetAddress forEndpoint, int version)
@@ -596,7 +607,6 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
 
     private void handleGenerationChange(InetAddress ep, EndPointState epState)
     {
-        logger_.info("Node " + ep + " has restarted, now UP again");
         handleMajorStateChange(ep, epState, true);
     }
 
@@ -614,9 +624,22 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
     private void handleMajorStateChange(InetAddress ep, EndPointState epState, boolean isKnownNode)
     {
         endPointStateMap_.put(ep, epState);
-        isAlive(ep, epState, isKnownNode);
-        for (IEndPointStateChangeSubscriber subscriber : subscribers_)
-            subscriber.onJoin(ep, epState);
+        
+        if (!isDeadState(epState))
+        {
+            logger_.info("Node " + ep + " has restarted, now UP again");
+
+            isAlive(ep, epState, isKnownNode);
+            for (IEndPointStateChangeSubscriber subscriber : subscribers_)
+                subscriber.onJoin(ep, epState);
+        } else
+        {
+            logger_.info("Node " + ep + " has restarted, joined in DEAD state");
+
+            isAlive(ep, epState, false);
+            for (IEndPointStateChangeSubscriber subscriber : subscribers_)
+                subscriber.onDead(ep, epState);
+        }
     }
 
     synchronized void applyStateLocally(Map<InetAddress, EndPointState> epStateMap)
@@ -649,10 +672,12 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
 	                int remoteMaxVersion = getMaxEndPointStateVersion(remoteState);
 	                if ( remoteMaxVersion > localMaxVersion )
 	                {
-	                    markAlive(ep, localEpStatePtr);
-	                    applyHeartBeatStateLocally(ep, localEpStatePtr, remoteState);
-	                    /* apply ApplicationState */
-	                    applyApplicationStateLocally(ep, localEpStatePtr, remoteState);
+                        applyHeartBeatStateLocally(ep, localEpStatePtr, remoteState);
+                        /* apply ApplicationState */
+                        applyApplicationStateLocally(ep, localEpStatePtr, remoteState);
+
+                        if (!localEpStatePtr.isAlive() && !isDeadState(localEpStatePtr)) // unless of course, it was dead
+	                        markAlive(ep, localEpStatePtr);
 	                }
             	}
             }
@@ -661,6 +686,15 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
             	handleNewJoin(ep, remoteState);
             }
         }
+    }
+
+    /**
+     * @param localEpStatePtr
+     * @return
+     */
+    private boolean isDeadState(EndPointState localEpStatePtr)
+    {
+        return StorageService.isDeadState(localEpStatePtr);
     }
 
     void applyHeartBeatStateLocally(InetAddress addr, EndPointState localState, EndPointState remoteState)

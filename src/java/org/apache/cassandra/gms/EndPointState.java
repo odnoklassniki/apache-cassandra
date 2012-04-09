@@ -95,7 +95,7 @@ public class EndPointState
     }
     
     /* getters and setters */
-    long getUpdateTimestamp()
+    public long getUpdateTimestamp()
     {
         return updateTimestamp_;
     }

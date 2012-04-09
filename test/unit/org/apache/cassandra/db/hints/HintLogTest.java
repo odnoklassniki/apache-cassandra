@@ -41,6 +41,7 @@ import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.filter.QueryPath;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.junit.Test;
 
@@ -61,6 +62,12 @@ public class HintLogTest extends CleanupHelper
         unregisterBean(mbs);
         
         InetAddress local = InetAddress.getByName("127.0.0.1");
+        
+        if (!StorageService.instance.getTokenMetadata().isMember(local))
+        {
+            StorageService.instance.getTokenMetadata().updateNormalToken(StorageService.getPartitioner().getTokenFactory().fromString("00"), local);
+        }
+        
         assert hl.getSegmentCount(local) == 1;
 
         Iterator<byte[]> iterator = hl.getHintsToDeliver(local);

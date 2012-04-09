@@ -163,7 +163,7 @@ public class StorageLoadBalancer implements IEndPointStateChangeSubscriber
         }
     }
 
-    private static final int BROADCAST_INTERVAL = 60 * 1000;
+    public static final int BROADCAST_INTERVAL = 60 * 1000;
 
     public static final StorageLoadBalancer instance = new StorageLoadBalancer();
 
