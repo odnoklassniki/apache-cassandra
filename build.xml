@@ -8,9 +8,6 @@
 <project name="apache-cassandra" default="build-stat" basedir="."
         xmlns:ivy="antlib:org.apache.ivy.ant">
     <property name="one-deploy.location" location="../one-deploy"/>
-    <property name="build.src.stat" value="${basedir}/stat/src"/>
-    <property name="build.classes.stat" value="${basedir}/build/classes-stat"/>
-    <property name="build.components" value="${basedir}/build/"/>
 
     <!-- path to root -->
     <property name="root.dir" value="${basedir}"/>
@@ -18,10 +15,16 @@
     <!-- local.properties имеют высший приоритет -->
     <property file="${root.dir}/local.properties"/>
 
+    <property file="${root.dir}/build.properties"/>
+
     <!-- проперти для деплоймент целей -->
     <property file="${user.home}/one/${ant.project.name}.properties"/>
 
 	&commonAntCommands;
+
+    <property name="build.src.stat" value="${basedir}/stat/src"/>
+    <property name="build.classes.stat" value="${basedir}/build/classes-stat"/>
+    <property name="build.components" value="${basedir}/build/"/>
 
     <path id="autoivy.ext.classpath">
         <fileset dir="${one-deploy.location}/lib/ivy" includes="*.jar"/>
