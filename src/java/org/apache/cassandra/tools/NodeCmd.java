@@ -112,11 +112,15 @@ public class NodeCmd {
         Set<String> deadNodes = probe.getUnreachableNodes();
         Map<String, String> loadMap = probe.getLoadMap();
         Map<Token, Float> ownerships = probe.getOwnership();
+        Map<String, String> locationsMap = probe.getLocationsMap();
+        Map<String, String> namesMap = probe.getEndpointNames();
+
 
         // Print range-to-endpoint mapping
         int counter = 0;
-        outs.print(String.format("%-14s", "Address"));
+        outs.print(String.format("%-24s", "Address"));
         outs.print(String.format("%-11s", "Status"));
+        outs.print(String.format("%-14s", "Location"));
         outs.print(String.format("%-14s", "Load"));
         outs.print(String.format("%-8s", "Owns"));
         outs.print(String.format("%-43s", "Range"));
@@ -124,14 +128,20 @@ public class NodeCmd {
         // emphasize that we're showing the right part of each range
         if (ranges.size() > 1)
         {
-            outs.println(String.format("%-14s%-11s%-14s%-8s%-43s", "", "", "", "", ranges.get(0).left));
+            outs.println(String.format("%-24s%-11s%-14s%-14s%-8s%-43s", "","", "", "", "", ranges.get(0).left));
         }
         // normal range & node info
         for (Range range : ranges) {
             List<String> endpoints = rangeMap.get(range);
             String primaryEndpoint = endpoints.get(0);
 
-            outs.print(String.format("%-14s", primaryEndpoint));
+            if (namesMap.containsKey(primaryEndpoint))
+            {
+                outs.print(String.format("%-24s", primaryEndpoint + "("+namesMap.get(primaryEndpoint)+")"));
+            } else
+            {
+                outs.print(String.format("%-24s", primaryEndpoint));
+            }
 
             String status = liveNodes.contains(primaryEndpoint)
                           ? "Up"
@@ -139,6 +149,8 @@ public class NodeCmd {
                             ? "Down"
                             : "?";
             outs.print(String.format("%-11s", status));
+
+            outs.print(String.format("%-14s", locationsMap.get( primaryEndpoint )));
 
             String load = loadMap.containsKey(primaryEndpoint) ? loadMap.get(primaryEndpoint) : "?";
             outs.print(String.format("%-14s", load));
@@ -203,6 +215,7 @@ public class NodeCmd {
     public void printInfo(PrintStream outs)
     {
         outs.println(probe.getToken());
+        outs.println(String.format("%-17s: %s", "Mode", probe.getOperationMode()));
         outs.println(String.format("%-17s: %s", "Load", probe.getLoadString()));
         outs.println(String.format("%-17s: %s", "Generation No", probe.getCurrentGenerationNumber()));
 

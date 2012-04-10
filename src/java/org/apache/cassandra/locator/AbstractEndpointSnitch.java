@@ -22,8 +22,21 @@ package org.apache.cassandra.locator;
 import java.net.InetAddress;
 import java.util.*;
 
+import org.apache.cassandra.gms.ApplicationState;
+import org.apache.cassandra.gms.Gossiper;
+import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.FBUtilities;
+
 public abstract class AbstractEndpointSnitch implements IEndPointSnitch
 {
+    /**
+     * names of app states used in gossip to advertise
+     * location of an endpoint
+     */
+    protected static final String APPSTATE_DC="DC";
+    protected static final String APPSTATE_RACK="RACK";
+    protected static final String APPSTATE_HOSTNAME="HOST-NAME";
+    
     public abstract int compareEndpoints(InetAddress target, InetAddress a1, InetAddress a2);
 
     /**
@@ -60,8 +73,61 @@ public abstract class AbstractEndpointSnitch implements IEndPointSnitch
 
     public void gossiperStarting()
     {
-        // noop by default
+        InetAddress localAddress = FBUtilities.getLocalAddress();
+        
+        Gossiper.instance.addLocalApplicationState(APPSTATE_HOSTNAME, new ApplicationState(FBUtilities.getLocalName()));
+        Gossiper.instance.addLocalApplicationState(APPSTATE_DC, new ApplicationState( getRack(localAddress)));
+        Gossiper.instance.addLocalApplicationState(APPSTATE_RACK, new ApplicationState( getDatacenter(localAddress)));
     }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.IEndPointSnitch#getRack(java.net.InetAddress)
+     */
+    @Override
+    public String getRack(InetAddress endpoint)
+    {
+        if (FBUtilities.getLocalAddress().equals(endpoint))
+            return getLocalRack();
+        
+        ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_RACK);
+        if (applicationState==null)
+            return null; // no information about rack in gossip. old endpoint ?
+        
+        return applicationState.getValue();
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.IEndPointSnitch#getDatacenter(java.net.InetAddress)
+     */
+    @Override
+    public String getDatacenter(InetAddress endpoint)
+    {
+        if (FBUtilities.getLocalAddress().equals(endpoint))
+            return getLocalDatacenter();
+        
+        ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_DC);
+        if (applicationState==null)
+            return null; // no information about datacenter in gossip. old endpoint ?
+        
+        return applicationState.getValue();
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.IEndPointSnitch#getEndpointName(java.net.InetAddress)
+     */
+    @Override
+    public String getEndpointName(InetAddress endpoint)
+    {
+        if (FBUtilities.getLocalAddress().equals(endpoint))
+            return FBUtilities.getLocalName();
+        
+        ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_HOSTNAME);
+        if (applicationState==null)
+            return endpoint.getHostName(); // no information about datacenter in gossip. old endpoint ?
+        
+        return applicationState.getValue();
+    }
+    
     
     /* (non-Javadoc)
      * @see org.apache.cassandra.locator.IEndPointSnitch#isOnSameRack(java.net.InetAddress, java.net.InetAddress)

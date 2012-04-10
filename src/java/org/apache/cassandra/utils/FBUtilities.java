@@ -98,6 +98,16 @@ public class FBUtilities
             }
         return localInetAddress_;
     }
+    
+    public static String getLocalName()
+    {
+        String hostName= System.getProperty("cassandra.hostname", getLocalAddress().getHostName() );
+        
+        if (hostName.contains("."))
+            hostName = hostName.split("[.]")[0];
+        
+        return hostName;
+    }
 
     /**
      * @param fractOrAbs A double that may represent a fraction or absolute value.

@@ -305,8 +305,9 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         isClientMode = true;
         logger_.info("Starting up client gossip");
         setMode("Client", false);
+        Gossiper.instance.init(FBUtilities.getLocalAddress(), (int)(System.currentTimeMillis() / 1000)); // needed for node-ring gathering.
         Gossiper.instance.register(this);
-        Gossiper.instance.start(FBUtilities.getLocalAddress(), (int)(System.currentTimeMillis() / 1000)); // needed for node-ring gathering.
+        Gossiper.instance.start();
         MessagingService.instance.listen(FBUtilities.getLocalAddress());
     }
 
@@ -346,8 +347,16 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         // have to start the gossip service before we can see any info on other nodes.  this is necessary
         // for bootstrap to get the load info it needs.
         // (we won't be part of the storage ring though until we add a nodeId to our state, below.)
+        Gossiper.instance.init(FBUtilities.getLocalAddress(), storageMetadata_.getGeneration()); // needed for node-ring gathering.
+        // calling endpoints so they get chance of registering with gossip before
+        // Storage service, so they can block invalid nodes from appearing in ring
+        for (String table : DatabaseDescriptor.getNonSystemTables())
+        {
+            DatabaseDescriptor.getEndPointSnitch(table).gossiperStarting();
+        }
         Gossiper.instance.register(this);
-        Gossiper.instance.start(FBUtilities.getLocalAddress(), storageMetadata_.getGeneration()); // needed for node-ring gathering.
+        Gossiper.instance.start();
+        
         if (null != DatabaseDescriptor.getReplaceToken())
         {
             logger_.info("Will replace node with token = "+DatabaseDescriptor.getReplaceToken());
@@ -569,7 +578,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
      */
     public void onChange(InetAddress endpoint, String apStateName, ApplicationState apState)
     {
-        logger_.info(endpoint+": change gossip state "+apStateName+" --> "+apState.getValue());
+//        logger_.info(endpoint+": change gossip state "+apStateName+" --> "+apState.getValue());
         
         if (!MOVE_STATE.equals(apStateName))
             return;
@@ -1076,6 +1085,54 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         // gossiper doesn't see its own updates, so we need to special-case the local node
         map.put(FBUtilities.getLocalAddress().getHostAddress(), getLoadString());
         return map;
+    }
+    
+    public Map<String,String> getLocationsMap()
+    {
+        HashMap<String, String> lmap = new HashMap<String, String>();
+        List<String> tables = DatabaseDescriptor.getNonSystemTables();
+        for (Token t : tokenMetadata_.sortedTokens() )
+        {
+            InetAddress endPoint = tokenMetadata_.getEndPoint(t);
+            
+            String dc = null, rack = null;
+            
+            for (String table : tables)
+            {
+                if (dc==null)
+                    dc = DatabaseDescriptor.getEndPointSnitch(table).getDatacenter(endPoint);
+                if (rack == null)
+                    rack = DatabaseDescriptor.getEndPointSnitch(table).getRack(endPoint);
+            }
+            
+            if (dc !=null && rack !=null)
+                lmap.put(endPoint.getHostAddress(),dc+":"+rack);
+        }
+        
+        return lmap;
+    }
+
+    public Map<String,String> getEndpointNames()
+    {
+        HashMap<String, String> lmap = new HashMap<String, String>();
+        List<String> tables = DatabaseDescriptor.getNonSystemTables();
+        for (Token t : tokenMetadata_.sortedTokens() )
+        {
+            InetAddress endPoint = tokenMetadata_.getEndPoint(t);
+            
+            String dc = null;
+            
+            for (String table : tables)
+            {
+                if (dc==null)
+                    dc = DatabaseDescriptor.getEndPointSnitch(table).getEndpointName(endPoint);
+            }
+            
+            if (dc !=null)
+                lmap.put(endPoint.getHostAddress(),dc);
+        }
+        
+        return lmap;
     }
 
     /**

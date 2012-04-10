@@ -41,6 +41,11 @@ public interface IEndPointSnitch
     public String getDatacenter(InetAddress endpoint);
     
     /**
+     * @return canonical name of endpoint
+     */
+    public String getEndpointName(InetAddress endpoint);
+    
+    /**
      * returns a new <tt>List</tt> sorted by proximity to the given endpoint
      */
     public List<InetAddress> getSortedListByProximity(InetAddress address, Collection<InetAddress> unsortedAddress);
@@ -73,4 +78,14 @@ public interface IEndPointSnitch
      * @return
      */
     public boolean isInSameDataCenter(InetAddress a1, InetAddress a2);
+
+    /**
+     * @return
+     */
+    String getLocalDatacenter();
+
+    /**
+     * @return
+     */
+    String getLocalRack();
 }

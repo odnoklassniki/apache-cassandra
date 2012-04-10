@@ -217,6 +217,7 @@ public class NodeProbe
     {
         return ssProxy.getLiveNodes();
     }
+    
 
     /**
      * Write a textual representation of the Cassandra ring.
@@ -231,25 +232,36 @@ public class NodeProbe
         Set<String> liveNodes = ssProxy.getLiveNodes();
         Set<String> deadNodes = ssProxy.getUnreachableNodes();
         Map<String, String> loadMap = ssProxy.getLoadMap();
+        Map<String, String> locationsMap = ssProxy.getLocationsMap();
+        Map<String, String> namesMap = ssProxy.getEndpointNames();
 
         // Print range-to-endpoint mapping
         int counter = 0;
-        outs.print(String.format("%-14s", "Address"));
+        outs.print(String.format("%-24s", "Address"));
         outs.print(String.format("%-11s", "Status"));
+        outs.print(String.format("%-14s", "Location"));
         outs.print(String.format("%-14s", "Load"));
         outs.print(String.format("%-43s", "Range"));
         outs.println("Ring");
         // emphasize that we're showing the right part of each range
         if (ranges.size() > 1)
         {
-            outs.println(String.format("%-14s%-11s%-14s%-43s", "", "", "", ranges.get(0).left));
+            outs.println(String.format("%-24s%-11s%-14s%-43s", "", "", "", ranges.get(0).left));
         }
         // normal range & node info
         for (Range range : ranges) {
             List<String> endpoints = rangeMap.get(range);
             String primaryEndpoint = endpoints.get(0);
+            
+            if (namesMap.containsKey(primaryEndpoint))
+            {
+                outs.print(String.format("%-24s", primaryEndpoint + "("+namesMap.get(primaryEndpoint)+")"));
+            } else
+            {
+                outs.print(String.format("%-24s", primaryEndpoint));
+            }
+            
 
-            outs.print(String.format("%-14s", primaryEndpoint));
 
             String status = liveNodes.contains(primaryEndpoint)
                           ? "Up"
@@ -257,6 +269,8 @@ public class NodeProbe
                             ? "Down"
                             : "?";
             outs.print(String.format("%-11s", status));
+
+            outs.print(String.format("%-14s", locationsMap.get( primaryEndpoint )));
 
             String load = loadMap.containsKey(primaryEndpoint) ? loadMap.get(primaryEndpoint) : "?";
             outs.print(String.format("%-14s", load));
@@ -535,6 +549,34 @@ public class NodeProbe
     public String getOperationMode()
     {
         return ssProxy.getOperationMode();
+    }
+
+    /**
+     * @return
+     */
+    public Map<String, String> getLocationsMap()
+    {
+        try {
+            return ssProxy.getLocationsMap();
+        } catch (Exception e)
+        {
+            // this is old endpoint
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * @return
+     */
+    public Map<String, String> getEndpointNames()
+    {
+        try {
+            return ssProxy.getEndpointNames();
+        } catch (Exception e)
+        {
+            // this is old endpoint
+            return Collections.emptyMap();
+        }
     }
 }
 

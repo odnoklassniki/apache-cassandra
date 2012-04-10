@@ -229,4 +229,14 @@ public interface StorageServiceMBean
      * @return
      */
     long getRecentReadRepairs();
+
+    /**
+     * @return map of known endpoint locations. key: endpoint address, value datacenter:rack
+     */
+    Map<String, String> getLocationsMap();
+
+    /**
+     * @return map of known endpoint names. key: endpoint address, value: name
+     */
+    Map<String, String> getEndpointNames();
 }

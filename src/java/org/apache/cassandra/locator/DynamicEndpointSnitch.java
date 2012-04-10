@@ -202,6 +202,24 @@ public class DynamicEndpointSnitch extends AbstractEndpointSnitch implements ILa
     {
         return subsnitch.getDatacenter(endpoint);
     }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.AbstractEndpointSnitch#getLocalDatacenter()
+     */
+    @Override
+    public String getLocalDatacenter()
+    {
+        return subsnitch.getLocalDatacenter();
+    }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.AbstractEndpointSnitch#getLocalRack()
+     */
+    @Override
+    public String getLocalRack()
+    {
+        return subsnitch.getLocalRack();
+    }
 }
 
 /** a threadsafe version of BoundedStatsDeque+ArrivalWindow with modification for arbitrary times **/

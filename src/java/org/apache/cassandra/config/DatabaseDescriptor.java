@@ -107,6 +107,10 @@ public class DatabaseDescriptor
     private static String dataArchiveDirectory;
     /** MM: speed of data archive, MBytes/sec **/
     private static int    dataArchiveThrottle = 10;
+    /** MM: datacenter:rack location of this endpoint **/
+    private static String location;
+    /** MM: allowed locations for all endpoints in cluster. null if not configured = dont check and allow all **/
+    private static Set<String> allowedLocations = null;
 
     private static String savedCachesDirectory;
     private static int consistencyThreads = 4; // not configurable
@@ -375,6 +379,34 @@ public class DatabaseDescriptor
                 gcGraceInSeconds = Integer.parseInt(gcGrace);
 
             initialToken = xmlUtils.getNodeValue("/Storage/InitialToken");
+            
+            location = xmlUtils.getNodeValue("/Storage/Location");
+            
+            if (location !=null && !location.contains(":"))
+            {
+                throw new ConfigurationException("Invalid Location  - all locations must be of form DC:RACK");
+            }
+            
+            String allowedLocationsString = xmlUtils.getNodeValue("/Storage/AllowedLocations");
+            if (allowedLocationsString!=null)
+            {
+                String[] allLocations = allowedLocationsString.split(",");
+                allowedLocations = new HashSet<String>(allLocations.length);
+                
+                for (String l : allLocations) {
+                    if (!l.contains(":"))
+                    {
+                        throw new ConfigurationException("Invalid AllowedLocations  - all locations must be of form DC:RACK");
+                    }
+                    
+                    allowedLocations.add( l.trim() );
+                }
+                
+                if (getLocation() !=null && !allowedLocations.contains(getLocation()))
+                {
+                    throw new ConfigurationException("Invalid Location - it is not in AllowedLocations list");
+                }
+            }
 
             /* RPC Timeout */
             String rpcTimeout = xmlUtils.getNodeValue("/Storage/RpcTimeoutInMillis");
@@ -1295,6 +1327,16 @@ public class DatabaseDescriptor
     public static String getInitialToken()
     {
       return initialToken;
+    }
+    
+    public static String getLocation()
+    {
+        return System.getProperty("cassandra.location", location );
+    }
+    
+    public static Set<String> getAllowedLocations()
+    {
+        return allowedLocations;
     }
   
     public static String getReplaceToken()

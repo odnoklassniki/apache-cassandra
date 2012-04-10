@@ -179,8 +179,13 @@
        ~ about your network topology to route requests efficiently.
        ~ Out of the box, Cassandra provides org.apache.cassandra.locator.EndPointSnitch,
        
-       ~ PropertyFileSnitch is expecting to find cassandra-topology.properties file in classpath
-       ~ and will watch for changes there.
+       ~ GossipNetworkTopologySnitch reads information from <Location> of this file and advertises
+       ~ it in gossip, so every node is learning about location of other nodes as soon as it
+       ~ joins the ring. You optionally can specify <AllowedLocations> to validate operator input. Nodes
+       ~ from not allowed locations will be prevented from joining the ring
+       
+       ~ PropertyFileSnitch in addition to GossipNetworkTopologySnitch can load locations from 
+       ~ cassandra-topology.properties file in classpath and will watch for changes there. 
       -->
       <EndPointSnitch>org.apache.cassandra.locator.EndPointSnitch</EndPointSnitch>
         
@@ -246,6 +251,25 @@
    ~ a random token, which will lead to hot spots.
   -->
   <InitialToken></InitialToken>
+
+  <!-- 
+        Specifies datacenter and rack this node is in.
+        
+        This is required for GossipNetworkTopologySnitch
+
+        Use colon to separate datacenter from rack names, eg. M100:RACK1
+
+        Alternatively you can specify location in cassandra.location system property
+
+        <Location>{node.location}</Location>
+   -->
+  <!-- 
+    List of allowed endpoint locations (to minmize chance of operator error).
+    
+    If this is omitted - no checks will be done, so any location is good
+
+    <AllowedLocations>DL:DL,M100:M100,KV:KV</</AllowedLocations>
+   -->
 
   <!--
    ~ Directories: Specify where Cassandra should store different data on

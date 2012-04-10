@@ -872,10 +872,10 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
     }
 
     /**
-     * Start the gossiper with the generation # retrieved from the System
+     * Init the gossiper with the generation # retrieved from the System
      * table
      */
-    public void start(InetAddress localEndPoint, int generationNbr)
+    public void init(InetAddress localEndPoint, int generationNbr)
     {
         localEndPoint_ = localEndPoint;
         /* Get the seeds from the config and initialize them. */
@@ -897,7 +897,14 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
             localState.isAGossiper(true);
             endPointStateMap_.put(localEndPoint_, localState);
         }
+        
+    }
 
+    /**
+     * starts gossiper 
+     */
+    public void start()
+    {
         /* starts a timer thread */
         gossipTimer_.schedule( new GossipTimerTask(), Gossiper.intervalInMillis_, Gossiper.intervalInMillis_);
     }

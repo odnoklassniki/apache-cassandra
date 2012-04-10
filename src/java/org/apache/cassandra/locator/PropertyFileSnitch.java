@@ -23,13 +23,9 @@ import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.UnknownHostException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Properties;
-import java.util.Set;
-import java.util.TreeSet;
 
 import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.service.StorageService;
@@ -40,22 +36,22 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Used to determine if two IP's are in the same datacenter or on the same rack.
+ * 
  * <p/>
- * Based on a properties file in the following format:
+ * Additionally to info available in {@link GossipNetworkTopologySnith} it reads a properties file in the following format:
  *
  * 10.0.0.13=DC1:RAC2
  * 10.21.119.14=DC3:RAC2
  * 10.20.114.15=DC2:RAC2
  * default=DC1:r1
+ * 
+ * and supplies this additional information to global state
  */
-public class PropertyFileSnitch extends AbstractNetworkTopologySnitch
+public class PropertyFileSnitch extends GossipNetworkTopologySnith
 {
     private static final Logger logger = LoggerFactory.getLogger(PropertyFileSnitch.class);
 
     private static final String RACK_PROPERTY_FILENAME = "cassandra-topology.properties";
-
-    private static volatile Map<InetAddress, String[]> endpointMap;
-    private static volatile String[] defaultDCRack;
 
     public PropertyFileSnitch(Properties properties) throws ConfigurationException
     {
@@ -63,26 +59,9 @@ public class PropertyFileSnitch extends AbstractNetworkTopologySnitch
         
         loadConfiguration(reloadedMap, properties);
 
-        logger.info("set network topology {}", printTopology( reloadedMap ));
-        endpointMap = reloadedMap;
+        super.putEndpoints( reloadedMap );
     }
     
-    /**
-     * @param reloadedMap
-     * @return
-     */
-    private String printTopology(HashMap<InetAddress, String[]> reloadedMap)
-    {
-        StringBuilder sb = new StringBuilder();
-        
-        for (Entry<InetAddress, String[]> a : reloadedMap.entrySet())
-        {
-            sb.append(a.getKey()+" => "+ Arrays.toString(a.getValue()));
-        }
-        
-        return sb.toString();
-    }
-
     public PropertyFileSnitch() throws ConfigurationException
     {
         reloadConfiguration();
@@ -115,62 +94,6 @@ public class PropertyFileSnitch extends AbstractNetworkTopologySnitch
         return scpurl.getFile();
     }
 
-    /**
-     * Get the raw information about an end point
-     *
-     * @param endpoint endpoint to process
-     * @return a array of string with the first index being the data center and the second being the rack
-     */
-    public String[] getEndpointInfo(InetAddress endpoint)
-    {
-        String[] value = endpointMap.get(endpoint);
-        if (value == null)
-        {
-            logger.debug("Could not find end point information for {}, will use default", endpoint);
-            if ( defaultDCRack == null )
-                throw new RuntimeException("Could not find topology info for "+endpoint+": It is not in cassandra-topology.properties and there is no default");
-            
-            return defaultDCRack;
-        }
-        return value;
-    }
-
-    /**
-     * Return the data center for which an endpoint resides in
-     *
-     * @param endpoint the endpoint to process
-     * @return string of data center
-     */
-    public String getDatacenter(InetAddress endpoint)
-    {
-        return getEndpointInfo(endpoint)[0];
-    }
-
-    /**
-     * Return the rack for which an endpoint resides in
-     *
-     * @param endpoint the endpoint to process
-     * @return string of rack
-     */
-    public String getRack(InetAddress endpoint)
-    {
-        return getEndpointInfo(endpoint)[1];
-    }
-    
-    Set<String> getConfiguredRacks()
-    {
-        TreeSet<String> racks = new TreeSet<String>();
-        
-        for (String[] info : endpointMap.values()) {
-            racks.add(info[1]);
-        }
-        
-        if (defaultDCRack!=null)
-            racks.add(defaultDCRack[1]);
-        
-        return racks;
-    }
-
     public void reloadConfiguration() throws ConfigurationException
     {
         HashMap<InetAddress, String[]> reloadedMap = new HashMap<InetAddress, String[]>();
@@ -197,8 +120,7 @@ public class PropertyFileSnitch extends AbstractNetworkTopologySnitch
 
         loadConfiguration(reloadedMap, properties);
 
-        logger.info("loaded network topology {}", printTopology(reloadedMap) );
-        endpointMap = reloadedMap;
+        putEndpoints( reloadedMap );
     }
 
     private void loadConfiguration(HashMap<InetAddress, String[]> reloadedMap,
@@ -235,4 +157,5 @@ public class PropertyFileSnitch extends AbstractNetworkTopologySnitch
             }
         }
     }
+
 }

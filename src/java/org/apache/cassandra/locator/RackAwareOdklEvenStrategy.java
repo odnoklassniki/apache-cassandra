@@ -8,11 +8,9 @@ package org.apache.cassandra.locator;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
@@ -22,7 +20,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.dht.OdklDomainPartitioner;
-import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.StringToken;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.utils.FBUtilities;
@@ -93,7 +90,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             int rf = DatabaseDescriptor.getReplicationFactor(table);
             if (rf != racks.size())
             {
-                throw new ConfigurationException("Number of unique racks in cassandra-topology.properties must match replication factor of "+table);
+                throw new ConfigurationException("Number of unique racks in AllowedLocations must match replication factor of "+table);
             }
         }
     }

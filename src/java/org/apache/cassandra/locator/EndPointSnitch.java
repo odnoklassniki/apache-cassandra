@@ -61,7 +61,7 @@ public class EndPointSnitch extends AbstractEndpointSnitch
 
     public String getDatacenter(InetAddress endpoint)
     {
-        return "datacenter1";
+        return "dc1";
     }
 
     @Override
@@ -76,6 +76,24 @@ public class EndPointSnitch extends AbstractEndpointSnitch
         // Making all endpoints equal ensures we won't change the original ordering (since
         // Collections.sort is guaranteed to be stable)
         return 0;
+    }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.AbstractEndpointSnitch#getLocalDatacenter()
+     */
+    @Override
+    public String getLocalDatacenter()
+    {
+        return "default-datacenter";
+    }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.locator.AbstractEndpointSnitch#getLocalRack()
+     */
+    @Override
+    public String getLocalRack()
+    {
+        return "default-rack";
     }
 
 }
