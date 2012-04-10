@@ -78,7 +78,8 @@
     </target-->
 	
     <target name="ivy-prepare-for-publish" if="ivy.enabled">
-    	<copy file="${build}/apache-cassandra-${build.number.str}.jar" todir="${ivy.deliver.dir}/jar"/>
+        <copy file="${build}/apache-cassandra-${build.number.str}.jar" todir="${ivy.deliver.dir}/jar"/>
+        <copy file="${build}/odkl-cassandra-stats.jar" todir="${ivy.deliver.dir}/jar"/>
     </target>
 
 	<target name="test">
