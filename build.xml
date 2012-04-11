@@ -77,7 +77,7 @@
         </ivy:publish>
     </target-->
 	
-    <target name="ivy-prepare-for-publish" if="ivy.enabled">
+    <target name="ivy-prepare-for-publish" if="ivy.enabled" depends="ivy-assemble-source-jars">
         <copy file="${build}/apache-cassandra-${build.number.str}.jar" todir="${ivy.deliver.dir}/jar"/>
         <copy file="${build}/odkl-cassandra-stats.jar" todir="${ivy.deliver.dir}/jar"/>
     </target>
