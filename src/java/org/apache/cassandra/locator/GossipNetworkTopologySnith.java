@@ -249,6 +249,6 @@ public class GossipNetworkTopologySnith extends AbstractNetworkTopologySnitch im
     @Override
     public void onRemove(InetAddress endpoint)
     {
-        endpointMap.remove(endpoint);
+        // cannot remove info here - because node can be temporary in dead state
     }
 }
