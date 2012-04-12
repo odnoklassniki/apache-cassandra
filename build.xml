@@ -23,6 +23,7 @@
 	&commonAntCommands;
 
     <property name="build.src.stat" value="${basedir}/stat/src"/>
+    <property name="build.classes.cassandra" value="${basedir}/build/classes"/>
     <property name="build.classes.stat" value="${basedir}/build/classes-stat"/>
     <property name="build.components" value="${basedir}/build/"/>
 
@@ -41,7 +42,7 @@
     </fileset>
     <path id="cassandra.classpath">
         <pathelement location="${cobertura.classes.dir}"/>
-        <pathelement location="${build.classes}"/>
+        <pathelement location="${build.classes.cassandra}"/>
         <fileset dir="${build.lib}">
           <include name="**/*.jar" />
         </fileset>
@@ -97,6 +98,9 @@
     	<ant antfile="build-cs.xml" target="jar" inheritall="false">
     		<property name="version" value="${build.number.major}.${build.number.minor}.${build.number.build}"/>
     	</ant>
+    	
+    	<property name="aaa" refid="cassandra.classpath"/>
+    	<echo>${aaa}</echo>
     	
         <javac debug="true" debuglevel="lines,vars,source" destdir="${build.classes.stat}">
             <src path="${build.src.stat}"/>
