@@ -33,6 +33,7 @@ import java.util.regex.Pattern;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
+import com.google.common.collect.BiMap;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -66,6 +67,7 @@ import org.apache.cassandra.service.AntiEntropyService.TreeRequestVerbHandler;
 import org.apache.cassandra.streaming.*;
 import org.apache.cassandra.thrift.ConsistencyLevel;
 import org.apache.cassandra.thrift.UnavailableException;
+import org.apache.cassandra.tools.NodeProbe;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
 
@@ -370,7 +372,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         if (DatabaseDescriptor.isAutoBootstrap()
                 && DatabaseDescriptor.getSeeds().contains(FBUtilities.getLocalAddress())
                 && !SystemTable.isBootstrapped())
-            logger_.info("This node will not auto bootstrap because it is configured to be a seed node.");
+            throw new UnsupportedOperationException("This node will not auto bootstrap/replace because it is configured to be a seed node.");
 
         InetAddress current = null;
         if (DatabaseDescriptor.isAutoBootstrap()
@@ -398,7 +400,13 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 token = StorageService.getPartitioner().getTokenFactory().fromString(DatabaseDescriptor.getReplaceToken());
                 
                 if (tokenMetadata_.getEndPoint(token) == null)
-                    throw new UnsupportedOperationException("Token "+token+" is not registered in token ring. Cannot replace a previously unknown token. Are you trying to bootstrap new node ?");
+                {
+                    // we did not got token from gossip, but this may be because we replacing with the same ip address
+                    // failed node has. In this case gossip will not deliver its messages, so we validate with
+                    // nodeprobe, asking token metadata using jmx interface from one of currently known live nodes
+                    if (!hasTokenOnOtherNodes(token,FBUtilities.getLocalAddress()))
+                        throw new UnsupportedOperationException("Token "+token+" is not registered in token ring. Cannot replace a previously unknown token. Are you trying to bootstrap new node ?");
+                }
                 
                 setMode("Joining: Preparing to replace a node with token: " + token+". Checking, is node being replaced actually live", true);
                 try
@@ -454,6 +462,39 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         }
 
         assert tokenMetadata_.sortedTokens().size() > 0;
+    }
+
+    /**
+    /**
+     * ! DO NOT USE THIS METHOD FOR OTHER THAN VALIDATION
+     * @return current token metadata state from antoher node, asked through JMX
+     */
+    private boolean hasTokenOnOtherNodes(Token token, InetAddress localAddress)
+    {
+        // first try seeds
+        for (InetAddress seed : DatabaseDescriptor.getSeeds()) 
+        {
+            if (FailureDetector.instance.isAlive(seed))
+            {
+                try {
+                    Map<Range, List<String>> rangeToEndPointMap = new NodeProbe(seed.getHostAddress()).getRangeToEndPointMap(null);
+
+                    for (Entry<Range, List<String>> mapElement : rangeToEndPointMap.entrySet()) 
+                    {
+                        if (mapElement.getKey().right.equals(token) && mapElement.getValue().contains(localAddress.getHostAddress()))
+                        {
+                            logger_.info("Found myself in ring of "+seed.getHostAddress());
+                            return true;
+                        }
+                    }
+                    
+                } catch (IOException e) {
+                } catch (InterruptedException e) {
+                }
+            }
+        }
+        
+        return false;
     }
 
     private void setMode(String m, boolean log)
