@@ -493,6 +493,8 @@ public class Table
     {
         HashMap<ColumnFamilyStore,Memtable> memtablesToFlush = new HashMap<ColumnFamilyStore, Memtable>(2);
         
+        boolean notAllApplied = false;
+        
         if (storeFilters!=null)
         {
             // invoke listener prior critical section
@@ -501,17 +503,27 @@ public class Table
                 IStoreApplyListener listener = storeFilters.get( columnFamily.name() );
                 if (listener!=null)
                 {
-                    listener.preapply(mutation.key(), columnFamily);
+                    if (!listener.preapply(mutation.key(), columnFamily)){
+                        mutation.removeColumnFamily(columnFamily);
+                        notAllApplied = true;
+                    }
                 }
             }
         }
         
+        if (mutation.getColumnFamilies().isEmpty()){
+            return;
+        }
+            
         // write the mutation to the commitlog and memtables
         flusherLock.readLock().lock();
         try
         {
             if (writeCommitLog)
             {
+                if (notAllApplied){
+                    serializedMutation = mutation.getSerializedBuffer();
+                }
                 CommitLog.instance().add(mutation, serializedMutation);
             }
 

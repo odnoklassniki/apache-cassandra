@@ -928,23 +928,26 @@ public class DatabaseDescriptor
                 }
                 catch (ClassNotFoundException e)
                 {
-                    throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName);
+                    throw new ConfigurationException("Not found endpointsnitch class " + endPointSnitchClassName , e);
                 }
                 catch (NoSuchMethodException e)
                 {
-                    throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName + " " + e.getMessage());
+                    throw new ConfigurationException("No constructor for endpointsnitch class " + endPointSnitchClassName , e);
                 }
                 catch (InstantiationException e)
                 {
-                    throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName + " " + e.getMessage());
+                    logger.error("Unable to instantiate endpointsnitch class " + endPointSnitchClassName , e);
+                    throw new ConfigurationException("Unable to instantiate endpointsnitch class " + endPointSnitchClassName , e);
                 }
                 catch (IllegalAccessException e)
                 {
-                    throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName + " " + e.getMessage());
+                    logger.error("Unable to instantiate endpointsnitch class " + endPointSnitchClassName , e);
+                    throw new ConfigurationException("Unable to instantiate endpointsnitch class " + endPointSnitchClassName , e);
                 }
                 catch (InvocationTargetException e)
                 {
-                    throw new ConfigurationException("Invalid endpointsnitch class " + endPointSnitchClassName + " " + e.getMessage());
+                    logger.error("Unable to instantiate endpointsnitch class " + endPointSnitchClassName , e);
+                    throw new ConfigurationException("Unable to instantiate endpointsnitch class " + endPointSnitchClassName , e);
                 }
                 
                 String xqlTable = "/Storage/Keyspaces/Keyspace[@Name='" + ksName + "']/";

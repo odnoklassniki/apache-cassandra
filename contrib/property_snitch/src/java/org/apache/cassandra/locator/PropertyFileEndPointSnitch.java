@@ -58,16 +58,18 @@ public class PropertyFileEndPointSnitch extends EndPointSnitch implements Proper
     private static String[] defaultDCRack;
 
     public PropertyFileEndPointSnitch() throws IOException
-    {
-        reloadConfiguration();
-        try
-        {
-            MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
-            mbs.registerMBean(this, new ObjectName(MBEAN_OBJECT_NAME));
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException(e);
+ {
+        try {
+            reloadConfiguration();
+            try {
+                MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+                mbs.registerMBean(this, new ObjectName(MBEAN_OBJECT_NAME));
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        } catch (RuntimeException e) {
+            logger_.error("Failed to load toplogy", e);
+            throw e;
         }
     }
 

@@ -24,7 +24,7 @@ public interface IStoreApplyListener
      * @param data 
      * 
      */
-    void preapply(String key, ColumnFamily data); 
+    boolean preapply(String key, ColumnFamily data); 
     
     /**
      * Called after changes was successfully applied to local CF store.
