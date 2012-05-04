@@ -511,19 +511,21 @@ public class Table
             }
         }
         
-        if (mutation.getColumnFamilies().isEmpty()){
+        if (mutation.isEmpty()){
             return;
         }
-            
+        
+        // listener changed the mutation, so we rebuild the serialized mutation
+        if (notAllApplied){
+            serializedMutation = mutation.getSerializedBuffer();
+        }
+
         // write the mutation to the commitlog and memtables
         flusherLock.readLock().lock();
         try
         {
             if (writeCommitLog)
             {
-                if (notAllApplied){
-                    serializedMutation = mutation.getSerializedBuffer();
-                }
                 CommitLog.instance().add(mutation, serializedMutation);
             }
 
