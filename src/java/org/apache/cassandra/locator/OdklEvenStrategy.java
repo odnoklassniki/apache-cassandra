@@ -48,14 +48,14 @@ public class OdklEvenStrategy extends
     {
         super(tokenMetadata, snitch);
 
-//        try {
-//            odklPartitioner = (OdklDomainPartitioner) DatabaseDescriptor.getPartitioner();
-//        } catch (ClassCastException e)
-//        {
-//            throw new ConfigurationException("Only OdklDomainPartitioner is supported by this replication strategy");
-//        }
+        try {
+            odklPartitioner = (OdklDomainPartitioner) DatabaseDescriptor.getPartitioner();
+        } catch (ClassCastException e)
+        {
+            throw new ConfigurationException("Only OdklDomainPartitioner is supported by this replication strategy");
+        }
         
-        odklPartitioner = new OdklDomainPartitioner();
+//        odklPartitioner = new OdklDomainPartitioner();
     }
     
     /* (non-Javadoc)
@@ -116,7 +116,7 @@ public class OdklEvenStrategy extends
     protected ArrayList<InetAddress> doCalculateEndpoints(Token keyToken,
             TokenMetadata metadata, String table)
     {
-        int replicas = 3; //DatabaseDescriptor.getReplicationFactor(table);
+        int replicas = DatabaseDescriptor.getReplicationFactor(table);
         ArrayList<InetAddress> endpoints = new ArrayList<InetAddress>(replicas);
 
         do
