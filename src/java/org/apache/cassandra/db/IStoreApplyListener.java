@@ -23,15 +23,8 @@ public interface IStoreApplyListener
      * @param key row key
      * @param data 
      * 
+     * @return false to skip column family mutation and ignore it
      */
     boolean preapply(String key, ColumnFamily data); 
     
-    /**
-     * Called after changes was successfully applied to local CF store.
-     * 
-     * @param key
-     * @param data
-     */
-    void applied(String key, ColumnFamily data);
-
 }

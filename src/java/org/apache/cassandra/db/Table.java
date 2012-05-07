@@ -545,18 +545,6 @@ public class Table
         {
             flusherLock.readLock().unlock();
 
-            if (storeFilters!=null)
-            {
-                // invoke listener prior critical section
-                for (ColumnFamily columnFamily : mutation.getColumnFamilies())
-                {
-                    IStoreApplyListener listener = storeFilters.get( columnFamily.name() );
-                    if (listener!=null)
-                    {
-                        listener.applied(mutation.key(), columnFamily);
-                    }
-                }
-            }
         }
 
 
