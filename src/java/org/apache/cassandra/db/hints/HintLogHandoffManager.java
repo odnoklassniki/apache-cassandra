@@ -20,6 +20,7 @@ import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.DigestMismatchException;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.cassandra.thrift.InvalidRequestException;
 import org.apache.cassandra.utils.FBUtilities;
@@ -50,6 +51,12 @@ public class HintLogHandoffManager extends HintedHandOffManager
         if (!FailureDetector.instance.isAlive(endPoint))
         {
             logger_.info("Hints delivery to "+endPoint.getHostAddress()+" is cancelled - endpoint is dead. Will restart as soon as it gets UP again");
+            return;
+        }
+
+        if (!StorageService.instance.getTokenMetadata().isMember(endPoint))
+        {
+            // this is bootstrapping/decommissioned node
             return;
         }
 

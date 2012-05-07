@@ -126,7 +126,7 @@ public class OdklEvenStrategy extends
                 return endpoints;
 
             String keyTokenString = keyToken.toString();
-            int domain = Integer.parseInt( keyTokenString.substring(0,2), 16 ) & 0xFF;
+            int domain = keyTokenDomain(keyTokenString);
             Iterator<Token> iter = TokenMetadata.ringIterator(tokens, keyToken, false);
             do
             {
@@ -147,6 +147,11 @@ public class OdklEvenStrategy extends
 
 
         return endpoints;
+    }
+
+    private int keyTokenDomain(String keyTokenString)
+    {
+        return Integer.parseInt( keyTokenString.substring(0,2), 16 ) & 0xFF;
     }
 
     protected List<Token> getReplicaTokens(Token keyToken, TokenMetadata metadata, int replica)
@@ -222,7 +227,7 @@ public class OdklEvenStrategy extends
        if (tokenMetadata_.getPendingRanges(table).isEmpty())
            return naturalEndpoints;
 
-       Collection<InetAddress> pending = tokenMetadata_.getPendingRanges(table).get(toRange( Integer.parseInt( keyToken(token).toString() ,16 ) ) );
+       Collection<InetAddress> pending = tokenMetadata_.getPendingRanges(table).get(toRange( keyTokenDomain( keyToken(token).toString() ) ) );
        
        if (pending == null || pending.isEmpty())
            return naturalEndpoints;
@@ -234,6 +239,7 @@ public class OdklEvenStrategy extends
        
        return endpoints;
    }
+   
 /*
    public static void main(String[] args)
     {

@@ -324,7 +324,7 @@ public class HintLog
     
     private String endpointToToken(InetAddress endpoint)
     {
-        Token<?> token = StorageService.instance.getTokenMetadata().getToken(endpoint);
+        Token<?> token = StorageService.instance.getTokenMetadata().getTokenHint(endpoint);
         
         return StorageService.instance.getPartitioner().getTokenFactory().toString(token);
     }

@@ -212,6 +212,33 @@ public class TokenMetadata
         }
     }
     
+    /**
+     * Known token of endpoint (not neccessarity active). Can return leaving/bootstrapping tokens
+     * @param endpoint
+     * @return
+     */
+    public Token getTokenHint(InetAddress endpoint)
+    {
+        assert endpoint != null;
+        
+        lock.readLock().lock();
+        try
+        {
+            Token token = tokenToEndPointMap.inverse().get(endpoint);
+
+            if (token == null )
+                token = bootstrapTokens.inverse().get(endpoint);
+                
+            assert token !=null : "Cannot determine token for "+endpoint;
+                
+            return token;
+        }
+        finally
+        {
+            lock.readLock().unlock();
+        }
+    }
+
     public boolean isMember(InetAddress endpoint)
     {
         assert endpoint != null;
