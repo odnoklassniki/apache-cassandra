@@ -182,13 +182,16 @@ public class GossipNetworkTopologySnith extends AbstractNetworkTopologySnitch im
         
         String[] location = new String[2] ;
         
-        location[0] = getDatacenter(endpoint);
-        location[1] = getRack(endpoint);
-        
         if (stateDC!=null)
             location[0] = stateDC.getValue();
         if (stateRack!=null)
             location[1] = stateRack.getValue();
+        
+        
+        if (location[0] == null || location[1] == null) {
+            location[0] = getDatacenter(endpoint);
+            location[1] = getRack(endpoint);
+        }
         
         if (location[0] == null || location[1] == null) {
             logger.error("Cannot determine datacenter and rack location of "+endpoint+". On rack aware replication strategies secondary replicas will be broken for this endpoint");
