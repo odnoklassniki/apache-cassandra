@@ -51,6 +51,8 @@ public class GossipNetworkTopologySnith extends AbstractNetworkTopologySnitch im
         {
             throw new RuntimeException("Allowed locations must be configured for GossipNetworkTopologySnitch");
         }
+        
+        putEndpoints(Collections.singletonMap(FBUtilities.getLocalAddress(), DatabaseDescriptor.getLocation().split(":")));
     }
     
     /**
