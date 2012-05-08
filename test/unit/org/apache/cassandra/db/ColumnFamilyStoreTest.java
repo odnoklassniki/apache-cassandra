@@ -215,46 +215,32 @@ public class ColumnFamilyStoreTest extends CleanupHelper
     {
         final ColumnFamilyStore store = insert("row7777");
         final AtomicInteger i = new AtomicInteger();
-        final AtomicInteger i2 = new AtomicInteger();
 
         store.setListener(new IStoreApplyListener()
         {
             
             @Override
-            public void preapply(String key, ColumnFamily data)
+            public boolean preapply(String key, ColumnFamily data)
             {
                 assert key.equals("row7778");
                 assert Arrays.equals(data.getColumn("Column1".getBytes()).value(),"asdf".getBytes());
                 
                 i.incrementAndGet();
+                
+                return true;
             }
             
-            /* (non-Javadoc)
-             * @see org.apache.cassandra.db.IStoreApplyFilter#applied(java.lang.String, org.apache.cassandra.db.ColumnFamily)
-             */
-            @Override
-            public void applied(String key, ColumnFamily data)
-            {
-                assert key.equals("row7778");
-                assert Arrays.equals(data.getColumn("Column1".getBytes()).value(),"asdf".getBytes());
-                
-                i2.incrementAndGet();
-                
-            }
         });
 
         assert i.get() == 0;
-        assert i2.get() == 0;
         
         insert("row7778");
 
         assert i.get() == 1;
-        assert i2.get() == 1;
 
         insert("row7778");
 
         assert i.get() == 2;
-        assert i2.get() == 2;
         
         store.setListener(null);
 
