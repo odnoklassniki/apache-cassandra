@@ -18,9 +18,7 @@
 
 package org.apache.cassandra.db.hints;
 
-import java.io.ByteArrayInputStream;
 import java.io.Closeable;
-import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FilenameFilter;
@@ -44,15 +42,12 @@ import java.util.zip.Checksum;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.HintedHandOffManager;
-import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.service.WriteResponseHandler;
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 /**
@@ -317,7 +312,7 @@ public class HintLog
         
         Token<?> hintToken = StorageService.getPartitioner().getTokenFactory().fromString(token);
         
-        InetAddress endPoint = StorageService.instance.getTokenMetadata().getEndPoint(hintToken);
+        InetAddress endPoint = StorageService.instance.getTokenMetadata().getEndPointHint(hintToken);
         
         return endPoint;
     }
@@ -351,7 +346,7 @@ public class HintLog
 
                         InetAddress endp = tokenToEndpoint(last.getToken());
                         
-                        if (FailureDetector.instance.isAlive(endp))
+                        if (endp !=null && FailureDetector.instance.isAlive(endp))
                         {
                             HintedHandOffManager.instance().deliverHints(endp);
                         }

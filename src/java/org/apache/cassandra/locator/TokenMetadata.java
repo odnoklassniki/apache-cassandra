@@ -334,6 +334,26 @@ public class TokenMetadata
         }
     }
 
+    public InetAddress getEndPointHint(Token token)
+    {
+        lock.readLock().lock();
+        try
+        {
+            InetAddress address = tokenToEndPointMap.get(token);
+            if (address == null)
+            {
+                address = bootstrapTokens.get(token);
+                
+            }
+            
+            return address;
+        }
+        finally
+        {
+            lock.readLock().unlock();
+        }
+    }
+
     public Range getPrimaryRangeFor(Token right)
     {
         return new Range(getPredecessor(right), right);
