@@ -52,6 +52,7 @@ import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.DynamicEndpointSnitch;
 import org.apache.cassandra.locator.IEndPointSnitch;
 import org.apache.cassandra.locator.RackAwareOdklEvenStrategy;
+import org.apache.cassandra.locator.RackAwareOdklStrategy;
 import org.apache.cassandra.maint.CleanArchivedLogsTask;
 import org.apache.cassandra.maint.CleanOldSnapshotsTask;
 import org.apache.cassandra.maint.ClusterSnapshotTask;
@@ -826,9 +827,13 @@ public class DatabaseDescriptor
             {
                 tasks.add(new RackAwareMajorCompactionTask(Integer.parseInt(spareNodes)));
             } else
-            {
-                tasks.add(new MajorCompactionTask(Integer.parseInt(spareNodes)));
-            }
+                if ( RackAwareOdklStrategy.class.isAssignableFrom( getReplicaPlacementStrategyClass( getNonSystemTables().get(0) )) )
+                {
+                    tasks.add(new RackAwareMajorCompactionTask(Integer.parseInt(spareNodes)));
+                } else
+                {
+                    tasks.add(new MajorCompactionTask(Integer.parseInt(spareNodes)));
+                }
         }
         
         if (tasks.size()==0)

@@ -226,8 +226,8 @@ public class NodeProbe
      */
     public void printRing(PrintStream outs)
     {
-        Map<Range, List<String>> rangeMap = ssProxy.getRangeToEndPointMap(null);
-        List<Range> ranges = new ArrayList<Range>(rangeMap.keySet());
+        Map<Token, String> rangeMap = ssProxy.getPrettyTokenRing();
+        List<Token> ranges = new ArrayList<Token>(rangeMap.keySet());
         Collections.sort(ranges);
         Set<String> liveNodes = ssProxy.getLiveNodes();
         Set<String> deadNodes = ssProxy.getUnreachableNodes();
@@ -246,12 +246,11 @@ public class NodeProbe
         // emphasize that we're showing the right part of each range
         if (ranges.size() > 1)
         {
-            outs.println(String.format("%-24s%-11s%-14s%-43s", "", "", "", ranges.get(0).left));
+            outs.println(String.format("%-24s%-11s%-14s%-43s", "", "", "", ranges.get(ranges.size()-1)));
         }
         // normal range & node info
-        for (Range range : ranges) {
-            List<String> endpoints = rangeMap.get(range);
-            String primaryEndpoint = endpoints.get(0);
+        for (Token range : ranges) {
+            String primaryEndpoint = rangeMap.get(range);
             
             if (namesMap.containsKey(primaryEndpoint))
             {
@@ -275,7 +274,7 @@ public class NodeProbe
             String load = loadMap.containsKey(primaryEndpoint) ? loadMap.get(primaryEndpoint) : "?";
             outs.print(String.format("%-14s", load));
 
-            outs.print(String.format("%-43s", range.right));
+            outs.print(String.format("%-43s", range));
 
             String asciiRingArt;
             if (counter == 0)
@@ -576,6 +575,27 @@ public class NodeProbe
         {
             // this is old endpoint
             return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * @return
+     */
+    public Map<Token, String> getPrettyTokenRing()
+    {
+        try {
+            return ssProxy.getPrettyTokenRing();
+        } catch (Exception e)
+        {
+            // falling back to old style
+            
+            Map<Range, List<String>> rangeToEndPointMap = ssProxy.getRangeToEndPointMap(null);
+            Map<Token,String> m = new HashMap<Token, String>();
+            for (Entry<Range, List<String>> entry : rangeToEndPointMap.entrySet()) {
+                m.put(entry.getKey().right,entry.getValue().get(0));
+            }
+            
+            return m;
         }
     }
 }

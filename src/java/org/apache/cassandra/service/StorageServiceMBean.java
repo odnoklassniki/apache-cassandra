@@ -239,4 +239,9 @@ public interface StorageServiceMBean
      * @return map of known endpoint names. key: endpoint address, value: name
      */
     Map<String, String> getEndpointNames();
+
+    /**
+     * @return
+     */
+    Map<Token, String> getPrettyTokenRing();
 }

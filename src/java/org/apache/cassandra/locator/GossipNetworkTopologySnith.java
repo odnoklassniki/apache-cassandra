@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -113,7 +114,7 @@ public class GossipNetworkTopologySnith extends AbstractNetworkTopologySnitch im
         return sb.toString();
     }
 
-    Set<String> getConfiguredRacks()
+    NavigableSet<String> getConfiguredRacks()
     {
         TreeSet<String> racks = new TreeSet<String>();
         
@@ -226,7 +227,7 @@ public class GossipNetworkTopologySnith extends AbstractNetworkTopologySnitch im
     public void onChange(InetAddress endpoint, String stateName,
             ApplicationState state)
     {
-        if (stateName.equals(APPSTATE_DC) || stateName.equals(APPSTATE_RACK))
+        if (stateName.equals(StorageService.MOVE_STATE) || stateName.equals(APPSTATE_DC) || stateName.equals(APPSTATE_RACK))
             onJoin(endpoint, Gossiper.instance.getEndPointStateForEndPoint(endpoint));
     }
 

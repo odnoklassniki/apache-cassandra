@@ -10,9 +10,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.gms.Gossiper;
-import org.apache.cassandra.locator.RackAwareOdklEvenStrategy;
+import org.apache.cassandra.locator.IEndPointSnitch;
+import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.utils.FBUtilities;
 
 /**
  * This is rack aware verision of {@link MajorCompactionTask}. It will compact nodes from single racks, leaving
@@ -26,7 +29,7 @@ import org.apache.cassandra.service.StorageService;
 public class RackAwareMajorCompactionTask extends MajorCompactionTask
 {
     
-    private final RackAwareOdklEvenStrategy strategy;
+    private final IEndPointSnitch snitch;
 
     /**
      * @param leaveSpare
@@ -35,7 +38,24 @@ public class RackAwareMajorCompactionTask extends MajorCompactionTask
     {
         super(leaveSpare);
         
-        this.strategy = (RackAwareOdklEvenStrategy) StorageService.instance.getReplicationStrategy(DatabaseDescriptor.getNonSystemTables().get(0));
+        this.snitch = DatabaseDescriptor.getEndPointSnitch(DatabaseDescriptor.getNonSystemTables().get(0));
+    }
+    
+    private ArrayList<String> ringRacks(TokenMetadata meta)
+    {
+        ArrayList<String> racks = new ArrayList<String>(DatabaseDescriptor.getReplicationFactor(DatabaseDescriptor.getNonSystemTables().get(0)));
+        
+        for (Token t : meta.sortedTokens() )
+        {
+            String rack = snitch.getRack(meta.getEndPoint(t));
+            
+            if (!racks.contains(rack))
+                racks.add(rack);
+        }
+        
+        Collections.sort(racks);
+        
+        return racks;
     }
 
     /* (non-Javadoc)
@@ -53,12 +73,12 @@ public class RackAwareMajorCompactionTask extends MajorCompactionTask
         
         int dayOfEpoch = (int) (ctx.startedMillis() /1000 / 3600 / 24);
         
-        ArrayList<String> racks = new ArrayList<String>(this.strategy.ringRacks(StorageService.instance.getTokenMetadata(), StorageService.instance.getTokenMetadata().sortedTokens()));
+        ArrayList<String> racks = ringRacks(StorageService.instance.getTokenMetadata());
         Collections.sort(racks);
         
         int rackCount = racks.size();
         
-        String myRack = strategy.myRack();
+        String myRack = snitch.getRack(FBUtilities.getLocalAddress());
         
         if (myRack == null)
         {
@@ -76,7 +96,7 @@ public class RackAwareMajorCompactionTask extends MajorCompactionTask
                 // checking all endpoints from other racks are live before going to compaction
                 for (InetAddress endp : Gossiper.instance.getUnreachableMembers() )
                 {
-                    if ( myRack.equals( strategy.getRack(endp) ) )
+                    if ( myRack.equals( snitch.getRack(endp) ) )
                         continue;
                     
                     logger.warn("Endpoint "+endp+" from other rack is dead. Will not compact");

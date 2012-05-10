@@ -105,8 +105,8 @@ public class NodeCmd {
      */
     public void printRing(PrintStream outs)
     {
-        Map<Range, List<String>> rangeMap = probe.getRangeToEndPointMap(null);
-        List<Range> ranges = new ArrayList<Range>(rangeMap.keySet());
+        Map<Token, String> rangeMap = probe.getPrettyTokenRing();
+        List<Token> ranges = new ArrayList<Token>(rangeMap.keySet());
         Collections.sort(ranges);
         Set<String> liveNodes = probe.getLiveNodes();
         Set<String> deadNodes = probe.getUnreachableNodes();
@@ -128,12 +128,11 @@ public class NodeCmd {
         // emphasize that we're showing the right part of each range
         if (ranges.size() > 1)
         {
-            outs.println(String.format("%-24s%-11s%-14s%-14s%-8s%-43s", "","", "", "", "", ranges.get(0).left));
+            outs.println(String.format("%-24s%-11s%-14s%-14s%-8s%-43s", "","", "", "", "", ranges.get(0)));
         }
         // normal range & node info
-        for (Range range : ranges) {
-            List<String> endpoints = rangeMap.get(range);
-            String primaryEndpoint = endpoints.get(0);
+        for (Token range : ranges) {
+            String primaryEndpoint = rangeMap.get(range);
 
             if (namesMap.containsKey(primaryEndpoint))
             {
@@ -156,9 +155,9 @@ public class NodeCmd {
             outs.print(String.format("%-14s", load));
 
             DecimalFormat df = new DecimalFormat("##0.00%");
-            outs.print(String.format("%-8s", df.format(ownerships.get(range.right))));
+            outs.print(String.format("%-8s", df.format(ownerships.get(range))));
 
-            outs.print(String.format("%-43s", range.right));
+            outs.print(String.format("%-43s", range));
 
             String asciiRingArt;
             if (counter == 0)

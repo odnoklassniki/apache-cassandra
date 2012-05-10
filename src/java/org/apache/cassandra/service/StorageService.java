@@ -592,6 +592,22 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         return getReplicationStrategy(keyspace).getRangeAddresses(tokenMetadata_, keyspace).asMap();
     }
 
+    /**
+     * Human readable token ring representation for dipolay by node probe
+     * @return key - token, value - ip addr
+     */
+    public Map<Token,String> getPrettyTokenRing()
+    {
+        List<Token> sortedTokens = tokenMetadata_.sortedTokens();
+        
+        HashMap<Token, String> ring = new HashMap<Token, String>(sortedTokens.size());
+        
+        for (Token token : sortedTokens) {
+            ring.put(token, tokenMetadata_.getEndPoint(token).getHostAddress());
+        }
+        
+        return ring;
+    }
 
     /*
      * onChange only ever sees one ApplicationState piece change at a time, so we perform a kind of state machine here.
@@ -619,8 +635,6 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
      */
     public void onChange(InetAddress endpoint, String apStateName, ApplicationState apState)
     {
-//        logger_.info(endpoint+": change gossip state "+apStateName+" --> "+apState.getValue());
-        
         if (!MOVE_STATE.equals(apStateName))
             return;
 

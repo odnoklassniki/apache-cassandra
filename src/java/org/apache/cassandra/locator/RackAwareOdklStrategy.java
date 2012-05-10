@@ -1,20 +1,16 @@
 /*
- * @(#) RackAwareOdklEvenStrategy.java
- * Created Feb 15, 2012 by oleg
+ * @(#) RackAwareOdklStrategy.java
+ * Created May 9, 2012 by oleg
  * (C) ONE, SIA
  */
 package org.apache.cassandra.locator;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.NavigableSet;
 import java.util.Properties;
 import java.util.Set;
@@ -31,7 +27,6 @@ import org.apache.cassandra.utils.FBUtilities;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
-import com.google.common.collect.Multimaps;
 
 /**
  * In addition to even (re)distribution of replicas across all cluster nodes, it ensures no replicas of the same key hit
@@ -63,18 +58,20 @@ import com.google.common.collect.Multimaps;
  * 1     127.0.0.1 RACK1
  * 3     127.0.0.3 RACK1
  * 
+ * for the 1st subring domain value will be used as is.
+ * for the 2nd, it will be shuffled according to {@link #shuffle(int)} to 0x55
+ * 
  * so when placing row with key = 0, first replica accprding to std cassandra ring algo will be placed to node
  * 127.0.0.0 and second replica will be placed to node 127.0.0.1 (because considering only 2nd subring we see 
- * min token == 1, with wrapping range (3,1], which includes rows with token == 0
+ * min token == 1, with wrapping range (3,1], which includes rows with token == 0x55
  * 
  * 
  * @author Oleg Anastasyev<oa@hq.one.lv>
- * @deprecated dont use it anymore. This has broken bootstrap. Use {@link RackAwareOdklStrategy} instead
  *
  */
-public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
+public class RackAwareOdklStrategy extends OdklEvenStrategy
 {
-    public RackAwareOdklEvenStrategy(TokenMetadata tokenMetadata, IEndPointSnitch snitch) throws ConfigurationException
+    public RackAwareOdklStrategy(TokenMetadata tokenMetadata, IEndPointSnitch snitch) throws ConfigurationException
     {
         super(tokenMetadata,snitch);
         
@@ -93,7 +90,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
     {
         Set<String> racks = pfs.getConfiguredRacks();
 
-        logger_.info("RackAwareOdklEvenStrategy (re)configuring with the following known racks: "+racks);
+        logger_.info("RackAwareOdklStrategy (re)configuring with the following known racks: "+racks);
 
         for (String table : DatabaseDescriptor.getNonSystemTables())
         {
@@ -115,24 +112,34 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         if (tokens.isEmpty())
             return endpoints;
         
-        Set<String> racks = ringRacks(metadata, tokens);
+        String[] racks = ringRacks(metadata, tokens).toArray(new String[replicas]);
+        
+        StringToken[] rackDomain = new StringToken[replicas];
+        
+        int domain = Integer.parseInt( keyToken.toString().substring(0,2), 16 ) & 0xFF;
+
+        // starting from different index each time to make calls even distributed
+        // across replicas in each rack
+        int rackIndex = domain % replicas; 
+        
+        for (int i=0;i<racks.length;i++) {
+                rackDomain[i] = odklPartitioner.toStringToken(domain,keyToken.toString()) ;
+            domain = shuffle( domain );
+        }
+        
         do
         {
+            String rack = racks[rackIndex];
+            tokens = getReplicaTokens(metadata,rack);
+            keyToken = rackDomain[rackIndex];
     
             Token t = TokenMetadata.firstToken(tokens, keyToken);
-            String keyTokenString = keyToken.toString();
 
             InetAddress endPoint = metadata.getEndPoint(t);
 
             endpoints.add(endPoint);
-            racks.remove(snitch_.getRack(endPoint));
             
-            int domain = Integer.parseInt( keyTokenString.substring(0,2), 16 ) & 0xFF;
-            domain = shuffle( domain );
-            keyToken = odklPartitioner.toStringToken(domain,keyTokenString);
-
-            if (!racks.isEmpty())
-                tokens = getReplicaTokens(metadata,racks.iterator().next());
+            rackIndex = (rackIndex+1) % replicas;
             
         } while (endpoints.size() < replicas);
 
@@ -213,11 +220,11 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
           
             int e=0;
             meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.36.86") );
-//            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
+            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
             meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.36.88") );
-//            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
+            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
             meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.10.247") );
-//            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
+            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
             
             
 
@@ -268,7 +275,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
 //          topology.put("192.168.38.115","DL:DL"    );        
 //          topology.put("192.168.11.247","M100:M100");        
 //          topology.put("192.168.48.172","KV:KV"    );        
-
+//
 //          topology.put("192.168.49.135","KV:KV"     );
 //          topology.put("192.168.38.227","DL:DL"     );
 //          topology.put("192.168.12.76","M100:M100" );
@@ -287,7 +294,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
 //              topology.put("127.0.0."+i, "DC1:RAC"+i % 3);
 //          }
             
-            RackAwareOdklEvenStrategy o = new RackAwareOdklEvenStrategy(new TokenMetadata(), new PropertyFileSnitch(topology)) {
+            RackAwareOdklStrategy o = new RackAwareOdklStrategy(new TokenMetadata(), new PropertyFileSnitch(topology)) {
                 void validate(GossipNetworkTopologySnith pfs)
                         throws ConfigurationException
                 {
@@ -311,13 +318,13 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             
             int startd=0x0, endd=0xff;
             
-            Multimap<InetAddress, Integer> endpDomains = ArrayListMultimap.create();
+            Multimap<InetAddress, String> endpDomains = ArrayListMultimap.create();
             
             for (int i=startd;i<endd;i++)
             {
-                List<InetAddress> endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null);
+                List<InetAddress> endpoints = o.getNaturalEndpoints(pp.toStringToken(i,"000"), meta, "Likes");
                 
-                System.out.println(i+" => "+Arrays.toString(endpoints.toArray()));
+                System.out.println( Integer.toHexString(i)+" => "+Arrays.toString(endpoints.toArray()));
                 
                 for (InetAddress end : endpoints) {
                     AtomicInteger c = cc.get(end);
@@ -326,7 +333,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                     else
                         c.incrementAndGet();
                     
-                    endpDomains.put(end, i);
+                    endpDomains.put(end, Integer.toHexString(i));
                 }
             }
             
@@ -358,19 +365,18 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                     
                 };
             
-            TokenMetadata btm = meta;
-            for (String[] task : bootstraps) {
-                btm = testBootstrap(pp, o, btm, task[0], task[1]);
-            }
+//            TokenMetadata btm = meta;
+//            for (String[] task : bootstraps) {
+//                btm = testBootstrap(pp, o, btm, task[0], task[1]);
+//            }
 
-            // testing calls when nodes fail
             for (Object failed : topology.keySet())
             {
                 System.out.println("Calls when primary fail:"+failed);
                 cc.clear();
                 for (int i=0;i<256;i++)
                 {
-                    InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null).toArray(new InetAddress[3]);
+                    InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i,"000"), meta, "Likes").toArray(new InetAddress[3]);
 
                     if (endpoints[0].getHostAddress().equals(failed))
                         endpoints[0]=null;
@@ -403,7 +409,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
                 cc.clear();
                 for (int i=0;i<256;i++)
                 {
-                    InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null).toArray(new InetAddress[3]);
+                    InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i,"000"), meta, "Likes").toArray(new InetAddress[3]);
 
                     if ( topology.get( endpoints[0].getHostAddress() ).equals(failed))
                         endpoints[0]=null;
@@ -435,7 +441,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
             cc.clear();
             for (int i=startd;i<endd;i++)
             {
-                InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null).toArray(new InetAddress[3]);
+                InetAddress[] endpoints = o.getNaturalEndpoints(pp.toStringToken(i,"000"), meta, "Likes").toArray(new InetAddress[3]);
                 
                 endpoints[0]=null;
                 endpoints[1]=null;
@@ -507,7 +513,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         return  ( (domain >> 1) | (domain & 1) << 7 );
     }
     
-    private static TokenMetadata testBootstrap(OdklDomainPartitioner pp, RackAwareOdklEvenStrategy o, TokenMetadata meta, String token, String endpoint) throws Exception
+    private static TokenMetadata testBootstrap(OdklDomainPartitioner pp, RackAwareOdklStrategy o, TokenMetadata meta, String token, String endpoint) throws Exception
     {
         Multimap<InetAddress, String> beforeB = domainMM(pp, o, meta);
 
@@ -520,7 +526,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         System.out.println("After bootstrap of "+endpoint);
         
         for (InetAddress i : afterB.asMap().keySet()) {
-            System.out.println(i.toString()+"="+afterB.get(i).size()+"   "+ afterB.get(i) );
+            System.out.println(i.toString()+"="+afterB.get(i).size()+"   "+afterB.get(i));
         }
         
         // now validating 
@@ -540,7 +546,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         return newMeta;
     }
 
-    private static Multimap<InetAddress, String> domainMM(OdklDomainPartitioner pp, RackAwareOdklEvenStrategy o, TokenMetadata meta)
+    private static Multimap<InetAddress, String> domainMM(OdklDomainPartitioner pp, RackAwareOdklStrategy o, TokenMetadata meta)
     {
         Multimap<InetAddress, String> endpDomains = ArrayListMultimap.create();
         
@@ -550,7 +556,7 @@ public class RackAwareOdklEvenStrategy extends OdklEvenStrategy
         
         for (int i=startd;i<endd;i++)
         {
-            List<InetAddress> endpoints = o.getNaturalEndpoints(pp.toStringToken(i), meta, null);
+            List<InetAddress> endpoints = o.getNaturalEndpoints(pp.toStringToken(i,"000"), meta, "Likes");
             
             for (InetAddress end : endpoints) {
                 endpDomains.put(end, Integer.toHexString(i));
