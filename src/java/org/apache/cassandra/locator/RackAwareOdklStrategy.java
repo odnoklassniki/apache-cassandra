@@ -131,6 +131,9 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
         {
             String rack = racks[rackIndex];
             tokens = getReplicaTokens(metadata,rack);
+            
+            assert tokens.size()>0 : "No nodes in ring found for rack "+rack+". This replication strategy requires you to have nodes for all racks you configured in AllowedLocations";
+            
             keyToken = rackDomain[rackIndex];
     
             Token t = TokenMetadata.firstToken(tokens, keyToken);
