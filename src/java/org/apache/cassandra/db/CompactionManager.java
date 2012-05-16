@@ -105,7 +105,7 @@ public class CompactionManager implements CompactionManagerMBean
                         // if we have too many to compact all at once, compact older ones first -- this avoids
                         // re-compacting files we just created.
                         Collections.sort(sstables);
-                        return doCompaction(cfs, sstables.subList(0, Math.min(sstables.size(), maximumCompactionThreshold)), getDefaultGCBefore());
+                        return doCompaction(cfs, sstables.subList(0, Math.min(sstables.size(), maximumCompactionThreshold)), getDefaultGcBefore(cfs));
                     }
                 }
                 return 0;
@@ -188,7 +188,7 @@ public class CompactionManager implements CompactionManagerMBean
 
     public Future submitMajor(final ColumnFamilyStore cfStore)
     {
-        return submitMajor(cfStore, 0, getDefaultGCBefore());
+        return submitMajor(cfStore, 0, getDefaultGcBefore(cfStore));
     }
 
     public Future submitMajor(final ColumnFamilyStore cfStore, final long skip, final int gcBefore)
@@ -416,7 +416,7 @@ public class CompactionManager implements CompactionManagerMBean
           logger.debug("Expected bloom filter size : " + expectedBloomFilterSize);
 
         SSTableWriter writer = null;
-        CompactionIterator ci = new AntiCompactionIterator(cfs, sstables, ranges, getDefaultGCBefore(), cfs.isCompleteSSTables(sstables));
+        CompactionIterator ci = new AntiCompactionIterator(cfs, sstables, ranges, getDefaultGcBefore(cfs), cfs.isCompleteSSTables(sstables));
         Iterator<CompactionIterator.CompactedRow> nni = new FilterIterator(ci, PredicateUtils.notNullPredicate());
         executor.beginCompaction(cfs, ci);
 
@@ -592,7 +592,7 @@ public class CompactionManager implements CompactionManagerMBean
     private void doValidationCompaction(ColumnFamilyStore cfs, AntiEntropyService.Validator validator) throws IOException
     {
         Collection<SSTableReader> sstables = cfs.getSSTables();
-        CompactionIterator ci = new CompactionIterator(cfs, sstables, getDefaultGCBefore(), true);
+        CompactionIterator ci = new CompactionIterator(cfs, sstables, getDefaultGcBefore(cfs), true);
         executor.beginCompaction(cfs, ci);
         try
         {
@@ -678,9 +678,9 @@ public class CompactionManager implements CompactionManagerMBean
         return tablePairs;
     }
 
-    public static int getDefaultGCBefore()
+    public static int getDefaultGcBefore(ColumnFamilyStore cfs)
     {
-        return (int)(System.currentTimeMillis() / 1000) - DatabaseDescriptor.getGcGraceInSeconds();
+        return (int) (System.currentTimeMillis() / 1000) - cfs.metadata.gcGraceSeconds;
     }
 
     private static class AntiCompactionIterator extends CompactionIterator

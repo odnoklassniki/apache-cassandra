@@ -47,11 +47,14 @@ public final class CFMetaData
     public final String  domainCFName;
     /** MM: domain value of the minimum key, if split by domain (domain + NUL char) **/
     public final Token domainMinToken, domainMaxToken;
+    
+    public final int gcGraceSeconds;
 
     CFMetaData(String tableName, String cfName, String columnType, AbstractType comparator, AbstractType subcolumnComparator,
                boolean bloomColumns,
                String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds,
-               boolean domainSplit, String domainCFName, Token domainMin, Token domainMax
+               boolean domainSplit, String domainCFName, Token domainMin, Token domainMax,
+               int gcGraceSeconds
                )
     {
         this.tableName = tableName;
@@ -69,6 +72,8 @@ public final class CFMetaData
         this.domainCFName = domainCFName;
         this.domainMinToken = domainMin;
         this.domainMaxToken = domainMax;
+        
+        this.gcGraceSeconds = gcGraceSeconds;
     }
 
     // a quick and dirty pretty printer for describing the column family...
@@ -99,4 +104,5 @@ public final class CFMetaData
                 && other.domainCFName.equals(domainCFName)
                 && other.domainMinToken.compareTo( domainMinToken )==0;
     }
+
 }

@@ -157,8 +157,6 @@ public class DatabaseDescriptor
     private static String jobJarFileLocation;
     /* Address where to run the job tracker */
     private static String jobTrackerHost;    
-    /* time to wait before garbage collecting tombstones (deletion markers) */
-    private static int gcGraceInSeconds = 10 * 24 * 3600; // 10 days
 
     // the path qualified config file (storage-conf.xml) name
     private static URI configFileURI;
@@ -376,6 +374,9 @@ public class DatabaseDescriptor
             jobJarFileLocation = xmlUtils.getNodeValue("/Storage/JobJarFileLocation");
 
             String gcGrace = xmlUtils.getNodeValue("/Storage/GCGraceSeconds");
+            /* time to wait before garbage collecting tombstones (deletion markers) */
+            int gcGraceInSeconds = 10 * 24 * 3600; // 10 days
+
             if ( gcGrace != null )
                 gcGraceInSeconds = Integer.parseInt(gcGrace);
 
@@ -682,7 +683,7 @@ public class DatabaseDescriptor
                     throw new ConfigurationException("Index Interval must be a positive, non-zero integer.");
             }
 
-            readTablesFromXml();
+            readTablesFromXml(gcGraceInSeconds);
             if (tables.isEmpty())
                 throw new ConfigurationException("No keyspaces configured");
 
@@ -702,7 +703,8 @@ public class DatabaseDescriptor
                                                                             DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS,
                                                                             false, 
                                                                             SystemTable.STATUS_CF,
-                                                                            null,null
+                                                                            null,null,
+                                                                            0
                                                                             ));
 
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
@@ -718,7 +720,8 @@ public class DatabaseDescriptor
                                                                                     DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS,
                                                                                     false, 
                                                                                     HintedHandOffManager.HINTS_CF,
-                                                                                    null,null
+                                                                                    null,null,
+                                                                                    0
                                                                                     ));
 
             // Configured local storages
@@ -842,7 +845,7 @@ public class DatabaseDescriptor
         MaintenanceTaskManager.init(tasks, windowStart, windowEnd);
     }
     
-    private static void readTablesFromXml() throws ConfigurationException
+    private static void readTablesFromXml(int gcGraceInSeconds) throws ConfigurationException
     {
         XMLUtils xmlUtils = null;
         try
@@ -963,7 +966,9 @@ public class DatabaseDescriptor
                         xmlUtils,
                         ksName,
                         xqlTable,
-                        meta);
+                        meta,
+                        gcGraceInSeconds
+                        );
 
                 tables.put(meta.name, meta);
             }
@@ -985,7 +990,7 @@ public class DatabaseDescriptor
     }
 
     private static void readColumnFamiliesFromXml(XMLUtils xmlUtils, String ksName,
-            String xqlTable, KSMetaData meta)
+            String xqlTable, KSMetaData meta, int gcGraceInSeconds)
             throws TransformerException, ConfigurationException,
             XPathExpressionException
     {
@@ -1105,12 +1110,12 @@ public class DatabaseDescriptor
                     String postfix='_'+domainToken.toString();
                     domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
                     Token domainMax = domain==255 ? getPartitioner().getToken(Integer.toHexString(0)) : getPartitioner().getToken(Integer.toHexString(domain+1));
-                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax));
+                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax,gcGraceInSeconds));
                 }
             }
             else
             {
-                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null));
+                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds));
             }
         }
         
@@ -1154,7 +1159,8 @@ public class DatabaseDescriptor
                         xmlUtils,
                         Table.SYSTEM_TABLE,
                         xqlTable,
-                        meta);
+                        meta,
+                        0); // for system storages gc grace is always 0 - they are not distributed, so thombstones are useless
 
         }
         catch (XPathExpressionException e)
@@ -1295,11 +1301,6 @@ public class DatabaseDescriptor
                 }
             }
         }
-    }
-
-    public static int getGcGraceInSeconds()
-    {
-        return gcGraceInSeconds;
     }
 
     public static IPartitioner getPartitioner()
