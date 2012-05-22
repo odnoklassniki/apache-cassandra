@@ -54,7 +54,7 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
     
     // MM:listens for all column names seen by this iterator
     private ObservingColumnFamilyDeserializer observingDeserializer;
-    private boolean skipBloom;
+    private final boolean skipBloom;
     
     private IColumnNameObserver columnNameObserver;
 
@@ -65,8 +65,6 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
     public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
     {
         this(cfs, getCollatingIterator(sstables), gcBefore, major);
-        
-        this.skipBloom = false;
     }
 
     @SuppressWarnings("unchecked")
@@ -82,6 +80,7 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
         this.cfs = cfs;
         this.gcBefore = gcBefore;
         this.major = major;
+        this.skipBloom = cfs.metadata.bloomColumns;
     }
 
     protected static CollatingIterator getCollatingIterator(Iterable<SSTableReader> sstables) throws IOException
@@ -168,6 +167,9 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
                 try
                 {
                     compactedRow = startRowWrite( key, row0.getDataSize() );
+                    
+                    assert columnNameObserver == null || !this.skipBloom;
+                    
                     if (columnNameObserver==null)
                     {
                         row0.echoData(compactedRow.buffer); // no processing neccessary. just dump it
@@ -221,10 +223,10 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
     protected void setColumnNameObserver(IColumnNameObserver columnNameObserver)
     {
         assert row == 0;
+        assert this.skipBloom;
 
         this.columnNameObserver = columnNameObserver;
         this.observingDeserializer = new ObservingColumnFamilyDeserializer(columnNameObserver);
-        this.skipBloom = true;
     }
     
     public long getTotalBytes()
