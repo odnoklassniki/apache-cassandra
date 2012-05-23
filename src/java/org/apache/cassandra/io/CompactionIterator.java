@@ -168,7 +168,7 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
                 {
                     compactedRow = startRowWrite( key, row0.getDataSize() );
                     
-                    assert columnNameObserver == null || !this.skipBloom;
+                    assert columnNameObserver != null || !this.skipBloom;
                     
                     if (columnNameObserver==null)
                     {

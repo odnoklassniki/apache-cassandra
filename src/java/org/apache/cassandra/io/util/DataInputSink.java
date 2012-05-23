@@ -7,9 +7,8 @@ package org.apache.cassandra.io.util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.EOFException;
 import java.io.IOException;
-
-import com.sun.xml.internal.rngom.parse.compact.EOFException;
 
 /**
  * Writes all data being read from this data input to supplied {@link DataOutput} object.
