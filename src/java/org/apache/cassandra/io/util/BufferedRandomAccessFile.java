@@ -292,12 +292,21 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
         return ByteBuffer.wrap(buff);
     }
 
-    private final byte[] singleByteBuffer = new byte[1]; // so we can use the write(byte[]) path w/o tons of new byte[] allocations
     @Override
     public void write(int val) throws IOException
     {
-        singleByteBuffer[0] = (byte) val;
-        this.write(singleByteBuffer, 0, 1);
+        int positionWithinBuffer = (int) (current - bufferOffset);
+        if (positionWithinBuffer>=buffer.length)
+        {
+            reBuffer();
+            positionWithinBuffer = (int) (current - bufferOffset);
+        }
+        buffer[positionWithinBuffer++]=(byte) val;
+        current ++;
+        validBufferBytes = Math.max(validBufferBytes, positionWithinBuffer);
+        isDirty = true;
+        syncNeeded = true;
+        assert current <= bufferOffset + buffer.length;
     }
 
     @Override
