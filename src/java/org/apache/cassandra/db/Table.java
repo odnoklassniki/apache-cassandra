@@ -21,17 +21,23 @@ package org.apache.cassandra.db;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-
-import com.google.common.base.Function;
-import com.google.common.collect.Iterables;
-import org.apache.log4j.Logger;
 
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -47,7 +53,11 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.CopyOnWriteMap;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
+import org.apache.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
+import com.google.common.base.Function;
+import com.google.common.collect.Iterables;
 
 public class Table 
 {
@@ -489,14 +499,17 @@ public class Table
      * Once this happens the data associated with the individual column families
      * is also written to the column family store's memtable.
     */
-    public void apply(RowMutation mutation, Object serializedMutation, boolean writeCommitLog) throws IOException
+    public void apply(RowMutation mutationParam, Object serializedMutation, boolean writeCommitLog) throws IOException
     {
         HashMap<ColumnFamilyStore,Memtable> memtablesToFlush = new HashMap<ColumnFamilyStore, Memtable>(2);
         
         boolean notAllApplied = false;
+        RowMutation mutation = mutationParam;
         
         if (storeFilters!=null)
         {
+            Set<ColumnFamily> cfsToRemove = null;
+
             // invoke listener prior critical section
             for (ColumnFamily columnFamily : mutation.getColumnFamilies())
             {
@@ -504,10 +517,17 @@ public class Table
                 if (listener!=null)
                 {
                     if (!listener.preapply(mutation.key(), columnFamily)){
-                        mutation.removeColumnFamily(columnFamily);
+                        if (cfsToRemove == null) {
+                            cfsToRemove = new HashSet<ColumnFamily>(mutation.getColumnFamilies().size());
+                        }
+                        cfsToRemove.add(columnFamily);
                         notAllApplied = true;
                     }
                 }
+            }
+
+            if (cfsToRemove != null) {
+                mutation = mutation.cloneAndRemoveColumnFamilies(cfsToRemove);
             }
         }
         
