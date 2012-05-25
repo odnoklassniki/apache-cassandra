@@ -51,7 +51,7 @@ public class DataInputSink implements DataInput
         {
             try {
                 int b=in.readUnsignedByte();
-                out.writeByte(i);
+                out.writeByte(b);
             } catch (EOFException e) {
                 return i;
             }
