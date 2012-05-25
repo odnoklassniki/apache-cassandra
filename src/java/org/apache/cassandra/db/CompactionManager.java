@@ -39,6 +39,9 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.cassandra.concurrent.DebuggableThreadPoolExecutor;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.proc.IRowProcessor;
+import org.apache.cassandra.db.proc.RemoveDeletedRowProcessor;
+import org.apache.cassandra.db.proc.RowProcessorChain;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.io.*;
 import org.apache.cassandra.io.util.DataOutputBuffer;
@@ -315,8 +318,10 @@ public class CompactionManager implements CompactionManagerMBean
         if (logger.isDebugEnabled())
           logger.debug("Expected bloom filter size : " + expectedBloomFilterSize);
 
+        IRowProcessor chain = new RowProcessorChain().add( new RemoveDeletedRowProcessor(gcBefore) ).addAll(cfs.metadata.rowProcessors).build();
+        
         String newFilename = new File(compactionFileLocation, cfs.getTempSSTableFileName()).getAbsolutePath();
-        CompactionWriterIterator ci = new CompactionWriterIterator(cfs, sstables, gcBefore, major, newFilename, expectedBloomFilterSize ); 
+        CompactionWriterIterator ci = new CompactionWriterIterator(cfs, sstables, chain, major, newFilename, expectedBloomFilterSize ); 
         Iterator<CompactionIterator.CompactedRow> nni = new FilterIterator(ci, PredicateUtils.notNullPredicate());
 
         executor.beginCompaction(cfs, ci);
@@ -569,7 +574,7 @@ public class CompactionManager implements CompactionManagerMBean
     private void doValidationCompaction(ColumnFamilyStore cfs, AntiEntropyService.Validator validator) throws IOException
     {
         Collection<SSTableReader> sstables = cfs.getSSTables();
-        CompactionIterator ci = new CompactionIterator(cfs, sstables, getDefaultGcBefore(cfs), true)
+        CompactionIterator ci = new CompactionIterator(cfs, sstables,  new RemoveDeletedRowProcessor(getDefaultGcBefore(cfs)), true)
         {
             /* (non-Javadoc)
              * @see org.apache.cassandra.io.CompactionIterator#startRowWrite(org.apache.cassandra.db.DecoratedKey, int)
@@ -682,7 +687,7 @@ public class CompactionManager implements CompactionManagerMBean
                 long expectedBloomFilterSize)
                 throws IOException
         {
-            super(cfStore, getCollatedRangeIterator(sstables, ranges), gcBefore, isMajor, newFilename, expectedBloomFilterSize);
+            super(cfStore, getCollatedRangeIterator(sstables, ranges), new RemoveDeletedRowProcessor(gcBefore), isMajor, newFilename, expectedBloomFilterSize);
         }
 
         private static Iterator getCollatedRangeIterator(Collection<SSTableReader> sstables, final Collection<Range> ranges)

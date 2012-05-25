@@ -40,7 +40,10 @@
    <MemtableOperationsInMillions>0.00002</MemtableOperationsInMillions> <!-- 20 -->
    <Keyspaces>
      <Keyspace Name = "Keyspace1">
-       <ColumnFamily Name="Standard1" RowsCached="10%" KeysCached="0"/>
+       <ColumnFamily Name="Standard1" RowsCached="10%" KeysCached="0">
+            <RowProcessor class="Test" multiplier="1"/>
+            <RowProcessor class="Test" multiplier="2"/>
+       </ColumnFamily>
        <ColumnFamily Name="Standard2"/>
        <ColumnFamily Name="Standard3" KeysCached="50%"/>
        <ColumnFamily Name="Standard4" KeysCached="100%"/>

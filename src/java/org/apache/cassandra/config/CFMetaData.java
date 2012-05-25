@@ -18,10 +18,14 @@
 
 package org.apache.cassandra.config;
 
+import java.util.List;
+import java.util.Properties;
+
 import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.dht.StringToken;
+import org.apache.cassandra.db.proc.IRowProcessor;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
 
 public final class CFMetaData
 {
@@ -49,12 +53,16 @@ public final class CFMetaData
     public final Token domainMinToken, domainMaxToken;
     
     public final int gcGraceSeconds;
-
+    
+    /** MM: row processor descriptors **/
+    public final List<Pair<Class<? extends IRowProcessor>,Properties>> rowProcessors;
+    
     CFMetaData(String tableName, String cfName, String columnType, AbstractType comparator, AbstractType subcolumnComparator,
                boolean bloomColumns,
                String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds,
                boolean domainSplit, String domainCFName, Token domainMin, Token domainMax,
-               int gcGraceSeconds
+               int gcGraceSeconds,
+               List<Pair<Class<? extends IRowProcessor>,Properties>> rowProcClasses
                )
     {
         this.tableName = tableName;
@@ -74,6 +82,8 @@ public final class CFMetaData
         this.domainMaxToken = domainMax;
         
         this.gcGraceSeconds = gcGraceSeconds;
+        
+        this.rowProcessors = rowProcClasses;
     }
 
     // a quick and dirty pretty printer for describing the column family...

@@ -25,16 +25,13 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import com.google.common.collect.AbstractIterator;
-
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.DecoratedKey;
-import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.FileRangeDataInput;
 import org.apache.cassandra.service.StorageService;
 
-public class IteratingRow extends AbstractIterator<IColumn> implements Comparable<IteratingRow>
+public class IteratingRow implements Comparable<IteratingRow>
 {
     private final DecoratedKey key;
     private final long finishedAt;
@@ -103,24 +100,6 @@ public class IteratingRow extends AbstractIterator<IColumn> implements Comparabl
     public long getEndPosition()
     {
         return finishedAt;
-    }
-
-    protected IColumn computeNext()
-    {
-        try
-        {
-            assert file.getFilePointer() <= finishedAt;
-            if (file.getFilePointer() == finishedAt)
-            {
-                return endOfData();
-            }
-
-            return sstable.getColumnSerializer().deserialize(file);
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
     }
 
     public int compareTo(IteratingRow o)

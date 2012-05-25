@@ -11,6 +11,7 @@ import java.util.Iterator;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.FSWriteError;
+import org.apache.cassandra.db.proc.IRowProcessor;
 import org.apache.cassandra.service.StorageService;
 
 /**
@@ -37,22 +38,22 @@ public class CompactionWriterIterator extends CompactionIterator
      * @throws IOException
      */
     public CompactionWriterIterator(ColumnFamilyStore cfs,
-            Iterable<SSTableReader> sstables, int gcBefore, boolean major,                                         
+            Iterable<SSTableReader> sstables, IRowProcessor rowp, boolean major,                                         
             String newFilename,
             long expectedBloomFilterSize
             ) throws IOException
     {
-        super(cfs, sstables, gcBefore, major);
+        super(cfs, sstables, rowp, major);
         
         this.newFilename = newFilename;
         this.expectedBloomFilterSize = expectedBloomFilterSize;
     }
     
-    protected CompactionWriterIterator(ColumnFamilyStore cfs, Iterator iter, int gcBefore, boolean major, 
+    protected CompactionWriterIterator(ColumnFamilyStore cfs, Iterator iter,IRowProcessor rowp, boolean major, 
             String newFilename,
             long expectedBloomFilterSize)
     {
-        super(cfs,iter,gcBefore,major);
+        super(cfs,iter,rowp,major);
         
         this.newFilename = newFilename;
         this.expectedBloomFilterSize = expectedBloomFilterSize;

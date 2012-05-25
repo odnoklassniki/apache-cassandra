@@ -35,6 +35,7 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.db.FSWriteError;
 import org.apache.cassandra.db.ObservingColumnFamilyDeserializer;
+import org.apache.cassandra.db.proc.IRowProcessor;
 import org.apache.cassandra.io.util.DataInputSink;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.ReducingIterator;
@@ -49,26 +50,27 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
 
     private final List<IteratingRow> rows = new ArrayList<IteratingRow>();
     protected final ColumnFamilyStore cfs;
-    private final int gcBefore;
     private final boolean major;
     
     // MM:listens for all column names seen by this iterator
     private ObservingColumnFamilyDeserializer observingDeserializer;
     private final boolean skipBloom;
-    
     private IColumnNameObserver columnNameObserver;
+    
+    private IRowProcessor rowProcessor;
+    private final boolean deserializeAllRows;
 
     private long totalBytes;
     private long bytesRead;
     private long row;
 
-    public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
+    public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, IRowProcessor rowp, boolean major) throws IOException
     {
-        this(cfs, getCollatingIterator(sstables), gcBefore, major);
+        this(cfs, getCollatingIterator(sstables), rowp, major);
     }
 
     @SuppressWarnings("unchecked")
-    protected CompactionIterator(ColumnFamilyStore cfs, Iterator iter, int gcBefore, boolean major)
+    protected CompactionIterator(ColumnFamilyStore cfs, Iterator iter, IRowProcessor rowp, boolean major)
     {
         super(iter);
         row = 0;
@@ -78,8 +80,10 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
             totalBytes += scanner.getFileLength();
         }
         this.cfs = cfs;
-        this.gcBefore = gcBefore;
         this.major = major;
+        this.rowProcessor = rowp;
+        this.rowProcessor.setColumnFamilyStore(cfs);
+        this.deserializeAllRows = major || rowProcessor.shouldProcessUnchanged();
         this.skipBloom = cfs.metadata.bloomColumns;
     }
 
@@ -107,7 +111,7 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
     protected abstract CompactedRow startRowWrite(DecoratedKey key, int cfSize);
     
     protected abstract void finishRowWrite(CompactedRow compactedRow);
-
+    
     protected CompactedRow getReduced()
     {
         assert rows.size() > 0;
@@ -116,14 +120,11 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
         DecoratedKey key = row0.getKey();
         CompactedRow compactedRow = null;
 
-        Set<SSTable> sstables = new HashSet<SSTable>();
-        for (IteratingRow row : rows)
-            sstables.add(row.sstable);
-        boolean shouldPurge = major || !cfs.isKeyInRemainingSSTables(key, sstables);
+        final boolean completeColumnSet = major || !isKeyInRemainingSSTables(key, rows);
 
         try
         {
-            if (rows.size() > 1 || shouldPurge)
+            if (deserializeAllRows || completeColumnSet || rows.size() > 1)
             {
                 ColumnFamily cf = null;
                 for (IteratingRow row : rows)
@@ -147,19 +148,21 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
                         cf.addAll(thisCF);
                     }
                 }
+
+                if (completeColumnSet || rowProcessor.shouldProcessIncomplete())
+                    cf = rowProcessor.process(key, cf, !completeColumnSet);
                 
-                ColumnFamily cfPurged = shouldPurge ? ColumnFamilyStore.removeDeleted(cf, gcBefore) : cf;
-                if (cfPurged == null)
+                if (cf == null)
                     return null;
 
-                int cfSize = ColumnFamily.serializer().serializeWithIndexesSize(cfPurged, skipBloom);
+                int cfSize = ColumnFamily.serializer().serializeWithIndexesSize(cf, skipBloom);
                 compactedRow = startRowWrite(key,cfSize);
-                ColumnFamily.serializer().serializeWithIndexes(cfPurged, compactedRow.buffer, skipBloom);
+                ColumnFamily.serializer().serializeWithIndexes(cf, compactedRow.buffer, skipBloom);
                 
                 finishRowWrite(compactedRow);
 
                 if (columnNameObserver!=null)
-                    columnNameObserver.add(key,cfPurged);
+                    columnNameObserver.add(key,cf);
             }
             else
             {
@@ -202,6 +205,16 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
         assert compactedRow != null;
         
         return compactedRow;
+    }
+
+    private boolean isKeyInRemainingSSTables(DecoratedKey key,
+            List<IteratingRow> rows2)
+    {
+        Set<SSTable> sstables = new HashSet<SSTable>();
+        for (IteratingRow row : rows2)
+            sstables.add(row.sstable);
+        
+        return cfs.isKeyInRemainingSSTables(key, sstables);
     }
 
     public void close() throws IOException

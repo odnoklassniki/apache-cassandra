@@ -44,6 +44,7 @@ import org.apache.cassandra.db.hints.HintLog;
 import org.apache.cassandra.db.hints.HintLogHandoffManager;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.db.proc.IRowProcessor;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.OdklDomainPartitioner;
 import org.apache.cassandra.dht.Token;
@@ -61,7 +62,9 @@ import org.apache.cassandra.maint.MaintenanceTaskManager;
 import org.apache.cassandra.maint.MajorCompactionTask;
 import org.apache.cassandra.maint.RackAwareMajorCompactionTask;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.XMLUtils;
+import org.w3c.dom.DOMException;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
@@ -704,7 +707,8 @@ public class DatabaseDescriptor
                                                                             false, 
                                                                             SystemTable.STATUS_CF,
                                                                             null,null,
-                                                                            0
+                                                                            0,
+                                                                            null
                                                                             ));
 
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
@@ -721,7 +725,8 @@ public class DatabaseDescriptor
                                                                                     false, 
                                                                                     HintedHandOffManager.HINTS_CF,
                                                                                     null,null,
-                                                                                    0
+                                                                                    0,
+                                                                                    null
                                                                                     ));
 
             // Configured local storages
@@ -1101,6 +1106,40 @@ public class DatabaseDescriptor
             int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
             int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
             
+            // Configuration of row processors:
+            // <RowProcessor class=ClassName parameter1="" />
+            NodeList rowProcessorsString = xmlUtils.getRequestedNodeList(xqlCF+"RowProcessor");
+            ArrayList<Pair<Class<? extends IRowProcessor>, Properties>> processors = null;
+            for (int i=0;i<rowProcessorsString.getLength();i++)
+            {
+               Node procNode = rowProcessorsString.item(i); 
+               
+               String procClassString =  XMLUtils.getAttributeValue(procNode, "class");
+               if (procClassString.indexOf('.')<0)
+               {
+                   procClassString= IRowProcessor.class.getPackage().getName()+'.'+procClassString+"RowProcessor";
+               }
+               
+               try {
+                   Class<? extends IRowProcessor> procClass = Class.forName(procClassString).asSubclass(IRowProcessor.class);
+
+                   // trying to create instance
+                   procClass.newInstance();
+
+                   Properties procProps = new Properties();
+                   for ( int ai=0;ai<procNode.getAttributes().getLength();ai++)
+                   {
+                       Node attr = procNode.getAttributes().item(ai);
+                       procProps.put(attr.getNodeName(), attr.getNodeValue());
+                   }
+
+                   if (processors==null) processors = new ArrayList<Pair<Class<? extends IRowProcessor>,Properties>>();
+                   processors.add( new Pair<Class<? extends IRowProcessor>, Properties>(procClass, procProps));
+               } catch (Exception e) {
+                   throw new ConfigurationException("Cannot configure row processor "+procClassString, e);
+               }
+            }
+            
             if (splitByDomain)
             {
                 // generating CFs postfixed with _{0-255}
@@ -1110,12 +1149,12 @@ public class DatabaseDescriptor
                     String postfix='_'+domainToken.toString();
                     domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
                     Token domainMax = domain==255 ? getPartitioner().getToken(Integer.toHexString(0)) : getPartitioner().getToken(Integer.toHexString(domain+1));
-                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax,gcGraceInSeconds));
+                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax,gcGraceInSeconds,processors));
                 }
             }
             else
             {
-                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds));
+                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds,processors));
             }
         }
         
