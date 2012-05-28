@@ -21,17 +21,23 @@ package org.apache.cassandra.db;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-
-import com.google.common.base.Function;
-import com.google.common.collect.Iterables;
-import org.apache.log4j.Logger;
 
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -47,7 +53,11 @@ import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.CopyOnWriteMap;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
+import org.apache.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
+import com.google.common.base.Function;
+import com.google.common.collect.Iterables;
 
 public class Table 
 {
@@ -493,21 +503,38 @@ public class Table
     {
         HashMap<ColumnFamilyStore,Memtable> memtablesToFlush = new HashMap<ColumnFamilyStore, Memtable>(2);
         
-        boolean notAllApplied = false;
-        
         if (storeFilters!=null)
         {
+            Set<String> cfsToRemove = null;
+
             // invoke listener prior critical section
             for (ColumnFamily columnFamily : mutation.getColumnFamilies())
             {
                 IStoreApplyListener listener = storeFilters.get( columnFamily.name() );
                 if (listener!=null)
                 {
-                    if (!listener.preapply(mutation.key(), columnFamily)){
-                        mutation.removeColumnFamily(columnFamily);
-                        notAllApplied = true;
+                    if (!listener.preapply(mutation.key(), columnFamily))
+                    {   
+                        // listener is requested to skip this column family from mutation
+                        
+                        int mutationsSize = mutation.getColumnFamilies().size();
+                        
+                        if (mutationsSize==1)
+                            return; // this was the only CF in mutation. fast skipping update.
+                        
+                        if (cfsToRemove == null) {
+                            cfsToRemove = new HashSet<String>(mutationsSize);
+                        }
+                        
+                        cfsToRemove.add(columnFamily.name());
                     }
                 }
+            }
+
+            if (cfsToRemove != null) {
+                mutation = mutation.cloneAndRemoveColumnFamilies(cfsToRemove);
+                // just changed the mutation, so rebuild the serialized buffer of mutation
+                serializedMutation = mutation.getSerializedBuffer();
             }
         }
         
@@ -515,11 +542,6 @@ public class Table
             return;
         }
         
-        // listener changed the mutation, so we rebuild the serialized mutation
-        if (notAllApplied){
-            serializedMutation = mutation.getSerializedBuffer();
-        }
-
         // write the mutation to the commitlog and memtables
         flusherLock.readLock().lock();
         try
