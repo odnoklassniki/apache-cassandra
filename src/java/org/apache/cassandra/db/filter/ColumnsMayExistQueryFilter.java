@@ -6,6 +6,9 @@
 package org.apache.cassandra.db.filter;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Iterator;
 
 import org.apache.cassandra.db.ColumnFamily;
@@ -36,6 +39,8 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
     
     private DecoratedKey decoratedKey;
     
+    private ArrayList<SSTableReader> sstables = new ArrayList<SSTableReader>();
+
     /**
      * 
      * @param key
@@ -62,15 +67,16 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
     {
         this.emptyColumnIterator = new EmptyColumnIterator(memtable.getTableName(), path.columnFamilyName);
 
-        if (cf==null)
+        if (cf==null|| cf.isMarkedForDelete())
             return emptyColumnIterator; // row not found
         
         Iterator<byte[]> it = names.iterator();
         while (collectedCount<limit && it.hasNext())
         {
             byte[] name = it.next();
+            IColumn c = cf.getColumn(name);
             
-            if (!collector.isCollected(name) && cf.getColumn(name)!=null)
+            if (c!=null && c.isLive() && !collector.isCollected(name))
             {
                 collector.collect(name);
                 collectedCount++;
@@ -92,25 +98,8 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
         if (collectedCount>=limit)
             return emptyColumnIterator; // we already found all columns in memtable
          
-        if (decoratedKey == null)
-            decoratedKey = sstable.getPartitioner().decorateKey(key);
-        
-        Iterator<byte[]> it = names.iterator();
-        while (collectedCount<limit && it.hasNext())
-        {
-            byte[] name = it.next();
-            
-            if (collector.isCollected(name))
-                continue;
-            
-            // did not found it previously. inspecting sstable bloom filter
-            if (sstable.mayPresent(decoratedKey, name))
-            {
-                collector.collect(name);
-                collectedCount++;
-            }
-        }
-        
+        sstables.add( sstable );
+
         return emptyColumnIterator;
     }
 
@@ -131,6 +120,46 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
     public void collectCollatedColumns(ColumnFamily returnCF,
             Iterator<IColumn> collatedColumns, int gcBefore)
     {
+        if (collectedCount<limit && sstables.size()>0)
+        {
+            // memtable did not satisfied query. need to traverse sstables.
+
+            // sort sstables making ones with large bloom filter first. large blooms will cause less false positives
+            SSTableReader[] sst = sstables.toArray(new SSTableReader[sstables.size()]);
+            Arrays.sort(sst, new Comparator<SSTableReader>()
+            {
+
+                @Override
+                public int compare(SSTableReader sst1, SSTableReader sst2)
+                {
+                    long l1=sst1.getBloomFilter().buckets(), l2 = sst2.getBloomFilter().buckets();
+                    return l2 >= l1 ? ((int) (l2 != l1 ? 1 : 0)) : -1;
+                }
+            });
+
+            DecoratedKey decoratedKey = sst[0].getPartitioner().decorateKey(key);
+
+            for (SSTableReader sstable : sst) 
+            {
+                Iterator<byte[]> it = names.iterator();
+                
+                while (collectedCount<limit && it.hasNext())
+                {
+                    byte[] name = it.next();
+
+                    // did not found it previously. inspecting sstable bloom filter
+                    if (!collector.isCollected(name) && sstable.mayPresent(decoratedKey, name))
+                    {
+                        collector.collect(name);
+                        collectedCount++;
+                    }
+                }
+                
+                if ( collectedCount >= limit )
+                    break;
+
+            }
+        }
     }
 
     /* (non-Javadoc)
