@@ -64,6 +64,15 @@ public class RemoveDeletedRowProcessor implements IRowProcessor
     }
     
     /* (non-Javadoc)
+     * @see org.apache.cassandra.db.proc.IRowProcessor.shouldProcessEmpty()
+     */
+    @Override
+    public boolean shouldProcessEmpty()
+    {
+        return false;
+    }
+
+    /* (non-Javadoc)
      * @see org.apache.cassandra.db.proc.IRowProcessor#process(org.apache.cassandra.db.DecoratedKey, org.apache.cassandra.db.ColumnFamily, boolean)
      */
     @Override

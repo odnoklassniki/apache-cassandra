@@ -25,7 +25,7 @@ public class RowProcessorChain implements IRowProcessor
 {
     private final ArrayList<IRowProcessor> processors = new ArrayList<IRowProcessor>();
     
-    boolean procUnchanged, procIncomplete;
+    boolean procUnchanged, procIncomplete, procEmpty;
 
     public RowProcessorChain add(IRowProcessor p)
     {
@@ -33,7 +33,8 @@ public class RowProcessorChain implements IRowProcessor
         
         procUnchanged|=p.shouldProcessUnchanged();
         procIncomplete|=p.shouldProcessIncomplete();
-        
+        procEmpty|=p.shouldProcessEmpty();
+
         return this;
     }
     
@@ -92,6 +93,15 @@ public class RowProcessorChain implements IRowProcessor
     }
     
     /* (non-Javadoc)
+     * @see org.apache.cassandra.db.proc.IRowProcessor.shouldProcessEmpty()
+     */
+    @Override
+    public boolean shouldProcessEmpty()
+    {
+        return procEmpty;
+    }
+
+    /* (non-Javadoc)
      * @see org.apache.cassandra.db.proc.IRowProcessor#setColumnFamilyStore(org.apache.cassandra.db.ColumnFamilyStore)
      */
     @Override
@@ -114,7 +124,11 @@ public class RowProcessorChain implements IRowProcessor
             
             IRowProcessor p = processors.get(i);
             
-            if (!incomplete || p.shouldProcessIncomplete())
+            boolean empty = (columns == null || columns.getColumnsMap().isEmpty());
+            boolean procIncomplete = p.shouldProcessIncomplete();
+            boolean procEmpty = p.shouldProcessEmpty();
+            
+            if ((!incomplete || procIncomplete) && (!empty || procEmpty))
                 columns=p.process(key,columns,incomplete);
         }
         

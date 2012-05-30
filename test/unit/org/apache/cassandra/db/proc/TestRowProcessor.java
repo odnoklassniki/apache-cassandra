@@ -17,7 +17,7 @@ import org.apache.cassandra.db.DecoratedKey;
  */
 public class TestRowProcessor implements IRowProcessor
 {
-    public static boolean shouldProcessIncomplete = false, shouldProcessUnchanged = false, active = false;
+    public static boolean shouldProcessIncomplete = false, shouldProcessUnchanged = false, shouldProcessEmpty = false, active = false;
     public static int count = 0;
     
     public int mult=0;
@@ -75,6 +75,15 @@ public class TestRowProcessor implements IRowProcessor
     public boolean shouldProcessIncomplete()
     {
         return shouldProcessIncomplete;
+    }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.db.proc.IRowProcessor.shouldProcessEmpty()
+     */
+    @Override
+    public boolean shouldProcessEmpty()
+    {
+        return shouldProcessEmpty;
     }
 
 }

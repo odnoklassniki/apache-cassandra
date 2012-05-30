@@ -65,7 +65,12 @@ public interface IRowProcessor
     boolean shouldProcessUnchanged();
 
     /**
-     * @return true, if even incomplete sets of row columns should be processed. This implies processin on memtable flush as well.
+     * @return true, if even incomplete sets of row columns should be processed. This implies processing on memtable flush as well.
      */
     boolean shouldProcessIncomplete();
+
+    /**
+     * @return true, if even empty sets of row columns should be processed.
+     */
+    boolean shouldProcessEmpty();
 }
