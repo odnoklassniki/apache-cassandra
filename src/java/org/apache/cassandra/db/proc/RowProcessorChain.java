@@ -121,10 +121,14 @@ public class RowProcessorChain implements IRowProcessor
     {
         for (int i=0;i<processors.size();i++) 
         {
-            
+            boolean empty = (columns == null || columns.getColumnsMap().isEmpty());
+
+            // Do not continue to process the chain if column family became empty
+            if (empty && !this.procEmpty)
+                break;
+
             IRowProcessor p = processors.get(i);
             
-            boolean empty = (columns == null || columns.getColumnsMap().isEmpty());
             boolean procIncomplete = p.shouldProcessIncomplete();
             boolean procEmpty = p.shouldProcessEmpty();
             
