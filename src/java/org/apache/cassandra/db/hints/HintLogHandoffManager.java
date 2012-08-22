@@ -9,6 +9,7 @@ import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.concurrent.TimeoutException;
 
@@ -75,9 +76,19 @@ public class HintLogHandoffManager extends HintedHandOffManager
         while (hintsToDeliver.hasNext())
         {
             byte[] rm = hintsToDeliver.next();
-
+            int leftRetries = 10;
             while (!deliverHint(endPoint, rm))
             {
+                leftRetries --;
+                if (leftRetries == 0){
+                    byte[] tmp = rm;
+                    if (tmp.length > 10*1024){
+                        tmp = Arrays.copyOfRange(tmp, 0, 10*1024);
+                    }
+                    logger_.error("Skip one mutation delivery to "+endPoint.getHostAddress()+" , "+FBUtilities.bytesToHex(tmp));
+                    
+                    break;
+                }
                 // may be this is temporary problem. Trying to pause for some time.
                 try {
                     Thread.sleep(DatabaseDescriptor.getRpcTimeout());
@@ -130,7 +141,13 @@ public class HintLogHandoffManager extends HintedHandOffManager
         }
         catch (TimeoutException e)
         {
-            return false;
+            logger_.error("Timeout processing hint with size "+(rm.length) + "bytes");
+            
+            if (rm.length > 1000000){
+                return true;
+            } else {
+                return false;
+            }
         }
     }
 
