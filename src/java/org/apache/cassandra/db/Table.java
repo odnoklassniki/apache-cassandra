@@ -492,9 +492,7 @@ public class Table
     public void apply(RowMutation mutation, Object serializedMutation, boolean writeCommitLog) throws IOException
     {
         HashMap<ColumnFamilyStore,Memtable> memtablesToFlush = new HashMap<ColumnFamilyStore, Memtable>(2);
-        
-        boolean notAllApplied = false;
-        
+        RowMutation filteredMutation = null;
         if (storeFilters!=null)
         {
             // invoke listener prior critical section
@@ -504,21 +502,31 @@ public class Table
                 if (listener!=null)
                 {
                     if (!listener.preapply(mutation.key(), columnFamily)){
-                        mutation.removeColumnFamily(columnFamily);
-                        notAllApplied = true;
+                        //create copy for mutation to avoid ConcurrentModificationException in send threads
+                        if (filteredMutation == null){
+                            filteredMutation  = new RowMutation(mutation.getTable(), mutation.key(), new HashMap<String, ColumnFamily>(mutation.modifications_));
+                        }
+                        filteredMutation.modifications_.remove(columnFamily.name());
                     }
                 }
             }
         }
         
-        if (mutation.isEmpty()){
-            return;
+        if (filteredMutation != null){
+            //something was filtered
+            mutation = filteredMutation;
+            
+            if (mutation.isEmpty()){
+                return;
+            }
+            
+            // rebuild the serialized mutation
+            serializedMutation = mutation.getSerializedBuffer();
+            
+            
         }
         
-        // listener changed the mutation, so we rebuild the serialized mutation
-        if (notAllApplied){
-            serializedMutation = mutation.getSerializedBuffer();
-        }
+       
 
         // write the mutation to the commitlog and memtables
         flusherLock.readLock().lock();
