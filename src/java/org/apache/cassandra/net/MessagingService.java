@@ -33,10 +33,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+
 
 import com.google.common.base.Function;
-import com.sun.xml.internal.rngom.digested.DDataPattern;
 
 import org.apache.log4j.Logger;
 
@@ -44,7 +43,6 @@ import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.HintedHandOffManager;
-import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.locator.ILatencySubscriber;
 import org.apache.cassandra.net.io.SerializerType;
@@ -52,7 +50,6 @@ import org.apache.cassandra.net.sink.SinkManager;
 import org.apache.cassandra.service.ConsistencyChecker;
 import org.apache.cassandra.service.GCInspector;
 import org.apache.cassandra.service.QuorumResponseHandler;
-import org.apache.cassandra.service.StorageProxy;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.ExpiringMap;
 import org.apache.cassandra.utils.Pair;

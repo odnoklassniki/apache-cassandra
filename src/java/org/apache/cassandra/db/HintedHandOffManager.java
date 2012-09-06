@@ -19,15 +19,21 @@
 package org.apache.cassandra.db;
 
 import java.io.IOException;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.log4j.Logger;
 import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.config.ConfigurationException;
@@ -36,6 +42,7 @@ import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
 import org.apache.cassandra.db.hints.HintLogHandoffManager;
+import org.apache.cassandra.gms.ApplicationState;
 import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.net.Message;
@@ -43,6 +50,7 @@ import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.DigestMismatchException;
 import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.cassandra.thrift.InvalidRequestException;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
@@ -101,6 +109,7 @@ public class HintedHandOffManager
     private static final Logger logger_ = Logger.getLogger(HintedHandOffManager.class);
     public static final String HINTS_CF = "HintsColumnFamily";
     private static final int PAGE_SIZE = 10000;
+    private static final String APPSTATE_PAYING_HINTS = "PLAYING_HINTS";
 
     protected final NonBlockingHashSet<InetAddress> queuedDeliveries = new NonBlockingHashSet<InetAddress>();
 
@@ -266,12 +275,18 @@ public class HintedHandOffManager
     {
         if (!queuedDeliveries.add(to))
             return;
-
+        
+        notifyStartPlayingHints(to);
+        
         Runnable r = new WrappedRunnable()
         {
             public void runMayThrow() throws Exception
             {
-                deliverHintsToEndpoint(to);
+                try{
+                    deliverHintsToEndpoint(to);
+                }finally{
+                    notifyFinishedPlayingHints(to);
+                }
             }
         };
     	executor_.submit(r);
@@ -299,4 +314,65 @@ public class HintedHandOffManager
         hintedMutation.addHints(rm.key(), hint.getAddress());
         hintedMutation.apply();
     }
+    
+    public boolean isSomebodyPlayingHits(){
+        InetAddress localAddress = FBUtilities.getLocalAddress();
+        Set<InetAddress> endpoints = Gossiper.instance.getLiveMembers();
+        for (InetAddress endpoint : endpoints) {
+            List<InetAddress> playingHints = getPlayingHints(endpoint);
+            if (playingHints != null  && playingHints.contains(localAddress)){
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    private  List<InetAddress> getPlayingHints(InetAddress endpoint) {
+        ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_PAYING_HINTS);
+        if (applicationState==null)
+            return Collections.<InetAddress>emptyList();
+        
+        String value = applicationState.getValue();
+        if (value == null){
+            return Collections.<InetAddress>emptyList();
+        }
+        
+        String[] tokens = StringUtils.split(value, ",");
+        List<InetAddress> res = new ArrayList<InetAddress>(tokens.length);
+        for (String token : tokens) {
+            try {
+                byte[] addr = FBUtilities.hexToBytes(token);
+                res.add(Inet4Address.getByAddress(addr));
+            } catch (Exception e) {
+                logger_.error("Invalid end point addreess", e);
+            }
+        }
+        return res;
+    }
+    
+    private List<InetAddress> currentylPlayingHints = new ArrayList<InetAddress>();
+    
+    private synchronized void notifyStartPlayingHints(InetAddress endPoint){
+        currentylPlayingHints.add(endPoint);
+        setPlayingHints(currentylPlayingHints);
+    }
+    
+    private synchronized void notifyFinishedPlayingHints(InetAddress endPoint){
+        currentylPlayingHints.remove(endPoint);
+        setPlayingHints(currentylPlayingHints);
+    }
+    
+    private  void setPlayingHints(List<InetAddress> endpoints) {
+        StringBuilder sb = new StringBuilder();
+        if (endpoints != null){
+            for (InetAddress endpoint : endpoints) {
+                String token = FBUtilities.bytesToHex(endpoint.getAddress());
+                if (sb.length() > 0){
+                    sb.append(",");
+                }
+                sb.append(token);
+            }
+        }
+        Gossiper.instance.addLocalApplicationState(APPSTATE_PAYING_HINTS, new ApplicationState( sb.toString()));
+    } 
 }

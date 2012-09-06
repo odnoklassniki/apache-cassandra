@@ -73,7 +73,7 @@ public class RowMutationVerbHandler implements IVerbHandler
         }
         catch (IOException e)
         {
-            logger_.error("Error in row mutation", e);
+            logger_.error("Error in row mutation : "+message, e);
         }
     }
 }
