@@ -75,9 +75,15 @@ public class HintLogHandoffManager extends HintedHandOffManager
         while (hintsToDeliver.hasNext())
         {
             byte[] rm = hintsToDeliver.next();
-
+            int leftRetries = 10;
             while (!deliverHint(endPoint, rm))
             {
+                leftRetries --;
+                if (leftRetries == 0){
+                    logger_.info("Hint delivery skipped to "+endPoint.getHostAddress() +" due to multiple errors");
+                    
+                    break;
+                }
                 // may be this is temporary problem. Trying to pause for some time.
                 try {
                     Thread.sleep(DatabaseDescriptor.getRpcTimeout());
@@ -130,6 +136,7 @@ public class HintLogHandoffManager extends HintedHandOffManager
         }
         catch (TimeoutException e)
         {
+            logger_.error ("Timeout sending hint to "+endPoint+", size = "+rm.length);
             return false;
         }
     }
