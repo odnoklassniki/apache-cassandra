@@ -285,7 +285,10 @@ public class HintedHandOffManager
                 try{
                     deliverHintsToEndpoint(to);
                 }finally{
-                    notifyFinishedPlayingHints(to);
+                    //если не пришло новое задание, то нотифицируем об окончании
+                    if (!queuedDeliveries.contains(to)){
+                        notifyFinishedPlayingHints(to);
+                    }
                 }
             }
         };
@@ -352,13 +355,17 @@ public class HintedHandOffManager
     
     private List<InetAddress> currentylPlayingHints = new ArrayList<InetAddress>();
     
-    private synchronized void notifyStartPlayingHints(InetAddress endPoint){
-        currentylPlayingHints.add(endPoint);
+    private void notifyStartPlayingHints(InetAddress endPoint){
+        synchronized(currentylPlayingHints){
+            currentylPlayingHints.add(endPoint);
+        }
         setPlayingHints(currentylPlayingHints);
     }
     
-    private synchronized void notifyFinishedPlayingHints(InetAddress endPoint){
-        currentylPlayingHints.remove(endPoint);
+    private void notifyFinishedPlayingHints(InetAddress endPoint){
+        synchronized(currentylPlayingHints){
+            currentylPlayingHints.remove(endPoint);
+        }
         setPlayingHints(currentylPlayingHints);
     }
     
