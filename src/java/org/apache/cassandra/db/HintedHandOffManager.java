@@ -330,6 +330,19 @@ public class HintedHandOffManager
         return false;
     }
     
+    public List<InetAddress> getNodesPlayingHits(){
+        List<InetAddress>  res = new ArrayList<InetAddress>();
+        InetAddress localAddress = FBUtilities.getLocalAddress();
+        Set<InetAddress> endpoints = Gossiper.instance.getLiveMembers();
+        for (InetAddress endpoint : endpoints) {
+            List<InetAddress> playingHints = getPlayingHints(endpoint);
+            if (playingHints != null  && playingHints.contains(localAddress)){
+                res.add(endpoint);
+            }
+        }
+        return res;
+    }
+    
     private  List<InetAddress> getPlayingHints(InetAddress endpoint) {
         ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_PAYING_HINTS);
         if (applicationState==null)
