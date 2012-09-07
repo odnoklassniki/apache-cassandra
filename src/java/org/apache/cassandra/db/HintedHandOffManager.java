@@ -31,17 +31,12 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeoutException;
 
-import org.apache.log4j.Logger;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
-
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.filter.SliceQueryFilter;
-import org.apache.cassandra.db.hints.HintLogHandoffManager;
 import org.apache.cassandra.gms.ApplicationState;
 import org.apache.cassandra.gms.FailureDetector;
 import org.apache.cassandra.gms.Gossiper;
@@ -52,6 +47,9 @@ import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.cassandra.thrift.InvalidRequestException;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
+import org.apache.commons.lang.ArrayUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
 
@@ -114,6 +112,7 @@ public class HintedHandOffManager
     protected final NonBlockingHashSet<InetAddress> queuedDeliveries = new NonBlockingHashSet<InetAddress>();
 
     private final ExecutorService executor_;
+    private boolean  needUpdatePlayingHints;
 
     public HintedHandOffManager()
     {
@@ -121,6 +120,8 @@ public class HintedHandOffManager
                          ? Thread.NORM_PRIORITY
                          : Integer.parseInt(System.getProperty("cassandra.compaction.priority"));
         executor_ = new JMXEnabledThreadPoolExecutor("HINTED-HANDOFF-POOL", hhPriority);
+        new UpdatePlayingHintsThread().start();
+        
     }
 
     private static boolean sendMessage(InetAddress endPoint, String tableName, String key) throws IOException
@@ -370,16 +371,21 @@ public class HintedHandOffManager
     private void notifyStartPlayingHints(InetAddress endPoint){
         synchronized(currentylPlayingHints){
             currentylPlayingHints.add(endPoint);
+            needUpdatePlayingHints = true;
         }
-        setPlayingHints(currentylPlayingHints);
+        
     }
-    
+   
+
     private void notifyFinishedPlayingHints(InetAddress endPoint){
         synchronized(currentylPlayingHints){
             currentylPlayingHints.remove(endPoint);
+            needUpdatePlayingHints = true;
         }
-        setPlayingHints(currentylPlayingHints);
+        
     }
+    
+    
     
     private  void setPlayingHints(List<InetAddress> endpoints) {
         StringBuilder sb = new StringBuilder();
@@ -393,5 +399,41 @@ public class HintedHandOffManager
             }
         }
         Gossiper.instance.addLocalApplicationState(APPSTATE_PAYING_HINTS, new ApplicationState( sb.toString()));
+        
+        logger_.info("Notified cluster about playing hints "+sb.toString());
+        
     } 
+    
+    class UpdatePlayingHintsThread extends Thread{
+
+        public UpdatePlayingHintsThread() {
+            super("UpdatePlayingHintsThread");
+        }
+
+        @Override
+        public void run() {
+           
+            while(!interrupted()){
+                
+                synchronized (currentylPlayingHints) {
+                    if (needUpdatePlayingHints){
+                        try{
+                            setPlayingHints(currentylPlayingHints);
+                            needUpdatePlayingHints = false;
+                        }catch(Throwable e){
+                           logger_.error("Failed to notify cluster playing hints", e); 
+                        }
+                        
+                    }    
+                } 
+                try{
+                    Thread.sleep(1000);
+                }catch(InterruptedException e){
+                    return;
+                }
+                
+            }
+        }
+        
+    }
 }
