@@ -286,9 +286,8 @@ public class HintedHandOffManager
                     deliverHintsToEndpoint(to);
                 }finally{
                     //если не пришло новое задание, то нотифицируем об окончании
-                    if (!queuedDeliveries.contains(to)){
-                        notifyFinishedPlayingHints(to);
-                    }
+                    notifyFinishedPlayingHints(to);
+                    
                 }
             }
         };
