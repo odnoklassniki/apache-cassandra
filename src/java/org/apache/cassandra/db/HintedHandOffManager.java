@@ -279,7 +279,7 @@ public class HintedHandOffManager
         notifyStartPlayingHints(to);
         
         Runnable r = new WrappedRunnable()
-        {
+        {   
             public void runMayThrow() throws Exception
             {
                 try{
@@ -337,13 +337,13 @@ public class HintedHandOffManager
         for (InetAddress endpoint : endpoints) {
             List<InetAddress> playingHints = getPlayingHints(endpoint);
             if (playingHints != null  && playingHints.contains(localAddress)){
-                res.add(endpoint);
+                res.add(endpoint);  
             }
         }
         return res;
     }
     
-    private  List<InetAddress> getPlayingHints(InetAddress endpoint) {
+    public  List<InetAddress> getPlayingHints(InetAddress endpoint) {
         ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_PAYING_HINTS);
         if (applicationState==null)
             return Collections.<InetAddress>emptyList();
