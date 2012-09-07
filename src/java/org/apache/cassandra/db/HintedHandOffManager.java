@@ -399,7 +399,20 @@ public class HintedHandOffManager
             }
         }
         Gossiper.instance.addLocalApplicationState(APPSTATE_PAYING_HINTS, new ApplicationState( sb.toString()));
-        
+
+        //распечатаем в нормальном виде
+        sb = new StringBuilder();
+        if (endpoints != null){
+            for (InetAddress endpoint : endpoints) {
+                if (sb.length() > 0){
+                    sb.append(",");
+                }else{
+                    sb.append("[");
+                }
+                sb.append(endpoint);
+            }
+        }
+        sb.append("]");
         logger_.info("Notified cluster about playing hints "+sb.toString());
         
     } 
@@ -415,10 +428,12 @@ public class HintedHandOffManager
            
             while(!interrupted()){
                 
+                ArrayList<InetAddress> copy =null;
+                //надо как-то гарантирова, что мы все послали, желательно батчем и при этом не заблочить никого на Gossiper
                 synchronized (currentylPlayingHints) {
                     if (needUpdatePlayingHints){
                         try{
-                            setPlayingHints(currentylPlayingHints);
+                            copy = new ArrayList<InetAddress>(currentylPlayingHints);
                             needUpdatePlayingHints = false;
                         }catch(Throwable e){
                            logger_.error("Failed to notify cluster playing hints", e); 
@@ -426,6 +441,10 @@ public class HintedHandOffManager
                         
                     }    
                 } 
+                
+                if (copy != null){
+                    setPlayingHints(copy);
+                }
                 try{
                     Thread.sleep(1000);
                 }catch(InterruptedException e){
