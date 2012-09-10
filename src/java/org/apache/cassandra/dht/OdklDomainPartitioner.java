@@ -43,7 +43,7 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
         return Character.isDigit(c) || (c>='a' && c<='f');
     }
     
-    private StringToken toStringToken(String key)
+    protected StringToken toStringToken(String key)
     {
         key=key.toLowerCase();
         
