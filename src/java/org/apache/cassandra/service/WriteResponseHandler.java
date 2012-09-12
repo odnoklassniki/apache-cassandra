@@ -76,9 +76,13 @@ public class WriteResponseHandler implements IAsyncCallback
         responses.set(++remoteEndpointCount, toInt(endpoint.getAddress()) );
     }
 
-    public void get() throws TimeoutException
-    {
+    public void get() throws TimeoutException{
         long timeout = DatabaseDescriptor.getRpcTimeout() - (System.nanoTime() - startNanos)/1000000;
+        get(timeout);
+    }
+    
+    public void get(long timeout) throws TimeoutException
+    {
         boolean success;
         try
         {

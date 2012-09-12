@@ -76,7 +76,8 @@ public class HintLogHandoffManager extends HintedHandOffManager
         {
             byte[] rm = hintsToDeliver.next();
             int leftRetries = 10;
-            while (!deliverHint(endPoint, rm))
+            Long timeout = null; //первый раз используем дефалтный таймаут
+            while (!deliverHint(endPoint, rm, timeout))
             {
                 leftRetries --;
                 if (leftRetries == 0){
@@ -96,6 +97,14 @@ public class HintLogHandoffManager extends HintedHandOffManager
                 {
                     logger_.info("Hints delivery to "+endPoint.getHostAddress()+" is cancelled - endpoint is dead. Will restart as soon as it gets UP again");
                     break HINT_DELIVERY;
+                }
+                
+                if (timeout == null){
+                  //второй раз используем дефалтный таймаут не без учета времени отсылки 
+                    timeout = DatabaseDescriptor.getRpcTimeout();
+                }else{
+                  //каждый следующий раз увеличиваем таймаут в 2 раза
+                    timeout += timeout;
                 }
             }
             
@@ -122,7 +131,7 @@ public class HintLogHandoffManager extends HintedHandOffManager
         
     }
 
-    private boolean deliverHint(InetAddress endPoint, byte[] rm)
+    private boolean deliverHint(InetAddress endPoint, byte[] rm, Long timeout)
             throws IOException
     {
         Message message = RowMutation.makeRowMutationMessage(rm);
@@ -130,7 +139,11 @@ public class HintLogHandoffManager extends HintedHandOffManager
         MessagingService.instance.sendRR(message, endPoint, responseHandler,false /* we dont want this hint to be saved again on timeout **/);
         try
         {
-            responseHandler.get();
+            if (timeout == null){
+                responseHandler.get();
+            }else{
+                responseHandler.get(timeout);
+            }
             
             return true;
         }
