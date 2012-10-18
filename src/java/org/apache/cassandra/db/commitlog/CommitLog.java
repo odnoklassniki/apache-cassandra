@@ -377,7 +377,7 @@ public class CommitLog
                                 for (ColumnFamily columnFamily : columnFamilies)
                                 {
                                     int id = table.getColumnFamilyId(columnFamily.name());
-                                    if (!finalHeader.isDirty(id) || entryLocation <= finalHeader.getPosition(id))
+                                    if ( entryLocation <= finalHeader.getPosition(id) )
                                     {
                                         rm.removeColumnFamily(columnFamily);
                                     }
@@ -558,7 +558,7 @@ public class CommitLog
                 logger.debug("Not safe to delete commit log " + segment + "; dirty is " + header.dirtyString());
 
             try {
-                segment.writeHeader();
+                segment.markHeaderDirty();
             } catch (IOException e) {
                 throw new FSWriteError(e);
             }
@@ -612,7 +612,7 @@ public class CommitLog
         }
     }
 
-    void sync() 
+    public void sync() 
     {
         currentSegment().sync();
     }
