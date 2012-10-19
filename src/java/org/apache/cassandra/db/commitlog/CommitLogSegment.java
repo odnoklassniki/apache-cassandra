@@ -43,7 +43,6 @@ public class CommitLogSegment
 
     private final BufferedRandomAccessFile logWriter;
     private final CommitLogHeader header;
-    private boolean headerDirty = true;
 
     public CommitLogSegment(int cfCount)
     {
@@ -56,7 +55,7 @@ public class CommitLogSegment
             logWriter = createWriter(logFile);
             logWriter.setSkipCache(true);
             
-            markHeaderDirty();
+            writeHeader();
         }
         catch (IOException e)
         {
@@ -64,9 +63,9 @@ public class CommitLogSegment
         }
     }
 
-    public void markHeaderDirty() throws IOException
+    public void writeHeader() throws IOException
     {
-        this.headerDirty = true;
+        CommitLogHeader.writeCommitLogHeader(header, getHeaderPath() );
     }
 
     private static BufferedRandomAccessFile createWriter(String file) throws IOException
@@ -92,7 +91,7 @@ public class CommitLogSegment
             }
             
             if (writePending)
-                markHeaderDirty();
+                writeHeader();
 
             // write mutation, w/ checksum
             Checksum checkum = new CRC32();
@@ -130,17 +129,6 @@ public class CommitLogSegment
             logWriter.sync();
         } catch (IOException e) {
             throw new FSWriteError(e);
-        }
-        
-        if (headerDirty)
-        {
-            try {
-                CommitLogHeader.writeCommitLogHeader(header, getHeaderPath() );
-                
-                headerDirty = false;
-            } catch (IOException e) {
-                throw new FSWriteError(e);
-            }
         }
     }
 

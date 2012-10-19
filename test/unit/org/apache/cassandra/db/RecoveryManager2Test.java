@@ -60,9 +60,6 @@ public class RecoveryManager2Test extends CleanupHelper
 
         // remove Standard1 SSTable/MemTables
         cfs.clearUnsafe();
-        
-        // making sure all info is synced
-        CommitLog.instance().sync();
 
         logger.debug("begin manual replay");
         // replay the commit log (nothing should be replayed since everything was flushed)
