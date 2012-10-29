@@ -52,6 +52,9 @@ import sun.nio.ch.DirectBuffer;
  */
 public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 {
+    //in a perfect world this should be read from sysconf
+    private static final int PAGESIZE = 4096;
+
     private static final Logger logger = Logger.getLogger(SSTableReader.class);
 
     // `finalizers` is required to keep the PhantomReferences alive after the enclosing SSTR is itself
@@ -89,7 +92,8 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         new Thread(runnable, "SSTABLE-DELETER").start();
     }};
     // in a perfect world, BUFFER_SIZE would be final, but we need to test with a smaller size to stay sane.
-    static long BUFFER_SIZE = Integer.MAX_VALUE;
+    // BUFFER must be multiple of page size
+    static long BUFFER_SIZE = Integer.MAX_VALUE - ( Integer.MAX_VALUE % PAGESIZE );
 
     public static long getApproximateKeyCount(Iterable<SSTableReader> sstables, boolean columnBloom)
     {
