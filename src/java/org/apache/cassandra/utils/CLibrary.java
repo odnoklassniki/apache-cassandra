@@ -55,6 +55,12 @@ public final class CLibrary
     private static final int POSIX_FADV_DONTNEED   = 4; /* fadvise.h */
     private static final int POSIX_FADV_NOREUSE    = 5; /* fadvise.h */
 
+    private static final int MADV_NORMAL     = 0; /* mman.h */
+    private static final int MADV_RANDOM     = 1; /* mman.h */
+    private static final int MADV_SEQUENTIAL = 2; /* mman.h */
+    private static final int MADV_WILLNEED   = 3; /* mman.h */
+    private static final int MADV_DONTNEED   = 4; /* mman.h */
+
     static
     {
         try
@@ -85,6 +91,9 @@ public final class CLibrary
 
     // fadvice
     public static native int posix_fadvise(int fd, long offset, int len, int flag) throws LastErrorException;
+
+    // madvice
+    public static native int posix_madvise(long address, long len, int flag) throws LastErrorException;
 
     public static native int open(String path, int flags) throws LastErrorException;
     public static native int fsync(int fd) throws LastErrorException;
@@ -242,6 +251,28 @@ public final class CLibrary
         {
             // if JNA is unavailable just skipping Direct I/O
             // instance of this class will act like normal RandomAccessFile
+        }
+    }
+
+    public static void mmapSetRandom(long address, long len)
+    {
+        if (address == 0)
+            return;
+
+        try
+        {
+            if (System.getProperty("os.name").toLowerCase().contains("linux"))
+            {
+                int rc = posix_madvise(address, len, MADV_RANDOM);
+                if (rc!=0)
+                    logger.error("Madvise call for address "+address+", size "+len+" returned rc="+rc);
+                else
+                    logger.info("Madvise call for address "+address+", size "+len+" succeeded");
+            }
+        }
+        catch (UnsatisfiedLinkError e)
+        {
+            logger.error("Cannot call madvise for address "+address+", size "+len,e);
         }
     }
 

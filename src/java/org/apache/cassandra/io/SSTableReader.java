@@ -38,10 +38,13 @@ import org.apache.cassandra.io.util.FileDataInput;
 import org.apache.cassandra.io.util.MappedFileDataInput;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.BloomFilter;
+import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 
 import com.sun.corba.se.spi.legacy.connection.GetEndPointInfoAgainException;
+
+import sun.nio.ch.DirectBuffer;
 
 /**
  * SSTableReaders are open()ed by Table.onStart; after that they are created by SSTableWriter.renameAndOpen.
@@ -219,7 +222,11 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 
         try
         {
-            return raf.getChannel().map(FileChannel.MapMode.READ_ONLY, start, size);
+            MappedByteBuffer mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_ONLY, start, size);
+            
+            CLibrary.mmapSetRandom( ((DirectBuffer) mappedByteBuffer).address(), size);
+            
+            return mappedByteBuffer;
         }
         finally
         {
