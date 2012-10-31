@@ -36,6 +36,8 @@ import org.apache.commons.lang.ArrayUtils;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.*;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.proc.IRowProcessor;
+import org.apache.cassandra.db.proc.RowProcessorChain;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.io.BloomFilterWriter;
 import org.apache.cassandra.io.SSTableReader;
@@ -159,6 +161,15 @@ public class Memtable implements Comparable<Memtable>, IFlushable
             boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
             BloomFilterWriter bloomFilterWriter = writer.getBloomFilterWriter();
             
+            IRowProcessor rowProc = null;
+            if (cfs.metadata.rowProcessors!=null)
+            {
+                rowProc = new RowProcessorChain().addAll(cfs.metadata.rowProcessors).build();
+                rowProc.setColumnFamilyStore(cfs);
+                if (!rowProc.shouldProcessIncomplete())
+                    rowProc = null;
+            }
+            
             if (bloomColumns)
                 bloomFilterWriter.setEstimatedColumnCount(getCurrentOperations());
 
@@ -166,13 +177,24 @@ public class Memtable implements Comparable<Memtable>, IFlushable
             for (Map.Entry<DecoratedKey, ColumnFamily> entry : columnFamilies.entrySet())
             {
                 buffer.reset();
+                
+                DecoratedKey key = entry.getKey();
+                ColumnFamily cf = entry.getValue();
+                
+                if (rowProc!=null)
+                {
+                    cf=rowProc.process(key, cf, true);
+                    if (cf==null)
+                        continue;
+                }
+                    
                 /* serialize the cf with column indexes */
-                ColumnFamily.serializer().serializeWithIndexes(entry.getValue(), buffer, bloomColumns);
+                ColumnFamily.serializer().serializeWithIndexes(cf, buffer, bloomColumns);
                 /* Now write the key and value to disk */
-                writer.append(entry.getKey(), buffer);
+                writer.append(key, buffer);
                 
                 if (bloomColumns)
-                    bloomFilterWriter.add(entry.getKey(), entry.getValue());
+                    bloomFilterWriter.add(key, cf);
             }
 
             SSTableReader ssTable = writer.closeAndOpenReader();

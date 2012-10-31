@@ -5,9 +5,15 @@
  */
 package org.apache.cassandra.locator;
 
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOError;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -222,22 +228,22 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
 //            }
           
             int e=0;
-            meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.36.86") );
-            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
-            meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.36.88") );
-            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
-            meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.10.247") );
-            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
-            
-            
-
-            topology.put("192.168.36.86","DL:RACK1");
-            topology.put("192.168.36.87","DL:RACK2");
-            topology.put("192.168.36.88","DL:RACK3");
-            topology.put("192.168.36.89","DL:RACK1");
-
-            topology.put("192.168.10.247","DL:RACK2");
-            topology.put("192.168.10.248","DL:RACK3");
+//            meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("192.168.36.86") );
+//            meta.updateNormalToken( new StringToken("2a") , InetAddress.getByName("192.168.36.87") );
+//            meta.updateNormalToken( new StringToken("55") , InetAddress.getByName("192.168.36.88") );
+//            meta.updateNormalToken( new StringToken("80") , InetAddress.getByName("192.168.36.89") );
+//            meta.updateNormalToken( new StringToken("aa") , InetAddress.getByName("192.168.10.247") );
+//            meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.10.248") );
+//            
+//            
+//
+//            topology.put("192.168.36.86","DL:RACK1");
+//            topology.put("192.168.36.87","DL:RACK2");
+//            topology.put("192.168.36.88","DL:RACK3");
+//            topology.put("192.168.36.89","DL:RACK1");
+//
+//            topology.put("192.168.10.247","DL:RACK2");
+//            topology.put("192.168.10.248","DL:RACK3");
 
 //          int e=0;
 //          meta.updateNormalToken( new StringToken("00") , InetAddress.getByName("127.0.0."+e++) );
@@ -266,31 +272,44 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
 //          meta.updateNormalToken( new StringToken("d5") , InetAddress.getByName("192.168.11.247") );
 //          meta.updateNormalToken( new StringToken("ea") , InetAddress.getByName("192.168.48.172") );
 //
-//          topology.put("192.168.38.112","DL:DL"    );        
-//          topology.put("192.168.11.244","M100:M100");        
-//          topology.put("192.168.48.169","KV:KV"    );        
-//          topology.put("192.168.38.113","DL:DL"    );        
-//          topology.put("192.168.11.245","M100:M100");        
-//          topology.put("192.168.48.170","KV:KV"    );        
-//          topology.put("192.168.38.114","DL:DL"    );        
-//          topology.put("192.168.11.246","M100:M100");        
-//          topology.put("192.168.48.171","KV:KV"     );       
-//          topology.put("192.168.38.115","DL:DL"    );        
-//          topology.put("192.168.11.247","M100:M100");        
-//          topology.put("192.168.48.172","KV:KV"    );        
-//
-//          topology.put("192.168.49.135","KV:KV"     );
-//          topology.put("192.168.38.227","DL:DL"     );
-//          topology.put("192.168.12.76","M100:M100" );
-//          topology.put("192.168.49.136","KV:KV"     );
-//          topology.put("192.168.38.228","DL:DL"     );
-//          topology.put("192.168.12.77","M100:M100" );
-//          topology.put("192.168.49.137","KV:KV"     );
-//          topology.put("192.168.38.229","DL:DL"     );
-//          topology.put("192.168.12.78","M100:M100" );
-//          topology.put("192.168.49.138","KV:KV"     );
-//          topology.put("192.168.38.230","DL:DL"     );
-//          topology.put("192.168.12.79","M100:M100" );
+          topology.put("192.168.38.112","DL:DL"    );        
+          topology.put("192.168.11.244","M100:M100");        
+          topology.put("192.168.48.169","KV:KV"    );        
+          topology.put("192.168.38.113","DL:DL"    );        
+          topology.put("192.168.11.245","M100:M100");        
+          topology.put("192.168.48.170","KV:KV"    );        
+          topology.put("192.168.38.114","DL:DL"    );        
+          topology.put("192.168.11.246","M100:M100");        
+          topology.put("192.168.48.171","KV:KV"     );       
+          topology.put("192.168.38.115","DL:DL"    );        
+          topology.put("192.168.11.247","M100:M100");        
+          topology.put("192.168.48.172","KV:KV"    );        
+                                                   
+          meta.updateNormalToken( new StringToken("0a") , InetAddress.getByName("192.168.49.135") );
+          meta.updateNormalToken( new StringToken("20") , InetAddress.getByName("192.168.38.227") );
+          meta.updateNormalToken( new StringToken("35") , InetAddress.getByName("192.168.12.76") ); 
+          meta.updateNormalToken( new StringToken("4a") , InetAddress.getByName("192.168.49.136") );
+          meta.updateNormalToken( new StringToken("60") , InetAddress.getByName("192.168.38.228") );
+          meta.updateNormalToken( new StringToken("75") , InetAddress.getByName("192.168.12.77") ); 
+          meta.updateNormalToken( new StringToken("8a") , InetAddress.getByName("192.168.49.137") );
+          meta.updateNormalToken( new StringToken("a0") , InetAddress.getByName("192.168.38.229") );
+          meta.updateNormalToken( new StringToken("b5") , InetAddress.getByName("192.168.12.78") ); 
+          meta.updateNormalToken( new StringToken("ca") , InetAddress.getByName("192.168.49.138") );
+          meta.updateNormalToken( new StringToken("e0") , InetAddress.getByName("192.168.38.230") );
+          meta.updateNormalToken( new StringToken("f5") , InetAddress.getByName("192.168.12.79") ); 
+                                                                                                
+          topology.put("192.168.49.135","KV:KV"     );
+          topology.put("192.168.38.227","DL:DL"     );
+          topology.put("192.168.12.76","M100:M100" );
+          topology.put("192.168.49.136","KV:KV"     );
+          topology.put("192.168.38.228","DL:DL"     );
+          topology.put("192.168.12.77","M100:M100" );
+          topology.put("192.168.49.137","KV:KV"     );
+          topology.put("192.168.38.229","DL:DL"     );
+          topology.put("192.168.12.78","M100:M100" );
+          topology.put("192.168.49.138","KV:KV"     );
+          topology.put("192.168.38.230","DL:DL"     );
+          topology.put("192.168.12.79","M100:M100" );
 
 //          for (int i=0;i<12;i++)
 //          {
@@ -319,7 +338,7 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
                 
             });
             
-            int startd=0x0, endd=0xff;
+            int startd=0, endd=256;
             
             Multimap<InetAddress, String> endpDomains = ArrayListMultimap.create();
             
@@ -345,12 +364,19 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
             for (InetAddress i : endpDomains.asMap().keySet()) {
                 System.out.println(i.toString()+"="+endpDomains.get(i).size()+"   "+endpDomains.get(i));
             }
+
             
+            for (InetAddress i : endpDomains.asMap().keySet()) {
+                generateCopyScript(i,endpDomains.get(i),(String)topology.get(i.getHostAddress()));
+                generateCheckScript(i,endpDomains.get(i),(String)topology.get(i.getHostAddress()));
+            }
+
             String[][] bootstraps =
                 {
-                    {"d5","192.168.10.248"},
-                    {"80","192.168.36.89"},
-                    {"2a","192.168.36.87"},
+//                    {"d5","192.168.10.248"},
+//                    {"80","192.168.36.89"},
+//                    {"2a","192.168.36.87"},
+                    
 //                    {"0a","192.168.49.135"},
 //                    {"4a","192.168.49.136"},
 //                    {"8a","192.168.49.137"},
@@ -366,12 +392,25 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
 //                    {"60","192.168.38.228"},
 //                    {"20","192.168.38.227"},
                     
+                  {"00","192.168.38.112"},
+                  {"15","192.168.11.244"},
+                  {"2a","192.168.48.169"},
+                  {"40","192.168.38.113"},
+                  {"55","192.168.11.245"},
+                  {"6a","192.168.48.170"},
+                  {"80","192.168.38.114"},
+                  {"95","192.168.11.246"},
+                  {"aa","192.168.48.171"},
+                  {"c0","192.168.38.115"},
+                  {"d5","192.168.11.247"},
+                  {"ea","192.168.48.172"},
+
                 };
             
-//            TokenMetadata btm = meta;
-//            for (String[] task : bootstraps) {
-//                btm = testBootstrap(pp, o, btm, task[0], task[1]);
-//            }
+            TokenMetadata btm = meta;
+            for (String[] task : bootstraps) {
+                btm = testBootstrap(pp, o, btm, task[0], task[1]);
+            }
 
             for (Object failed : topology.keySet())
             {
@@ -484,6 +523,70 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
      
     }
     
+    /**
+     * @param i
+     * @param collection
+     * @param object
+     */
+    private static void generateCopyScript(InetAddress i,
+            Collection<String> domains, String rack)
+    {
+        try {
+            PrintWriter script = new PrintWriter( new FileOutputStream("/tmp/ram/"+rack.split(":")[0]+"-"+i.getHostAddress()+".sh",true) );
+            
+            script.format("echo Copying data to %s... \n", i.getHostAddress());
+            
+            int c=1;
+            
+            for (String domain : domains) {
+                if (domain.length()<2)
+                    domain="0"+domain;
+                
+                script.format("echo ... domain %s, which is %d of %d\n", domain,c++,domains.size());
+                script.format("scp -B -q -c arcfour /mnt/db/Likes/*_%s* %s:/mnt/db/Likes/\n\n", domain,i.getHostAddress());
+            }
+            
+            script.format("echo Finished with %s... \n", i.getHostAddress());
+            script.close();
+            
+            script = new PrintWriter( new FileOutputStream("/tmp/ram/"+rack.split(":")[0]+".sh",true) );
+            script.format("./%s-%s.sh &\n",rack.split(":")[0],i.getHostAddress());
+            script.format("scp -B -q -c arcfour check-%s.sh %s:/mnt/\n\n",i.getHostAddress(),i.getHostAddress());
+            
+            script.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * @param i
+     * @param collection
+     * @param object
+     */
+    private static void generateCheckScript(InetAddress i,
+            Collection<String> domains, String rack)
+    {
+        try {
+            PrintWriter script = new PrintWriter( new FileOutputStream("/tmp/ram/check-"+i.getHostAddress()+".sh",true) );
+            
+            
+            int c=1;
+            
+            for (String domain : domains) {
+                if (domain.length()<2)
+                    domain="0"+domain;
+                
+                script.format("echo 'domain %s check (must divide to 3)': `ls -1 /mnt/db/Likes/*_%s* | grep -v Compacted | wc | awk '{print $1}'`\n", domain, domain, domain);
+            }
+            
+            script.close();
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     private static InetAddress testChooseEndpoint(int partition,InetAddress[] endpoints,int tryCount)
     {
         int cycle = 0;
@@ -555,7 +658,7 @@ public class RackAwareOdklStrategy extends OdklEvenStrategy
         
         o.clearEndpointCache();
         
-        int startd=0, endd=255;
+        int startd=0, endd=256;
         
         for (int i=startd;i<endd;i++)
         {

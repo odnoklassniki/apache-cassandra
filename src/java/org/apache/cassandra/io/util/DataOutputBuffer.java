@@ -59,6 +59,15 @@ public class DataOutputBuffer extends DataOutputStream
             in.readFully(buf, count, len);
             count = newcount;
         }
+
+        public Buffer()
+        {
+        }
+
+        public Buffer(int size)
+        {
+            super(size);
+        }
     }
     
     private Buffer buffer;
@@ -69,6 +78,11 @@ public class DataOutputBuffer extends DataOutputStream
         this(new Buffer());
     }
     
+    public DataOutputBuffer(int size)
+    {
+        this(new Buffer(size));
+    }
+
     private DataOutputBuffer(Buffer buffer)
     {
         super(buffer);

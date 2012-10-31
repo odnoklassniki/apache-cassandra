@@ -40,6 +40,7 @@ import org.apache.commons.collections.IteratorUtils;
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.concurrent.RetryingScheduledThreadPoolExecutor;
+import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.commitlog.CommitLogSegment;
@@ -101,6 +102,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     private final String table_;
     public final String columnFamily_;
     private final boolean isSuper_;
+    
+    public final CFMetaData metadata;
 
     private volatile Integer memtableSwitchCount = 0;
 
@@ -131,6 +134,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         table_ = table;
         columnFamily_ = columnFamilyName;
         isSuper_ = isSuper;
+        
+        metadata = DatabaseDescriptor.getCFMetaData(table, columnFamilyName);
+        
         fileIndexGenerator_.set(indexValue);
         memtable_ = new Memtable(this);
         binaryMemtable_ = new AtomicReference<BinaryMemtable>(new BinaryMemtable(this));
@@ -401,12 +407,12 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     {
         return columnFamily_;
     }
-
+    
     private static String getColumnFamilyFromFileName(String filename)
     {
         return filename.split("-")[0];
     }
-
+    
     public static int getGenerationFromFileName(String filename)
     {
         /*
@@ -891,7 +897,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
     public ColumnFamily getColumnFamily(QueryFilter filter) 
     {
-        return getColumnFamily(filter, CompactionManager.getDefaultGCBefore());
+        return getColumnFamily(filter, CompactionManager.getDefaultGcBefore(this));
     }
 
     private ColumnFamily cacheRow(String key) 

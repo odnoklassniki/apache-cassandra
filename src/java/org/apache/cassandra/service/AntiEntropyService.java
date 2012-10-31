@@ -42,6 +42,7 @@ import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.io.CompactionIterator.CompactedRow;
 import org.apache.cassandra.io.ICompactSerializer;
 import org.apache.cassandra.io.IndexSummary;
+import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.net.IVerbHandler;
 import org.apache.cassandra.net.Message;
@@ -452,7 +453,8 @@ public class AntiEntropyService
             // MerkleTree uses XOR internally, so we want lots of output bits here
             MessageDigest messageDigest = FBUtilities.createDigest("SHA-256");
             messageDigest.update(row.key.key.getBytes());
-            messageDigest.update(row.buffer.getData(), 0, row.buffer.getLength());
+            DataOutputBuffer buffer = (DataOutputBuffer) row.buffer;
+            messageDigest.update( buffer.getData(), 0, buffer.getLength());
             return new MerkleTree.RowHash(row.key.token, messageDigest.digest());
         }
 

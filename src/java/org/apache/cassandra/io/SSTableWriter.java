@@ -21,6 +21,7 @@ package org.apache.cassandra.io;
  */
 
 
+import java.io.DataOutput;
 import java.io.IOError;
 import java.io.IOException;
 
@@ -82,7 +83,7 @@ public class SSTableWriter extends SSTable
         return (lastWrittenKey == null) ? 0 : dataFile.getFilePointer();
     }
 
-    private void afterAppend(DecoratedKey decoratedKey, long dataPosition) throws IOException
+    long afterAppend(DecoratedKey decoratedKey, long dataPosition) throws IOException
     {
         String diskKey = partitioner.convertToDiskFormat(decoratedKey);
         bfw.add(decoratedKey);
@@ -95,28 +96,41 @@ public class SSTableWriter extends SSTable
         if (logger.isTraceEnabled())
             logger.trace("wrote index of " + decoratedKey + " at " + indexPosition);
 
-        int rowSize = (int)(dataFile.getFilePointer() - dataPosition);
+        long rowSize = dataFile.getFilePointer() - dataPosition;
         indexSummary.maybeAddEntry(decoratedKey, dataPosition, rowSize, indexPosition, indexFile.getFilePointer());
+        
+        return rowSize;
     }
 
     // TODO make this take a DataOutputStream and wrap the byte[] version to combine them
     public void append(DecoratedKey decoratedKey, DataOutputBuffer buffer) throws IOException
     {
-        long currentPosition = beforeAppend(decoratedKey);
-        dataFile.writeUTF(partitioner.convertToDiskFormat(decoratedKey));
         int length = buffer.getLength();
-        assert length > 0;
-        dataFile.writeInt(length);
+        long currentPosition = startAppend(decoratedKey, length);
         dataFile.write(buffer.getData(), 0, length);
         afterAppend(decoratedKey, currentPosition);
     }
-
-    public void append(DecoratedKey decoratedKey, byte[] value) throws IOException
+    
+    long startAppend(DecoratedKey decoratedKey, int cfLength) throws IOException
     {
         long currentPosition = beforeAppend(decoratedKey);
         dataFile.writeUTF(partitioner.convertToDiskFormat(decoratedKey));
-        assert value.length > 0;
-        dataFile.writeInt(value.length);
+        assert cfLength > 0;
+        dataFile.writeInt(cfLength);
+
+        return currentPosition;
+    }
+    
+    DataOutput getRowOutput()
+    {
+        return dataFile;
+    }
+    
+
+    public void append(DecoratedKey decoratedKey, byte[] value) throws IOException
+    {
+        int length = value.length;
+        long currentPosition = startAppend(decoratedKey, length);
         dataFile.write(value);
         afterAppend(decoratedKey, currentPosition);
     }

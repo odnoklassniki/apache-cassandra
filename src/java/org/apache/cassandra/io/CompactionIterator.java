@@ -22,54 +22,55 @@ package org.apache.cassandra.io;
 
 
 import java.io.Closeable;
-import java.io.DataInput;
-import java.io.IOError;
+import java.io.DataOutput;
 import java.io.IOException;
-import java.util.*;
-
-import org.apache.log4j.Logger;
-import org.apache.commons.collections.iterators.CollatingIterator;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
 
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.FSWriteError;
 import org.apache.cassandra.db.ObservingColumnFamilyDeserializer;
-import org.apache.cassandra.io.util.DataInputBuffer;
-import org.apache.cassandra.io.util.DataOutputBuffer;
+import org.apache.cassandra.db.proc.IRowProcessor;
+import org.apache.cassandra.io.util.DataInputSink;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.ReducingIterator;
+import org.apache.commons.collections.iterators.CollatingIterator;
+import org.apache.log4j.Logger;
 
-public class CompactionIterator extends ReducingIterator<IteratingRow, CompactionIterator.CompactedRow> implements Closeable
+public abstract class CompactionIterator extends ReducingIterator<IteratingRow, CompactionIterator.CompactedRow> implements Closeable
 {
     private static Logger logger = Logger.getLogger(CompactionIterator.class);
 
     protected static final int FILE_BUFFER_SIZE = 1024 * 1024;
 
     private final List<IteratingRow> rows = new ArrayList<IteratingRow>();
-    private final ColumnFamilyStore cfs;
-    private final int gcBefore;
+    protected final ColumnFamilyStore cfs;
     private final boolean major;
     
     // MM:listens for all column names seen by this iterator
-    private IColumnNameObserver columnNameObserver;
     private ObservingColumnFamilyDeserializer observingDeserializer;
-    private CompactedRow currentRow;
-    private DataInputBuffer din;
-    private boolean skipBloom;
+    private final boolean skipBloom;
+    private IColumnNameObserver columnNameObserver;
+    
+    private IRowProcessor rowProcessor;
+    private final boolean deserializeAllRows;
 
     private long totalBytes;
     private long bytesRead;
     private long row;
 
-    public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, int gcBefore, boolean major) throws IOException
+    public CompactionIterator(ColumnFamilyStore cfs, Iterable<SSTableReader> sstables, IRowProcessor rowp, boolean major) throws IOException
     {
-        this(cfs, getCollatingIterator(sstables), gcBefore, major);
-        
-        this.skipBloom = false;
+        this(cfs, getCollatingIterator(sstables), rowp, major);
     }
 
     @SuppressWarnings("unchecked")
-    protected CompactionIterator(ColumnFamilyStore cfs, Iterator iter, int gcBefore, boolean major)
+    protected CompactionIterator(ColumnFamilyStore cfs, Iterator iter, IRowProcessor rowp, boolean major)
     {
         super(iter);
         row = 0;
@@ -79,11 +80,13 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
             totalBytes += scanner.getFileLength();
         }
         this.cfs = cfs;
-        this.gcBefore = gcBefore;
         this.major = major;
+        this.rowProcessor = rowp;
+        this.rowProcessor.setColumnFamilyStore(cfs);
+        this.deserializeAllRows = major || rowProcessor.shouldProcessUnchanged();
+        this.skipBloom = cfs.metadata.bloomColumns;
     }
 
-    @SuppressWarnings("unchecked")
     protected static CollatingIterator getCollatingIterator(Iterable<SSTableReader> sstables) throws IOException
     {
         CollatingIterator iter = FBUtilities.<IteratingRow>getCollatingIterator();
@@ -104,22 +107,24 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     {
         rows.add(current);
     }
-
+    
+    protected abstract CompactedRow startRowWrite(DecoratedKey key, int cfSize);
+    
+    protected abstract void finishRowWrite(CompactedRow compactedRow);
+    
     protected CompactedRow getReduced()
     {
         assert rows.size() > 0;
-        DataOutputBuffer buffer = new DataOutputBuffer();
         
-        DecoratedKey key = rows.get(0).getKey();
+        IteratingRow row0 = rows.get(0);
+        DecoratedKey key = row0.getKey();
+        CompactedRow compactedRow = null;
 
-        Set<SSTable> sstables = new HashSet<SSTable>();
-        for (IteratingRow row : rows)
-            sstables.add(row.sstable);
-        boolean shouldPurge = major || !cfs.isKeyInRemainingSSTables(key, sstables);
+        final boolean completeColumnSet = major || !isKeyInRemainingSSTables(key, rows);
 
         try
         {
-            if (rows.size() > 1 || shouldPurge)
+            if (deserializeAllRows || completeColumnSet || rows.size() > 1)
             {
                 ColumnFamily cf = null;
                 for (IteratingRow row : rows)
@@ -143,34 +148,44 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                         cf.addAll(thisCF);
                     }
                 }
-                ColumnFamily cfPurged = shouldPurge ? ColumnFamilyStore.removeDeleted(cf, gcBefore) : cf;
-                if (cfPurged == null)
+
+                if (completeColumnSet || rowProcessor.shouldProcessIncomplete())
+                    cf = rowProcessor.process(key, cf, !completeColumnSet);
+                
+                if (cf == null)
                     return null;
-                ColumnFamily.serializer().serializeWithIndexes(cfPurged, buffer, skipBloom);
+
+                int cfSize = ColumnFamily.serializer().serializeWithIndexesSize(cf, skipBloom);
+                compactedRow = startRowWrite(key,cfSize);
+                ColumnFamily.serializer().serializeWithIndexes(cf, compactedRow.buffer, skipBloom);
+                
+                finishRowWrite(compactedRow);
 
                 if (columnNameObserver!=null)
-                    columnNameObserver.add(key,cfPurged);
+                    columnNameObserver.add(key,cf);
             }
             else
             {
                 assert rows.size() == 1;
                 try
                 {
-                    rows.get(0).echoData(buffer);
+                    compactedRow = startRowWrite( key, row0.getDataSize() );
                     
-                    if (columnNameObserver!=null)
+                    assert columnNameObserver != null || !this.skipBloom;
+                    
+                    if (columnNameObserver==null)
                     {
-                        if (din==null)
-                            din=new DataInputBuffer(buffer);
-                        else
-                            din.setBuffer(buffer);
-                        
-                        observingDeserializer.deserialize(key, din);
+                        row0.echoData(compactedRow.buffer); // no processing neccessary. just dump it
+                    } else
+                    {
+                        observingDeserializer.deserialize(key, new DataInputSink(row0.getDataInput(), compactedRow.buffer));
                     }
+
+                    finishRowWrite(compactedRow);
                 }
                 catch (IOException e)
                 {
-                    throw new IOError(e);
+                    throw new FSWriteError(e);
                 }
             }
         }
@@ -186,7 +201,20 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
                 }
             }
         }
-        return currentRow=new CompactedRow(key, buffer);
+        
+        assert compactedRow != null;
+        
+        return compactedRow;
+    }
+
+    private boolean isKeyInRemainingSSTables(DecoratedKey key,
+            List<IteratingRow> rows2)
+    {
+        Set<SSTable> sstables = new HashSet<SSTable>();
+        for (IteratingRow row : rows2)
+            sstables.add(row.sstable);
+        
+        return cfs.isKeyInRemainingSSTables(key, sstables);
     }
 
     public void close() throws IOException
@@ -205,32 +233,15 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     /**
      * @param columnNameObserver the columnNameObserver to set
      */
-    public void setColumnNameObserver(IColumnNameObserver columnNameObserver)
+    protected void setColumnNameObserver(IColumnNameObserver columnNameObserver)
     {
+        assert row == 0;
+        assert this.skipBloom;
 
         this.columnNameObserver = columnNameObserver;
         this.observingDeserializer = new ObservingColumnFamilyDeserializer(columnNameObserver);
-        
-        // very 1st row already was processed, so we push it to name observer here
-        if (currentRow!=null)
-        {
-            try {
-                observingDeserializer.deserialize(currentRow.key, new DataInputBuffer(currentRow.buffer));
-            } catch (IOException e) 
-            {
-                throw new IOError(e);
-            }
-        }
     }
     
-    /**
-     * @param skipBloom the skipBloom to set
-     */
-    public void setSkipBloom(boolean skipBloom)
-    {
-        this.skipBloom = skipBloom;
-    }
-
     public long getTotalBytes()
     {
         return totalBytes;
@@ -257,12 +268,24 @@ public class CompactionIterator extends ReducingIterator<IteratingRow, Compactio
     public static class CompactedRow
     {
         public final DecoratedKey key;
-        public final DataOutputBuffer buffer;
+        public final DataOutput buffer;
+        public final long rowPosition;
+        public long  rowSize;
 
-        public CompactedRow(DecoratedKey key, DataOutputBuffer buffer)
+        public CompactedRow(DecoratedKey key, DataOutput buffer, long position)
         {
             this.key = key;
             this.buffer = buffer;
+            
+            this.rowPosition = position;
+        }
+        
+        /**
+         * @param rowSize the rowSize to set
+         */
+        public void setRowSize(long rowSize)
+        {
+            this.rowSize = rowSize;
         }
     }
 }

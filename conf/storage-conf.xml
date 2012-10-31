@@ -135,7 +135,19 @@
                     KeysCached="1000"
                     RowsCached="100"
                     RowCacheSavePeriodInSeconds="0"
-                    KeyCacheSavePeriodInSeconds="3600"/>
+                    KeyCacheSavePeriodInSeconds="3600">
+                    
+            <!-- 
+                You can specify row processor class to process and manipulate rows while compacting sstables and 
+                optionally flushing of this column family memtable.
+                You implement org.apache.cassandra.db.proc.IRowProcessor interface for this.
+                All attributes and their values are passed as properties to setConfiguration method of row processor.
+                
+                If you specify several processors here - they all will be called in chain for each row.
+                
+                <RowProcessor class="your.full.class.name" property1="value1".../>
+             -->
+      </ColumnFamily>
       <ColumnFamily Name="Standard2" 
                     CompareWith="UTF8Type"
                     KeysCached="100%"/>

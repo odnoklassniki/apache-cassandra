@@ -21,24 +21,24 @@ package org.apache.cassandra.io;
  */
 
 
+import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import com.google.common.collect.AbstractIterator;
-
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.DecoratedKey;
-import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
+import org.apache.cassandra.io.util.FileRangeDataInput;
 import org.apache.cassandra.service.StorageService;
 
-public class IteratingRow extends AbstractIterator<IColumn> implements Comparable<IteratingRow>
+public class IteratingRow implements Comparable<IteratingRow>
 {
     private final DecoratedKey key;
     private final long finishedAt;
     private final BufferedRandomAccessFile file;
     public final SSTableReader sstable;
     private long dataStart;
+    private int dataSize;
 
     public IteratingRow(BufferedRandomAccessFile file, SSTableReader sstable) throws IOException
     {
@@ -46,7 +46,7 @@ public class IteratingRow extends AbstractIterator<IColumn> implements Comparabl
         this.sstable = sstable;
 
         key = StorageService.getPartitioner().convertFromDiskFormat(file.readUTF());
-        int dataSize = file.readInt();
+        dataSize = file.readInt();
         dataStart = file.getFilePointer();
         finishedAt = dataStart + dataSize;
     }
@@ -69,6 +69,19 @@ public class IteratingRow extends AbstractIterator<IColumn> implements Comparabl
             out.write(file.readByte());
         }
     }
+    
+    /**
+     * @return the dataSize
+     */
+    public int getDataSize()
+    {
+        return dataSize;
+    }
+    
+    public DataInput getDataInput() throws IOException
+    {
+        return new FileRangeDataInput(file, dataStart, finishedAt);
+    }
 
     // TODO r/m this and make compaction merge columns iteratively for CASSSANDRA-16
     public ColumnFamily getColumnFamily() throws IOException
@@ -87,24 +100,6 @@ public class IteratingRow extends AbstractIterator<IColumn> implements Comparabl
     public long getEndPosition()
     {
         return finishedAt;
-    }
-
-    protected IColumn computeNext()
-    {
-        try
-        {
-            assert file.getFilePointer() <= finishedAt;
-            if (file.getFilePointer() == finishedAt)
-            {
-                return endOfData();
-            }
-
-            return sstable.getColumnSerializer().deserialize(file);
-        }
-        catch (IOException e)
-        {
-            throw new RuntimeException(e);
-        }
     }
 
     public int compareTo(IteratingRow o)

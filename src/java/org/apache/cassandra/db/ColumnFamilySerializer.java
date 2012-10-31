@@ -29,6 +29,7 @@ import java.util.Collection;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.io.SSTableReader;
+import org.apache.cassandra.io.util.CalcSizeOutput;
 
 public class ColumnFamilySerializer implements ICompactSerializer2<ColumnFamily>
 {
@@ -99,6 +100,16 @@ public class ColumnFamilySerializer implements ICompactSerializer2<ColumnFamily>
         serializeForSSTable(columnFamily, dos);
     }
 
+    /**
+     * calculates size of column in serialized form
+     */
+    public int serializeWithIndexesSize(ColumnFamily columnFamily, boolean skipBloom)
+    {
+        CalcSizeOutput output = new CalcSizeOutput();
+        serializeWithIndexes(columnFamily, output, skipBloom);
+        return output.byteCount();
+    }
+    
     public ColumnFamily deserialize(DataInput dis) throws IOException
     {
         String cfName = dis.readUTF();

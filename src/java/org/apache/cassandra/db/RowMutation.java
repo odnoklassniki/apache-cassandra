@@ -155,6 +155,22 @@ public class RowMutation
         modifications_.remove(columnFamily.name());
     }
     
+    /**
+     * Clones this mutation with cfs removed
+     * 
+     * @param cfsToRemove cfs to remove
+     * @return
+     */
+    public RowMutation cloneAndRemoveColumnFamilies(Set<String> cfsToRemove) {
+        RowMutation clone = new RowMutation(table_, key_);
+        for (Map.Entry<String, ColumnFamily> e : modifications_.entrySet()) {
+            if (!cfsToRemove.contains(e.getKey())) {
+                clone.modifications_.put(e.getKey(), e.getValue());
+            }
+        }
+        return clone;
+    }
+
     public boolean isEmpty()
     {
         return modifications_.isEmpty();
