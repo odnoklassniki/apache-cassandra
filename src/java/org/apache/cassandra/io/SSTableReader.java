@@ -168,7 +168,10 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
             long remaining = indexLength;
             for (int i = 0; i < bufferCount; i++)
             {
-                indexBuffers[i] = mmap(indexFilename(), i * BUFFER_SIZE, (int) Math.min(remaining, BUFFER_SIZE));
+                MappedByteBuffer buffer = mmap(indexFilename(), i * BUFFER_SIZE, (int) Math.min(remaining, BUFFER_SIZE));
+                if (DatabaseDescriptor.isDiskRandomHintEnabled())
+                    bufferMakeRandom(buffer);
+                indexBuffers[i] = buffer;
                 remaining -= BUFFER_SIZE;
             }
         }
@@ -185,7 +188,10 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
             long remaining = length();
             for (int i = 0; i < bufferCount; i++)
             {
-                buffers[i] = mmap(path, i * BUFFER_SIZE, (int) Math.min(remaining, BUFFER_SIZE));
+                MappedByteBuffer buffer = mmap(path, i * BUFFER_SIZE, (int) Math.min(remaining, BUFFER_SIZE));
+                if (DatabaseDescriptor.isDiskRandomHintEnabled())
+                    bufferMakeRandom(buffer);
+                buffers[i] = buffer;
                 remaining -= BUFFER_SIZE;
             }
         }
@@ -211,6 +217,20 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
             keyCache = tracker.getKeyCache();
         }
     }
+    
+    /**
+     * Advices OS this buffer is accessed randomly - typically this means (at least for Linux) that no read ahead will be performed
+     * on this buffer.
+     * 
+     * @param buffer
+     * @return same buffer
+     */
+    private static MappedByteBuffer bufferMakeRandom(MappedByteBuffer buffer)
+    {
+        CLibrary.madviceRandom( ((DirectBuffer) buffer).address(), buffer.capacity());
+        
+        return buffer;
+    }
 
     private static MappedByteBuffer mmap(String filename, long start, int size) throws IOException
     {
@@ -226,11 +246,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 
         try
         {
-            MappedByteBuffer mappedByteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_ONLY, start, size);
-            
-            CLibrary.mmapSetRandom( ((DirectBuffer) mappedByteBuffer).address(), size);
-            
-            return mappedByteBuffer;
+            return raf.getChannel().map(FileChannel.MapMode.READ_ONLY, start, size);
         }
         finally
         {

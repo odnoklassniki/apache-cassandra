@@ -81,6 +81,7 @@ public class DatabaseDescriptor
         auto,
         mmap,
         mmap_index_only,
+        mmap_random,
         standard,
     }
 
@@ -171,6 +172,7 @@ public class DatabaseDescriptor
 
     private static DiskAccessMode diskAccessMode;
     private static DiskAccessMode indexAccessMode;
+    private static boolean diskRandomHint = false;
 
     private static boolean snapshotBeforeCompaction;
     private static boolean autoBootstrap = false;
@@ -332,6 +334,13 @@ public class DatabaseDescriptor
                 diskAccessMode = DiskAccessMode.standard;
                 indexAccessMode = DiskAccessMode.mmap;
                 logger.info("DiskAccessMode is " + diskAccessMode + ", indexAccessMode is " + indexAccessMode );
+            }
+            else if (diskAccessMode == DiskAccessMode.mmap_random)
+            {
+                diskAccessMode = DiskAccessMode.mmap;
+                indexAccessMode = DiskAccessMode.mmap;
+                diskRandomHint = true;
+                logger.info("DiskAccessMode is " + diskAccessMode + ", indexAccessMode is " + indexAccessMode + " with random hint (no readahead)" );
             }
             else
             {
@@ -1738,6 +1747,11 @@ public class DatabaseDescriptor
     public static DiskAccessMode getDiskAccessMode()
     {
         return diskAccessMode;
+    }
+    
+    public static boolean isDiskRandomHintEnabled()
+    {
+        return diskRandomHint;
     }
 
     public static DiskAccessMode getIndexAccessMode()

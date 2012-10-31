@@ -388,6 +388,13 @@
    ~ machine by mmapping only index files) and "standard".
    ~ (The buffer size settings that follow only apply to standard,
    ~ non-mmapped i/o.)
+   ~ 
+   ~ MM:
+   ~ mmap_random (ODKL only) will advise mapped buffers with random hint to OS, 
+   ~      which effectively turns off read ahead. This is useful on SSD, if typical
+   ~      read size is less than default read ahead of 40K. Seek time is almost 0 on SSD, so
+   ~      reading data ahead is not so much useful and also lead to disk cache overflow with
+   ~      spare data. With this hint enabled OS reads at most 4K per mmap page failure.
    -->
   <DiskAccessMode>auto</DiskAccessMode>
 

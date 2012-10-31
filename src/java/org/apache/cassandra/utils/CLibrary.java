@@ -254,7 +254,7 @@ public final class CLibrary
         }
     }
 
-    public static void mmapSetRandom(long address, long len)
+    public static void madviceRandom(long address, long len)
     {
         if (address == 0)
             return;
@@ -267,7 +267,7 @@ public final class CLibrary
                 if (rc!=0)
                     logger.error("Madvise call for address "+address+", size "+len+" returned rc="+rc);
                 else
-                    logger.info("Madvise call for address "+address+", size "+len+" succeeded");
+                    logger.debug("Random madvise hint succeeded for address "+address+", size "+len);
             }
         }
         catch (UnsatisfiedLinkError e)
