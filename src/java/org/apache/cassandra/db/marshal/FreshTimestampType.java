@@ -6,7 +6,9 @@
 package org.apache.cassandra.db.marshal;
 
 import java.sql.Timestamp;
+import java.util.Arrays;
 
+import org.apache.cassandra.utils.FBUtilities;
 
 /**
  * This expects to find timestamp micros in high 8 bytes and sequence and uniq sequence in lower 8 bytes
@@ -48,11 +50,16 @@ public class FreshTimestampType extends BytesType
             return "-any-";
         
         long time = toLong(bytes, 0, 8);
+        String timeString = new Timestamp(time/1000).toString()+time%1000;
         
         if (bytes.length>8)
-            return new Timestamp(time/1000).toString()+time%1000+'-'+toLong(bytes, 8, 8);
+        {
+            byte[] restBytes = Arrays.copyOfRange(bytes, 8, bytes.length);
+            String restString = FBUtilities.bytesToHex(restBytes);
+            return timeString + '-' + restString;
+        }
         
-        return new Timestamp(time/1000).toString()+time%1000;
+        return timeString;
     }
 
     public static final long toLong(byte[] b,int offset,int size) {
@@ -71,11 +78,10 @@ public class FreshTimestampType extends BytesType
         if (bytes.length==0)
             return; // 0 length array is special kind of 'any'
         
-        if (bytes.length==8)
-            return; // 8 length array is just pure timestamp
+        if (bytes.length>=8)
+            return; // 8 length array is just pure timestamp, larger array is timestamp with some additional data
 
-        if (bytes.length<16)
-            throw new MarshalException("FreshTimestamp column name must be min 16 bytes length");
+        throw new MarshalException("FreshTimestamp column name must be min 8 bytes length");
     }
     
     
