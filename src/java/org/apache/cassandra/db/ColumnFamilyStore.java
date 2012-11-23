@@ -444,13 +444,53 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
      * When the sstable object is closed, it will be renamed to a non-temporary
      * format, so incomplete sstables can be recognized and removed on startup.
      */
-    public String getFlushPath()
+    public String getFlushPath() throws IOException
+    {
+        String location = estimateFlushPath();
+        
+        String ssTableFileName = getTempSSTableFileName();
+        if (location!=null)
+            return new File(location, ssTableFileName).getAbsolutePath();
+        
+        logger_.warn("Insufficient disk space to flush "+ssTableFileName+". Trying to force GC");
+
+        try {
+            // Hoping GC will remove some not used tables.
+            System.gc();
+        
+            Thread.sleep(60000);
+            
+            location = estimateFlushPath();
+            
+            if (location!=null)
+                return new File(location, ssTableFileName).getAbsolutePath();
+            
+            // Hoping GC will remove some not used tables - sometimes 2 GC cycles are needed.
+            logger_.warn("Still Insufficient disk space to flush "+ssTableFileName+". Trying to force GC 2nd time");
+            System.gc();
+        
+            Thread.sleep(60000);
+            
+            location = estimateFlushPath();
+            
+        } catch (InterruptedException e) {
+        }
+        
+        if (location == null)
+            throw new IOException("Insufficient disk space to flush "+ssTableFileName);
+
+        return new File(location, ssTableFileName).getAbsolutePath();
+    }
+
+    /**
+     * @return path with enough space on disk to write ss table or null, if no disk space left
+     */
+    private String estimateFlushPath()
     {
         long guessedSize = 2 * DatabaseDescriptor.getMemtableThroughput() * 1024*1024; // 2* adds room for keys, column indexes
         String location = DatabaseDescriptor.getDataFileLocationForTable(table_, guessedSize);
-        if (location == null)
-            throw new RuntimeException("Insufficient disk space to flush");
-        return new File(location, getTempSSTableFileName()).getAbsolutePath();
+
+        return location;
     }
 
     public String getTempSSTableFileName()
