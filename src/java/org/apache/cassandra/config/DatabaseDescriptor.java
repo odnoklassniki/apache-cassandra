@@ -819,12 +819,6 @@ public class DatabaseDescriptor
             return;
 
         List<MaintenanceTask> tasks = new ArrayList<MaintenanceTask>();
-        String tag = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/ClusterSnapshot");
-        if (tag!=null)
-        {
-            tasks.add(new ClusterSnapshotTask(tag));
-        }
-
         String daysBack = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/CleanOldSnapshots");
         if (daysBack!=null)
         {
@@ -836,7 +830,13 @@ public class DatabaseDescriptor
         {
             tasks.add(new CleanArchivedLogsTask(Integer.parseInt(daysBack)));
         }
-        
+
+        String tag = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/ClusterSnapshot");
+        if (tag!=null)
+        {
+            tasks.add(new ClusterSnapshotTask(tag));
+        }
+
         String spareNodes = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/MajorCompaction");
         if (spareNodes!=null)
         {

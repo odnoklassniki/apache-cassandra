@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.google.common.base.Function;
@@ -34,6 +35,7 @@ import com.google.common.collect.Iterables;
 import org.apache.log4j.Logger;
 
 import org.apache.cassandra.concurrent.NamedThreadFactory;
+import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.filter.IdentityQueryFilter;
@@ -198,7 +200,6 @@ public class Table
      */
     private Map<String, IStoreApplyListener> storeFilters = null;
 
-
     public static Table open(String table) throws IOException
     {
         Table tableInstance = instances.get(table);
@@ -288,29 +289,45 @@ public class Table
             cfStore.snapshot(snapshotName);
         }
         
+        submitArchiveSnapshot();
+    }
+
+    private Future<?> submitArchiveSnapshot()
+    {
         if (DatabaseDescriptor.isDataArchiveEnabled())
         {
-            new Thread(new WrappedRunnable()
-            {
-                
-                @Override
-                protected void runMayThrow() throws Exception
-                {
-                    archiveSnapshot();
-                }
-            },
-            "Archiver of "+name
-            ).start();
+            return StageManager.getStage(StageManager.SNAPSHOT_ARCHIVE_STAGE).submit(
+                    new WrappedRunnable()
+                    {
+
+                        @Override
+                        protected void runMayThrow() throws Exception
+                        {
+                            archiveSnapshot(false);
+                        }
+                    } 
+                    );
+            
+        }
+        
+        return null;
+    }
+
+    private void forceBlockingArchiveSnapshot() throws IOException
+    {
+        if (DatabaseDescriptor.isDataArchiveEnabled())
+        {
+            archiveSnapshot(true);
         }
     }
 
     /*
      * Move snapshot files to separate archive disk
      */
-    public void archiveSnapshot() throws IOException
+    public void archiveSnapshot(boolean force) throws IOException
     {
         int chunkSize = 128*1024; // 128kbytes
-        int chunksSec = DatabaseDescriptor.getDataArchiveThrottle()*(1024/128);
+        int chunksSec = force ? 10000*(1024/128) : DatabaseDescriptor.getDataArchiveThrottle()*(1024/128);
         
         for (String dataDirPath : DatabaseDescriptor.getAllDataFileLocations())
         {
@@ -320,7 +337,7 @@ public class Table
             {
                 File archiveLocation = DatabaseDescriptor.getDataArchiveFileLocationForSnapshot(name);
 
-                logger.info("Moving snapshot directory " + snapshotPath + " to " + archiveLocation);
+                logger.info("Moving snapshot directory " + snapshotPath + " to " + archiveLocation + (force ? " (forced, blocking)" :""));
                 
                 long copied = FileUtils.copyDir(snapshotDir, archiveLocation, chunkSize, chunksSec);
 
@@ -438,6 +455,9 @@ public class Table
         }
         
         initExecutor.shutdown();
+
+        // if are noopied snapshots - do snapshot archive now
+        forceBlockingArchiveSnapshot();
 
         // check 10x as often as the lifetime, so we can exceed lifetime by 10% at most
         int checkMs = DatabaseDescriptor.getMemtableLifetimeMS() / 10;

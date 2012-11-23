@@ -25,6 +25,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.cassandra.config.DatabaseDescriptor;
+
 import static org.apache.cassandra.config.DatabaseDescriptor.getConcurrentReaders;
 import static org.apache.cassandra.config.DatabaseDescriptor.getConcurrentWriters;
 
@@ -45,6 +47,7 @@ public class StageManager
     public static final String RESPONSE_STAGE = "RESPONSE-STAGE";
     public final static String AE_SERVICE_STAGE = "AE-SERVICE-STAGE";
     private static final String LOADBALANCE_STAGE = "LOAD-BALANCER-STAGE";
+    public static final String SNAPSHOT_ARCHIVE_STAGE = "SNAPSHOT-ARCHIVE-STAGE";
 
     static
     {
@@ -56,6 +59,11 @@ public class StageManager
         stages.put(GOSSIP_STAGE, new JMXEnabledThreadPoolExecutor("GMFD"));
         stages.put(AE_SERVICE_STAGE, new JMXEnabledThreadPoolExecutor(AE_SERVICE_STAGE));
         stages.put(LOADBALANCE_STAGE, new JMXEnabledThreadPoolExecutor(LOADBALANCE_STAGE));
+        
+        if (DatabaseDescriptor.isDataArchiveEnabled())
+        {
+            stages.put(SNAPSHOT_ARCHIVE_STAGE, new JMXEnabledThreadPoolExecutor(SNAPSHOT_ARCHIVE_STAGE));
+        }
     }
 
     private static ThreadPoolExecutor multiThreadedStage(String name, int numThreads)
