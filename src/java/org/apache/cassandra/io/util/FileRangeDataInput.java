@@ -66,7 +66,7 @@ public class FileRangeDataInput implements DataInput
     {
         checkPosition(len);
 
-        in.read(buf, ofs, len);
+        in.readFully(buf, ofs, len);
     }
 
     /* (non-Javadoc)
