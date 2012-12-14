@@ -21,6 +21,7 @@ package org.apache.cassandra.dht;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.db.DecoratedKey;
 
 public interface IPartitioner<T extends Token>
@@ -90,4 +91,11 @@ public interface IPartitioner<T extends Token>
      * @return the mapping from 'token' to 'percentage of the ring owned by that token'.
      */
     public Map<Token, Float> describeOwnership(List<Token> sortedTokens);
+    
+    /**
+     * Validates node token to be correct according to this partitioner
+     * @param token token as specified in initial token
+     * @throws ConfigurationException when token is wrong
+     */
+    public void validateToken(Token token) throws ConfigurationException;
 }

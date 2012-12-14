@@ -7,6 +7,7 @@ package org.apache.cassandra.dht;
 
 import java.util.Random;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
@@ -128,4 +129,35 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
         
         return new StringToken( sb.append(Integer.toHexString(domain)).append(tail, 2,tail.length()).toString() );
     }
+    
+    /**
+     * Validates, that token is hex digit 0-255, lower case letters only
+     * 
+     * @param initialToken
+     * @throws ConfigurationException if something is wrong
+     */
+    @Override
+    public void validateToken(Token nodeToken) throws ConfigurationException
+    {
+        String initialToken = nodeToken.toString();
+        
+        if (initialToken==null)
+            throw new ConfigurationException("Initial node token must be specified explicitly");
+        
+        if (initialToken.length()!=2)
+            throw new ConfigurationException("Node token must be 2 char hex digit  : "+initialToken);
+        
+        try {
+            int token = Integer.parseInt(initialToken, 16);
+            if (token<0 || token>255)
+                throw new ConfigurationException("Node token must be hex digit 0-255 : "+initialToken);
+            
+            if (!initialToken.toLowerCase().equals(initialToken))
+                throw new ConfigurationException("Node token must be hex digit. Only lower case letters allowed : "+initialToken);
+                
+        } catch (NumberFormatException e) {
+            throw new ConfigurationException("Node token must be hex digit : "+initialToken);
+        }
+    }
+
 }

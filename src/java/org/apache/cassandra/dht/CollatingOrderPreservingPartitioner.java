@@ -24,6 +24,7 @@ import java.util.*;
 
 import org.apache.commons.lang.ArrayUtils;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
@@ -151,4 +152,13 @@ public class CollatingOrderPreservingPartitioner implements IPartitioner<BytesTo
     }
 
     public Map<Token, Float> describeOwnership(List<Token> sortedTokens){ throw new UnsupportedOperationException(); }
+
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.dht.IPartitioner#validateToken(org.apache.cassandra.dht.Token)
+     */
+    @Override
+    public void validateToken(Token token) throws ConfigurationException
+    {
+        
+    }
 }

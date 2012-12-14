@@ -45,6 +45,7 @@ import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.CFMetaData;
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.commitlog.CommitLog;
@@ -331,6 +332,13 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             logger_.error("ClusterName mismatch: " + new String(storageMetadata_.getClusterName()) + " != " +
                     DatabaseDescriptor.getClusterName());
             System.exit(3);
+        }
+        
+        partitioner_.validateToken(storageMetadata_.getToken());
+        
+        if (SystemTable.isBootstrapped() && !DatabaseDescriptor.isAutoBootstrap())
+        {
+            throw new ConfigurationException("This node seems boostrapped, but your storage-conf.xml has <Autoboostrap>false</>. Please change it to true on ALL nodes to avoid accidental empty node join to the ring");
         }
 
         DatabaseDescriptor.createAllDirectories();

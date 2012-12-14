@@ -22,6 +22,7 @@ import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.util.*;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
@@ -193,5 +194,14 @@ public class OrderPreservingPartitioner implements IPartitioner<StringToken>
         }
         
         return alltokens;
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.dht.IPartitioner#validateToken(org.apache.cassandra.dht.Token)
+     */
+    @Override
+    public void validateToken(Token token) throws ConfigurationException
+    {
+        
     }
 }

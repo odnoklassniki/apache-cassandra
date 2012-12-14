@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.GuidGenerator;
@@ -152,5 +153,14 @@ public class RandomPartitioner implements IPartitioner<BigIntegerToken>
             ownerships.put(start, new BigDecimal(((BigIntegerToken)start).token.subtract(ti).add(ri).mod(ri)).divide(r).floatValue());
         }
         return ownerships;
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.dht.IPartitioner#validateToken(org.apache.cassandra.dht.Token)
+     */
+    @Override
+    public void validateToken(Token token) throws ConfigurationException
+    {
+        
     }
 }
