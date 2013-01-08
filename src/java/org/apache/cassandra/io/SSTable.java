@@ -52,6 +52,7 @@ public abstract class SSTable
     public static final int FILES_ON_DISK = 3; // data, index, and bloom filter
 
     protected String path;
+    protected String indexPath;
     protected IPartitioner partitioner;
     protected BloomFilter bf;
     protected String columnFamilyName;
@@ -64,6 +65,7 @@ public abstract class SSTable
         assert filename.endsWith("-Data.db");
         columnFamilyName = parseColumnFamilyName(filename);
         this.path = filename;
+        this.indexPath = indexFilename(path);
         this.partitioner = partitioner;
     }
 
@@ -81,7 +83,7 @@ public abstract class SSTable
 
     public String indexFilename()
     {
-        return indexFilename(path);
+        return indexPath;
     }
 
     protected static String compactedFilename(String dataFile)
