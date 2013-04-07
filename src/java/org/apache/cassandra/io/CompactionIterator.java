@@ -235,7 +235,6 @@ public abstract class CompactionIterator extends ReducingIterator<IteratingRow, 
      */
     protected void setColumnNameObserver(IColumnNameObserver columnNameObserver)
     {
-        assert row == 0;
         assert this.skipBloom;
 
         this.columnNameObserver = columnNameObserver;
