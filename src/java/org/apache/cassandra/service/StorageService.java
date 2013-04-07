@@ -485,15 +485,14 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             if (FailureDetector.instance.isAlive(seed))
             {
                 try {
-                    Map<Range, List<String>> rangeToEndPointMap = new NodeProbe(seed.getHostAddress()).getRangeToEndPointMap(null);
+                    Map<Token, String> ring = new NodeProbe(seed.getHostAddress()).getPrettyRing();
+                    
+                    String host = ring.get(token.toString());
 
-                    for (Entry<Range, List<String>> mapElement : rangeToEndPointMap.entrySet()) 
+                    if (host!=null && host.equals(localAddress.getHostAddress()))
                     {
-                        if (mapElement.getKey().right.equals(token) && mapElement.getValue().contains(localAddress.getHostAddress()))
-                        {
-                            logger_.info("Found myself in ring of "+seed.getHostAddress());
-                            return true;
-                        }
+                        logger_.info("Found myself in ring of "+seed.getHostAddress());
+                        return true;
                     }
                     
                 } catch (IOException e) {

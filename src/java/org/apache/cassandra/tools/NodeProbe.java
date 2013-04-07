@@ -226,7 +226,7 @@ public class NodeProbe
      */
     public void printRing(PrintStream outs)
     {
-        Map<Token, String> rangeMap = ssProxy.getPrettyTokenRing();
+        Map<Token, String> rangeMap = getPrettyRing();
         List<Token> ranges = new ArrayList<Token>(rangeMap.keySet());
         Collections.sort(ranges);
         Set<String> liveNodes = ssProxy.getLiveNodes();
@@ -298,6 +298,11 @@ public class NodeProbe
             
             counter++;
         }
+    }
+
+    public Map<Token, String> getPrettyRing()
+    {
+        return ssProxy.getPrettyTokenRing();
     }
     
     public Set<String> getUnreachableNodes()
@@ -584,7 +589,7 @@ public class NodeProbe
     public Map<Token, String> getPrettyTokenRing()
     {
         try {
-            return ssProxy.getPrettyTokenRing();
+            return getPrettyRing();
         } catch (Exception e)
         {
             // falling back to old style
