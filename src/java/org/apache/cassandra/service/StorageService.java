@@ -487,7 +487,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 try {
                     Map<Token, String> ring = new NodeProbe(seed.getHostAddress()).getPrettyRing();
                     
-                    String host = ring.get(token.toString());
+                    String host = ring.get(token);
 
                     if (host!=null && host.equals(localAddress.getHostAddress()))
                     {
