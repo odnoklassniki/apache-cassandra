@@ -36,10 +36,17 @@ import org.apache.log4j.Logger;
 import org.apache.cassandra.auth.AllowAllAuthenticator;
 import org.apache.cassandra.auth.IAuthenticator;
 import org.apache.cassandra.db.ColumnFamily;
+import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.commitlog.CommitLog;
+import org.apache.cassandra.db.disks.AbstractDiskAllocator;
+import org.apache.cassandra.db.disks.DiskAllocator;
+import org.apache.cassandra.db.disks.RoundRobinAllocator;
+import org.apache.cassandra.db.disks.SingleDirAllocator;
+import org.apache.cassandra.db.disks.SizeTieredAllocator;
+import org.apache.cassandra.db.disks.SpaceFirstAllocator;
 import org.apache.cassandra.db.hints.HintLog;
 import org.apache.cassandra.db.hints.HintLogHandoffManager;
 import org.apache.cassandra.db.marshal.AbstractType;
@@ -101,8 +108,8 @@ public class DatabaseDescriptor
     private static Set<InetAddress> seeds = new HashSet<InetAddress>();
     /* Keeps the list of data file directories */
     private static String[] dataFileDirectories;
-    /* Current index into the above list of directories */
-    private static int currentIndex = 0;
+    /** MM: disk allocation policy **/
+    private static DiskAllocator dataFileAllocator;
     private static String logFileDirectory;
     /** MM: where to ship commit logs for backup **/
     private static String logFileArchiveDestination;
@@ -645,6 +652,25 @@ public class DatabaseDescriptor
                 if (datadir.equals(logFileDirectory))
                     throw new ConfigurationException("CommitLogDirectory must not be the same as any DataFileDirectory");
             }
+
+            String fileAllocationPolicy = xmlUtils.getNodeValue("/Storage/DataFileDirectories/Allocation");
+            if (dataFileDirectories.length==1) {
+                dataFileAllocator = new SingleDirAllocator(dataFileDirectories);
+                if (fileAllocationPolicy!=null)
+                    logger.warn("Disk space allocator policy configuration "+fileAllocationPolicy+" is not applicable for single data dir setup");
+            } else {
+                
+                if (fileAllocationPolicy==null || fileAllocationPolicy.equalsIgnoreCase("roundrobin")) {
+                    dataFileAllocator = new RoundRobinAllocator(dataFileDirectories);
+                } else if (fileAllocationPolicy.equalsIgnoreCase("spacefirst")) {
+                    dataFileAllocator = new SpaceFirstAllocator(dataFileDirectories);
+                } else if (fileAllocationPolicy.equalsIgnoreCase("sizetiered")) {
+                    dataFileAllocator = new SizeTieredAllocator(dataFileDirectories);
+                }
+                
+                logger.info("Multiple data directories allocator is set to "+dataFileAllocator.getClass().getSimpleName());
+            }
+            
 
             String activateShipping = xmlUtils.getNodeValue("/Storage/CommitLogArchive");
 
@@ -1622,19 +1648,12 @@ public class DatabaseDescriptor
 
         for (int i = 0; i < dataFileDirectories.length; i++)
         {
-            tableLocations[i] = dataFileDirectories[i] + File.separator + table;
+            tableLocations[i] = AbstractDiskAllocator.getDataFileLocationForTable( new File( dataFileDirectories[i] ), table );
         }
 
         return tableLocations;
     }
-
-    public synchronized static String getNextAvailableDataLocation()
-    {
-        String dataFileDirectory = dataFileDirectories[currentIndex];
-        currentIndex = (currentIndex + 1) % dataFileDirectories.length;
-        return dataFileDirectory;
-    }
-
+    
     public static String getLogFileLocation()
     {
         return logFileDirectory;
@@ -1675,25 +1694,9 @@ public class DatabaseDescriptor
      * compacted file is greater than the max disk space available return null, we cannot
      * do compaction in this case.
      */
-    public static String getDataFileLocationForTable(String table, long expectedCompactedFileSize)
+    public static String getDataFileLocation(ColumnFamilyStore store, long expectedCompactedFileSize)
     {
-        int diskIndex = -1;
-        String[] dataDirectoryForTable = getAllDataFileLocationsForTable(table);
-
-        for ( int i = 0 ; i < dataDirectoryForTable.length ; i++ )
-        {
-            currentIndex = ( currentIndex + 1 ) % dataDirectoryForTable.length ;
-
-            File f = new File(dataDirectoryForTable[currentIndex]);
-            // Load factor of 0.9 we do not want to use the entire disk that is too risky.
-            if( expectedCompactedFileSize+expectedCompactedFileSize/10 < f.getUsableSpace())
-            {
-                diskIndex = currentIndex;
-                break;
-            }
-        }
-        
-        return diskIndex >=0 ? dataDirectoryForTable[diskIndex] : null;
+        return dataFileAllocator.getDataFileLocation(store, expectedCompactedFileSize);
     }
     
     public static File getDataArchiveFileLocationForSnapshot(String table)

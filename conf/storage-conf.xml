@@ -299,6 +299,15 @@
   <CommitLogArchive>false</CommitLogArchive>
   <DataFileDirectories>
       <DataFileDirectory>/var/lib/cassandra/data</DataFileDirectory>
+      <!-- If multiple data dirs are used you can choose one of disk allocators to use: 
+           spacefirst - Places new file on disk with the most free space available. 
+                        Good when disk space is primary concern and you have a lot of spare iops (typically SSDs or when reads are rare)
+           roundrobin - (ODKL default prior p23) every file is placed on next disk. This could make free disk space heavy unbalanced, but is better balancing iops
+                        across disks
+           sizetiered - (ODKL) splits all sstables to tiers based on their size. Then it tries to keep same number of files from each tier on every disk. This
+                        should give better balanced iops and free space then roundrobin.
+      -->
+      <Allocation>roundrobin</Allocation>
   </DataFileDirectories>
 
   <!-- 

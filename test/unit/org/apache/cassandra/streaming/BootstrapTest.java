@@ -27,6 +27,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.Table;
+import org.apache.cassandra.utils.FBUtilities;
 
 import org.junit.Test;
 
@@ -42,8 +44,17 @@ public class BootstrapTest
         StreamInitiateVerbHandler bivh = new StreamInitiateVerbHandler();
         Map<String, String> fileNames = bivh.getNewNames(pendingFiles);
         Map<String, String> paths = new HashMap<String, String>();
-        for (String ssName : fileNames.keySet())
-            paths.put(ssName, DatabaseDescriptor.getNextAvailableDataLocation());
+        
+        for (PendingFile pendingFile : pendingFiles) {
+            String[] pieces = FBUtilities.strip(new File(pendingFile.getTargetFile()).getName(), "-");
+            String newFileNameExpanded = pendingFile.getTable() + "-" + pieces[0] + "-" + pieces[1];
+
+            assert fileNames.containsKey(newFileNameExpanded);
+            
+            paths.put ( newFileNameExpanded, DatabaseDescriptor.getDataFileLocation(Table.open(pendingFile.getTable()).getColumnFamilyStore(pieces[0]), pendingFile.getExpectedBytes()) );
+            
+        }
+        
         assertEquals(1, paths.size());
         String result = fileNames.get("Keyspace1-Standard1-500");
         assertEquals(true, result.contains("Standard1"));

@@ -631,25 +631,6 @@ public class Table
         }
     }
 
-    public String getDataFileLocation(long expectedCompactedFileSize)
-    {
-        String path = DatabaseDescriptor.getDataFileLocationForTable(name, expectedCompactedFileSize);
-        if (path == null)
-        {
-            // retry after GCing to force unmap of compacted SSTables so they can be deleted
-            StorageService.instance.requestGC();
-            try
-            {
-                Thread.sleep(SSTableDeletingReference.RETRY_DELAY * 2);
-            }
-            catch (InterruptedException e)
-            {
-                throw new AssertionError(e);
-            }
-            path = DatabaseDescriptor.getDataFileLocationForTable(name, expectedCompactedFileSize);
-        }
-        return path;
-    }
 
     public static String getSnapshotPath(String dataDirPath, String tableName, String snapshotName)
     {

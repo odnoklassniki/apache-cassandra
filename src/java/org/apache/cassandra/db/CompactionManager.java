@@ -287,7 +287,7 @@ public class CompactionManager implements CompactionManagerMBean
         if (DatabaseDescriptor.isSnapshotBeforeCompaction())
             table.snapshot("compact-" + cfs.columnFamily_);
         logger.info("Compacting [" + StringUtils.join(sstables, ",") + "]");
-        String compactionFileLocation = table.getDataFileLocation(cfs.getExpectedCompactedFileSize(sstables));
+        String compactionFileLocation = cfs.getDataFileLocation(cfs.getExpectedCompactedFileSize(sstables));
         // If the compaction file path is null that means we have no space left for this compaction.
         // try again w/o the largest one.
         List<SSTableReader> smallerSSTables = new ArrayList<SSTableReader>(sstables);
@@ -295,7 +295,7 @@ public class CompactionManager implements CompactionManagerMBean
         {
             logger.warn("insufficient space to compact all requested files " + StringUtils.join(smallerSSTables, ", "));
             smallerSSTables.remove(cfs.getMaxSizeFile(smallerSSTables));
-            compactionFileLocation = table.getDataFileLocation(cfs.getExpectedCompactedFileSize(smallerSSTables));
+            compactionFileLocation = cfs.getDataFileLocation(cfs.getExpectedCompactedFileSize(smallerSSTables));
         }
         if (compactionFileLocation == null)
         {
@@ -387,7 +387,7 @@ public class CompactionManager implements CompactionManagerMBean
         logger.info("AntiCompacting [" + StringUtils.join(sstables, ",") + "]");
         // Calculate the expected compacted filesize
         long expectedRangeFileSize = cfs.getExpectedCompactedFileSize(sstables) / 2;
-        String compactionFileLocation = table.getDataFileLocation(expectedRangeFileSize);
+        String compactionFileLocation = cfs.getDataFileLocation(expectedRangeFileSize);
         if (compactionFileLocation == null)
         {
             throw new UnsupportedOperationException("disk full");

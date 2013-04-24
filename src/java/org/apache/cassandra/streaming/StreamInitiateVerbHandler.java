@@ -74,8 +74,16 @@ public class StreamInitiateVerbHandler implements IVerbHandler
 
             Map<String, String> fileNames = getNewNames(pendingFiles);
             Map<String, String> pathNames = new HashMap<String, String>();
-            for (String ssName : fileNames.keySet())
-                pathNames.put(ssName, DatabaseDescriptor.getNextAvailableDataLocation());
+            
+            for (PendingFile pendingFile : pendingFiles) {
+                String[] pieces = FBUtilities.strip(new File(pendingFile.getTargetFile()).getName(), "-");
+                String newFileNameExpanded = pendingFile.getTable() + "-" + pieces[0] + "-" + pieces[1];
+
+                assert fileNames.containsKey(newFileNameExpanded);
+                
+                pathNames.put ( newFileNameExpanded, DatabaseDescriptor.getDataFileLocation(Table.open(pendingFile.getTable()).getColumnFamilyStore(pieces[0]), pendingFile.getExpectedBytes()) );
+                
+            }
             /*
              * For each of stream context's in the incoming message
              * generate the new file names and store the new file names
@@ -118,7 +126,7 @@ public class StreamInitiateVerbHandler implements IVerbHandler
         String path = pathNames.get(pendingFile.getTable() + "-" + cfName + "-" + ssTableNum);
         //Drop type (Data.db) from new FileName
         String newFileName = newFileNameExpanded.replace("Data.db", typeOfFile);
-        return path + File.separator + pendingFile.getTable() + File.separator + newFileName;
+        return path + File.separator + newFileName;
     }
 
     // todo: this method needs to be private, or package at the very least for easy unit testing.

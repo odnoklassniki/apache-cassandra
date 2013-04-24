@@ -488,9 +488,29 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     private String estimateFlushPath()
     {
         long guessedSize = 2 * DatabaseDescriptor.getMemtableThroughput() * 1024*1024; // 2* adds room for keys, column indexes
-        String location = DatabaseDescriptor.getDataFileLocationForTable(table_, guessedSize);
+        String location = DatabaseDescriptor.getDataFileLocation(this, guessedSize);
 
         return location;
+    }
+
+    public String getDataFileLocation(long expectedCompactedFileSize)
+    {
+        String path = DatabaseDescriptor.getDataFileLocation(this, expectedCompactedFileSize);
+        if (path == null)
+        {
+            // retry after GCing to force unmap of compacted SSTables so they can be deleted
+            StorageService.instance.requestGC();
+            try
+            {
+                Thread.sleep(SSTableDeletingReference.RETRY_DELAY * 2);
+            }
+            catch (InterruptedException e)
+            {
+                throw new AssertionError(e);
+            }
+            path = DatabaseDescriptor.getDataFileLocation(this, expectedCompactedFileSize);
+        }
+        return path;
     }
 
     public String getTempSSTableFileName()
