@@ -666,6 +666,8 @@ public class DatabaseDescriptor
                     dataFileAllocator = new SpaceFirstAllocator(dataFileDirectories);
                 } else if (fileAllocationPolicy.equalsIgnoreCase("sizetiered")) {
                     dataFileAllocator = new SizeTieredAllocator(dataFileDirectories);
+                } else {
+                    throw new ConfigurationException("Invalid data directories allocator "+fileAllocationPolicy);
                 }
                 
                 logger.info("Multiple data directories allocator is set to "+dataFileAllocator.getClass().getSimpleName());
