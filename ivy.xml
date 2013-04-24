@@ -42,7 +42,7 @@
 
   <dependencies>
     <!-- for Hadoop unit tests -->
-    <dependency org="commons-logging" name="commons-logging" rev="1.0" conf="*->default"/>
+    <dependency org="commons-logging" name="commons-logging" rev="1.1.1" conf="*->default"/>
     <!-- FIXME: paranamer can be dropped after we're depending on avro 
     (since it depends on them). -->
     <dependency org="com.thoughtworks.paranamer"
@@ -58,10 +58,10 @@
     <dependency org="com.thoughtworks.paranamer" name="paranamer-generator" rev="2.1"/>
     <dependency org="ant" name="ant" rev="1.6.5"/>
     <dependency org="com.thoughtworks.qdox" name="qdox" rev="1.10"/>
-    <dependency org="asm" name="asm" rev="3.2"/>
+    <dependency org="asm" name="asm" rev="3.3"/>
     <dependency org="org.apache.rat" name="apache-rat-core" rev="0.6"/>
     <dependency org="commons-collections" name="commons-collections" rev="3.2"/>
-    <dependency org="commons-lang" name="commons-lang" rev="2.1"/>
+    <dependency org="commons-lang" name="commons-lang" rev="2.6"/>
     <dependency org="commons-cli" name="commons-cli" rev="1.1"/>
     <dependency org="javax.mail" name="mail" rev="1.4.1"/>
     <dependency org="org.apache.geronimo.specs" name="geronimo-jms_1.1_spec" rev="1.0"/>
@@ -72,9 +72,10 @@
     <dependency org="org.aspectj" name="aspectjrt" rev="1.6.10" />
     <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.10"/>
     <dependency org="log4j" name="log4j" rev="1.2.16" />
-    <dependency org="ru.odnoklassniki" name="one-log" rev="[1.0.26,)" />
+
+    <!-- one-log statistics 2.0 transitive style -->
+    <dependency org="ru.odnoklassniki" name="one-log-server" rev="[2.0.0,)" conf="server->client-all,sources"/>
     
-    <dependency org="com.inet.tds" name="Sprinta" rev="605a" />
     <dependency org="commons-pool" name="commons-pool" rev="1.5.6"/>
    
   </dependencies>
