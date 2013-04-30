@@ -115,7 +115,7 @@ public class SSTableWriter extends SSTable
     {
         long currentPosition = beforeAppend(decoratedKey);
         dataFile.writeUTF(partitioner.convertToDiskFormat(decoratedKey));
-        assert cfLength > 0;
+        assert cfLength > 0 : "cfLength = " + cfLength;
         dataFile.writeInt(cfLength);
 
         return currentPosition;
