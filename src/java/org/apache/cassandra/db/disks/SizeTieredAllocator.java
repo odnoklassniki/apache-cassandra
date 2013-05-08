@@ -15,6 +15,7 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.io.SSTableReader;
+import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -82,7 +83,7 @@ public class SizeTieredAllocator extends AbstractDiskAllocator
                 
                 if ( r==0 ) {
                     // returning disk with more free space first
-                    return o1.left.getUsableSpace() > o1.left.getUsableSpace() ? -1 : 1;
+                    return o1.left.getUsableSpace() > o1.left.getUsableSpace() ? 1 : -1;
                 }
                 
                 return r;
@@ -96,7 +97,7 @@ public class SizeTieredAllocator extends AbstractDiskAllocator
                 if (log.isDebugEnabled()) {
                     StringBuilder sb=new StringBuilder();
                     for (Pair<File, Integer> p : dirsAndCount) {
-                        sb.append(p);
+                        sb.append(p.left+","+p.right+","+FileUtils.stringifyFileSize( p.left.getUsableSpace() ));
                     }
 
                     log.debug("estimation:"+estimatedSize+", tier="+tier+", by disk counts "+sb+", choosen "+pair);
