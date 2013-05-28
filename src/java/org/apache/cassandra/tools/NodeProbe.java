@@ -43,8 +43,10 @@ import org.apache.cassandra.concurrent.IExecutorMBean;
 import org.apache.cassandra.db.ColumnFamilyStoreMBean;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.CompactionManagerMBean;
+import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.gms.Gossiper;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageServiceMBean;
 import org.apache.cassandra.streaming.StreamingService;
@@ -208,6 +210,26 @@ public class NodeProbe
         ssProxy.drain();	
     }
     
+    public String gossipInfo()
+    {
+        return ssProxy.gossipInfo();
+    }
+
+    public void gossipStop()
+    {
+        ssProxy.gossipStop();
+    }
+
+    public void gossipStart()
+    {
+        ssProxy.gossipStart();
+    }
+
+    public void gossipPurgePersistent()
+    {
+        ssProxy.gossipPurgePersistent();
+    }
+
     public Map<Range, List<String>> getRangeToEndPointMap(String tableName)
     {
         return ssProxy.getRangeToEndPointMap(tableName);
@@ -444,6 +466,7 @@ public class NodeProbe
     {
         ssProxy.removeToken(token);
     }
+    
   
     public Iterator<Map.Entry<String, IExecutorMBean>> getThreadPoolMBeanProxies()
     {

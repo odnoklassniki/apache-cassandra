@@ -18,15 +18,20 @@
 
 package org.apache.cassandra.db;
 
-import java.io.*;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 
-import org.apache.log4j.Logger;
-
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.filter.IdentityQueryFilter;
 import org.apache.cassandra.db.filter.NamesQueryFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
@@ -35,12 +40,14 @@ import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
+import org.apache.log4j.Logger;
 
 public class SystemTable
 {
     private static Logger logger = Logger.getLogger(SystemTable.class);
     public static final String STATUS_CF = "LocationInfo"; // keep the old CF string for backwards-compatibility
     private static final String LOCATION_KEY = "L";
+    private static final String GOSSIP_KEY = "G"; // persistent gossiper
     private static final String BOOTSTRAP_KEY = "Bootstrap";
     private static final byte[] BOOTSTRAP = utf8("B");
     private static final byte[] TOKEN = utf8("Token");
@@ -81,6 +88,162 @@ public class SystemTable
         }
     }
 
+    /**
+     * Record last seen gossip information about node, to preserve this information across restarts.
+     * 
+     * @param endpoint
+     */
+    public static synchronized void updateEndpointState(InetAddress ep, byte[] endpointState, int generation, int version)
+    {
+        assert version >= 0;
+        
+        long timestamp = ((long)generation) << 30 | version; // yes, we steal 1 bit from version (this is sign bit and version is >0)
+                
+        assert timestamp > 0 : "Generation: "+generation+", version: "+version+" merge = "+timestamp;
+
+        IPartitioner p = StorageService.getPartitioner();
+        ColumnFamily cf = ColumnFamily.create(Table.SYSTEM_TABLE, STATUS_CF);
+        cf.addColumn(new Column(ep.getAddress(), endpointState, timestamp));
+        RowMutation rm = new RowMutation(Table.SYSTEM_TABLE, GOSSIP_KEY);
+        rm.add(cf);
+        try
+        {
+            rm.apply();
+        }
+        catch (IOException e)
+        {
+            throw new FSWriteError(e);
+        }
+    }
+
+    public static synchronized void removeEndpointState(InetAddress ep)
+    {
+        try
+        {
+            IColumn col = loadEndpointState(ep);
+
+            if ( col == null )
+                return; // already removed
+
+            long timestamp = col.timestamp() + 1;
+
+            assert timestamp > 0;
+
+            IPartitioner p = StorageService.getPartitioner();
+            RowMutation rm = new RowMutation(Table.SYSTEM_TABLE, GOSSIP_KEY);
+            rm.delete(new QueryPath(STATUS_CF, null, ep.getAddress()), timestamp);
+            rm.apply();
+        }
+        catch (IOException e)
+        {
+            throw new FSWriteError(e);
+        }
+    }
+    
+    /**
+     * removes all persisted endpoint states
+     */
+    public static synchronized void removeEndpointStates()
+    {
+        try
+        {
+
+            long timestamp = Long.MAX_VALUE;
+
+            IPartitioner p = StorageService.getPartitioner();
+            RowMutation rm = new RowMutation(Table.SYSTEM_TABLE, GOSSIP_KEY);
+            rm.delete(new QueryPath(STATUS_CF, null, null), timestamp);
+            rm.apply();
+            try
+            {
+                ColumnFamilyStore statusCF = Table.open(Table.SYSTEM_TABLE).getColumnFamilyStore(SystemTable.STATUS_CF);
+                statusCF.forceBlockingFlush();
+                statusCF.forceMajorCompaction();
+            }
+            catch (ExecutionException e)
+            {
+                throw new RuntimeException(e);
+            }
+            catch (InterruptedException e)
+            {
+                throw new RuntimeException(e);
+            }
+        }
+        catch (IOException e)
+        {
+            throw new FSWriteError(e);
+        }
+    }
+
+    private static IColumn loadEndpointState(InetAddress ep) throws IOException {
+
+        Table table = null;
+        try
+        {
+            table = Table.open(Table.SYSTEM_TABLE);
+        }
+        catch (AssertionError err)
+        {
+            // this happens when a user switches from OPP to RP.
+            IOException ex = new IOException("Could not read system table. Did you change partitioners?");
+            ex.initCause(err);
+            throw ex;
+        }
+        
+        SortedSet<byte[]> cols = new TreeSet<byte[]>(new BytesType());
+        cols.add(ep.getAddress());
+        QueryFilter filter = new NamesQueryFilter(GOSSIP_KEY, new QueryPath(STATUS_CF), cols);
+
+        ColumnFamily cf = table.getColumnFamilyStore(STATUS_CF).getColumnFamily(filter);
+        
+        if (cf == null)
+            return null;
+        
+        IColumn col = cf.getColumn(ep.getAddress());
+        
+        if (col == null || !col.isLive())
+            return null;
+        
+        return col;
+    }
+    
+    /**
+     * Loads all previously persisted gossip endpoint states
+     * 
+     * @return map with serialized endpoint states
+     * @throws IOException
+     */
+    public static Map<InetAddress,byte[]> loadEndpointStates() throws IOException {
+
+        Table table = null;
+        try
+        {
+            table = Table.open(Table.SYSTEM_TABLE);
+        }
+        catch (AssertionError err)
+        {
+            // this happens when a user switches from OPP to RP.
+            IOException ex = new IOException("Could not read system table. Did you change partitioners?");
+            ex.initCause(err);
+            throw ex;
+        }
+        
+        QueryFilter filter = new IdentityQueryFilter(GOSSIP_KEY, new QueryPath(STATUS_CF));
+
+        ColumnFamily cf = table.getColumnFamilyStore(STATUS_CF).getColumnFamily(filter);
+        
+        if (cf == null)
+            return Collections.emptyMap();
+
+        HashMap<InetAddress,byte[]> rc = new HashMap<InetAddress, byte[]>();
+        for (IColumn col : cf.getSortedColumns()) {
+            if (col != null && col.isLive())
+                rc.put(InetAddress.getByAddress(col.name()),col.value());
+        }
+        
+        return rc;
+    }
+    
     /**
      * This method is used to update the System Table with the new token for this node
     */

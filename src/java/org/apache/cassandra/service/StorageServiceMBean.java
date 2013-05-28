@@ -244,4 +244,24 @@ public interface StorageServiceMBean
      * @return
      */
     Map<Token, String> getPrettyTokenRing();
+
+    /**
+     * @return
+     */
+    String gossipInfo();
+
+    /**
+     * 
+     */
+    void gossipStop();
+
+    /**
+     * 
+     */
+    void gossipStart();
+
+    /**
+     * 
+     */
+    void gossipPurgePersistent();
 }

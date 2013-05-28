@@ -365,6 +365,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             DatabaseDescriptor.getEndPointSnitch(table).gossiperStarting();
         }
         Gossiper.instance.register(this);
+        // touching class to make it register itself to gossip, so it will get information, preloaded from persistent store
+        StorageLoadBalancer loadBalancer = StorageLoadBalancer.instance;
         Gossiper.instance.start();
         
         if (null != DatabaseDescriptor.getReplaceToken())
@@ -375,7 +377,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
 
         MessagingService.instance.listen(FBUtilities.getLocalAddress());
 
-        StorageLoadBalancer.instance.startBroadcasting();
+        loadBalancer.startBroadcasting();
 
         if (DatabaseDescriptor.isAutoBootstrap()
                 && DatabaseDescriptor.getSeeds().contains(FBUtilities.getLocalAddress())
@@ -2040,5 +2042,24 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         Collections.sort(sortedTokens);
 
         return partitioner_.describeOwnership(sortedTokens);
+    }
+    
+    public String gossipInfo() {
+        return "ACTUAL:\n"+Gossiper.instance.dumpState()+"\nPERSISTENT:\n"+Gossiper.instance.dumpPersistentState();
+    }
+    
+    public void gossipStop() {
+        logger_.warn("Stopping gossip by operator request");
+        Gossiper.instance.stop();
+    }
+    
+    public void gossipStart() {
+        logger_.warn("Starting gossip by operator request");
+        Gossiper.instance.start();
+    }
+    
+    public void gossipPurgePersistent() {
+        logger_.warn("Removing persistent gossip state by operator request");
+        SystemTable.removeEndpointStates();
     }
 }

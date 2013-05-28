@@ -18,20 +18,33 @@
 
 package org.apache.cassandra.gms;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.*;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
-
-import org.apache.log4j.Logger;
+import java.util.Random;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.SystemTable;
+import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.StorageService;
+import org.apache.log4j.Logger;
 
 /**
  * This module is responsible for Gossiping information for the local endpoint. This abstraction
@@ -627,7 +640,10 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
         
         if (!isDeadState(epState))
         {
-            logger_.info("Node " + ep + " has restarted, now UP again");
+            if (isKnownNode) {
+                // only if the node was known before we can say this for sure.
+                logger_.info("Node " + ep + " has restarted, now UP again");
+            }
 
             isAlive(ep, epState, isKnownNode);
             for (IEndPointStateChangeSubscriber subscriber : subscribers_)
@@ -687,7 +703,7 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
             }
         }
     }
-
+    
     /**
      * @param localEpStatePtr
      * @return
@@ -897,18 +913,31 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
             localState.isAGossiper(true);
             endPointStateMap_.put(localEndPoint_, localState);
         }
-        
+
     }
+    
+    private boolean started = false;
 
     /**
      * starts gossiper 
      */
-    public void start()
+    public synchronized void start()
     {
+        if (started)
+            return;
+        
+        if (!StorageService.instance.isClientMode()) {
+            loadPersistentStates();
+    
+            register(new GossiperStatePersister());
+        }
+
         /* starts a timer thread */
         gossipTimer_.schedule( new GossipTimerTask(), Gossiper.intervalInMillis_, Gossiper.intervalInMillis_);
-    }
 
+        started = true;
+    }
+    
     public synchronized void addLocalApplicationState(String key, ApplicationState appState)
     {
         assert !StorageService.instance.isClientMode();
@@ -916,10 +945,76 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
         assert epState != null;
         epState.addApplicationState(key, appState);
     }
+    
+    private void loadPersistentStates() {
+        
+        if (System.getProperty("cassandra.load_gossip_state")!=null && !Boolean.valueOf( System.getProperty("cassandra.load_gossip_state") ))
+            return;
+        if (endPointStateMap_.size() > 1)
+            return ; //skipping load, because gossip already has some nodes
+        
+        try {
+            Map<InetAddress, byte[]> endpointStates = SystemTable.loadEndpointStates();
+            
+            logger_.info("Preloading gossip with "+endpointStates.size()+" states persisted in system table");
+            logger_.info(dumpPersistentState());
+            
+            for (Entry<InetAddress, byte[]> entry : endpointStates.entrySet()) {
+                
+                EndPointState endPointState = EndPointState.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(entry.getValue())));
+                
+                assert !entry.getKey().equals(localEndPoint_);
+                
+                // TODO may be control last update timestamp and skip/remove stale records
+                
+                handleNewJoin(entry.getKey(), endPointState);
+            }
+            
+        } catch (IOException e) {
+            logger_.error("Cannot load gossip persistent state ",e);
+            throw new RuntimeException("Cannot load gossip persistent state",e);
+        }
+    }
+    
+    public String dumpState() {
+        
+        StringBuilder sb = new StringBuilder();
+        for (Entry<InetAddress, EndPointState> entry : endPointStateMap_.entrySet()) {
+            
+            entry.getValue().toString(sb, entry.getKey());
+        }
+        
+        return sb.toString();
+    }
 
-    public void stop()
+    public String dumpPersistentState() {
+        
+        StringBuilder sb = new StringBuilder();
+        try {
+            Map<InetAddress, byte[]> endpointStates = SystemTable.loadEndpointStates();
+
+            for (Entry<InetAddress, byte[]> entry : endpointStates.entrySet()) {
+                
+                EndPointState endPointState = EndPointState.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(entry.getValue())));
+                
+                endPointState.toString(sb, entry.getKey());
+            }
+            
+            return sb.toString();
+        } catch (IOException e) {
+            logger_.error("Cannot load gossip persistent state ",e);
+            throw new RuntimeException("Cannot load gossip persistent state",e);
+        }
+    }
+    
+    public synchronized void stop()
     {
+        if (!started)
+            return ;
+        
         gossipTimer_.cancel();
         gossipTimer_ = new Timer(false); // makes the Gossiper reentrant.
+        
+        started = false;
     }
 }

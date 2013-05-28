@@ -93,6 +93,10 @@ public class NodeCmd {
                                       + "getcompactionthreshold%n"
                                       + "setcompactionthreshold [minthreshold] ([maxthreshold])%n"
                                       + "streams [host]%n"
+                                      + "gossipinfo%n"
+                                      + "gossipstop%n"
+                                      + "gossipstart%n"
+                                      + "gossippurge%n"
                                       + "cfhistograms <keyspace> <column_family>%n");
         String usage = String.format("java %s --host <arg> <command>%n", NodeCmd.class.getName());
         hf.printHelp(usage, "", options, header);
@@ -568,6 +572,22 @@ public class NodeCmd {
         else if (cmdName.equals("tpstats"))
         {
             nodeCmd.printThreadPoolStats(System.out);
+        }
+        else if (cmdName.equals("gossipinfo"))
+        {
+            System.out.println(probe.gossipInfo());
+        }
+        else if (cmdName.equals("gossipstop"))
+        {
+            probe.gossipStop();
+        }
+        else if (cmdName.equals("gossipstart"))
+        {
+            probe.gossipStart();
+        }
+        else if (cmdName.equals("gossippurge"))
+        {
+            probe.gossipPurgePersistent();
         }
         else if (cmdName.equals("flush") || cmdName.equals("repair"))
         {

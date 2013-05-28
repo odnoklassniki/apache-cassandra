@@ -21,7 +21,10 @@ package org.apache.cassandra.gms;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.sql.Timestamp;
 import java.util.*;
+import java.util.Map.Entry;
 
 import org.apache.log4j.Logger;
 
@@ -151,6 +154,32 @@ public class EndPointState
 
         return entries;
     }
+
+    public String toString(InetAddress ep) {
+        StringBuilder sb = new StringBuilder();
+        
+        toString(sb, ep);
+        
+        return sb.toString();
+    }
+
+    public void toString( StringBuilder sb, InetAddress ep )
+    {
+        sb.append(ep.toString()).append(": ");
+        
+        sb.append( getHasToken() ? "hastoken," : "client," );
+        
+        sb.append( "updated at "+ new Timestamp( getUpdateTimestamp() )+"," );
+        sb.append( "heartbean gen # "+ getHeartBeatState().getGeneration() +", version #"+getHeartBeatState().getHeartBeatVersion() );
+        sb.append("\n   application states: \n");
+        
+        for (Entry<String, ApplicationState> sen : getSortedApplicationStates()) {
+            sb.append("   ").append(sen.getKey()).append('=').append(sen.getValue().getValue()).append(", version #").append(sen.getValue().getStateVersion()).append('\n');
+        }
+        
+        sb.append('\n');
+    }
+
 
 }
 
