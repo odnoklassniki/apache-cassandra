@@ -889,6 +889,19 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         }
     }
 
+    public Iterator<Map.Entry<DecoratedKey, ColumnFamily>> getMemtableItarator()
+    {
+        Table.flusherLock.readLock().lock();
+        try
+        {
+            return memtable_.getEntryIterator();
+        }
+        finally
+        {
+            Table.flusherLock.readLock().unlock();
+        }
+    }
+
     public Collection<SSTableReader> getSSTables()
     {
         return ssTables_.getSSTables();

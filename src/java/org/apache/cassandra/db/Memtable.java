@@ -344,4 +344,8 @@ public class Memtable implements Comparable<Memtable>, IFlushable
     {
         return System.currentTimeMillis() > creationTime + DatabaseDescriptor.getMemtableLifetimeMS();
     }
+
+    public Iterator<Map.Entry<DecoratedKey, ColumnFamily>> getEntryIterator() {
+        return columnFamilies.entrySet().iterator();
+    }
 }
