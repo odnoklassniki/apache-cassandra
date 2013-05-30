@@ -28,6 +28,7 @@ import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.config.DatabaseDescriptor.CommitLogSync;
 import org.apache.cassandra.db.ColumnFamily;
 import org.apache.cassandra.db.FSReadError;
 import org.apache.cassandra.db.FSWriteError;
@@ -44,18 +45,33 @@ public class CommitLogSegment
     private final BufferedRandomAccessFile logWriter;
     private final CommitLogHeader header;
 
+    // right after creation of a new commit log segment there is a flood of
+    // column families with requests to turn on dirty flag in it.
+    // this leads to many write header requests issued in first couple of seconds;
+    // this lead to hiccups in commit logging thread, and, as a consequence to mutation acceptance rate.
+    
+    // to workaround this, we delay 1st write (and creation) of .header file for commit log period. this is ok, because if
+    // there are no .header file - all CFs are considered dirty and will be anyway replayed if node crashed before 1st write of header file
+    // this does not work, if you requested batched commit log mode (for batched commit mode, you dont care about write performance, right ?)
+    private long  delayWriteUntil;
+
     public CommitLogSegment(int cfCount)
     {
         this.header = new CommitLogHeader(cfCount);
-        String logFile = DatabaseDescriptor.getLogFileLocation() + File.separator + "CommitLog-" + System.currentTimeMillis() + ".log";
+        long now = System.currentTimeMillis();
+        String logFile = DatabaseDescriptor.getLogFileLocation() + File.separator + "CommitLog-" + now + ".log";
         logger.info("Creating new commitlog segment " + logFile);
 
         try
         {
             logWriter = createWriter(logFile);
             logWriter.setSkipCache(true);
-            
-            writeHeader();
+
+            if (DatabaseDescriptor.getCommitLogSync() == CommitLogSync.periodic) {
+                delayWriteUntil = now + DatabaseDescriptor.getCommitLogSyncPeriod();
+            } else {
+                delayWriteUntil = 0;
+            }
         }
         catch (IOException e)
         {
@@ -65,7 +81,17 @@ public class CommitLogSegment
 
     public void writeHeader() throws IOException
     {
-        CommitLogHeader.writeCommitLogHeader(header, getHeaderPath() );
+        if (delayWriteUntil==0 || delayWriteUntil<System.currentTimeMillis()) {
+            String headerFile = getHeaderPath();
+            logger.info("Creating new commitlog segment header " + headerFile);
+            CommitLogHeader.writeCommitLogHeader(header, headerFile );
+
+            delayWriteUntil = 0;
+        }
+    }
+    
+    private boolean isDelayedHeaderWritePending() {
+        return delayWriteUntil!=0;
     }
 
     private static BufferedRandomAccessFile createWriter(String file) throws IOException
@@ -127,6 +153,10 @@ public class CommitLogSegment
         
         try {
             logWriter.sync();
+
+            if (isDelayedHeaderWritePending())
+                writeHeader();
+            
         } catch (IOException e) {
             throw new FSWriteError(e);
         }
