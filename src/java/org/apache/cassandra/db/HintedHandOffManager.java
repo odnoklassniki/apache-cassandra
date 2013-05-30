@@ -87,12 +87,12 @@ import org.cliffc.high_scale_lib.NonBlockingHashSet;
 public class HintedHandOffManager
 {
     private static HintedHandOffManager instance ;
-    
+
     public static HintedHandOffManager instance()
     {
         return instance;
     }
-    
+
     public static void setInstance(Class<? extends HintedHandOffManager> clazz) throws ConfigurationException
     {
         // TODO previous HHM deactivation
@@ -117,11 +117,11 @@ public class HintedHandOffManager
     public HintedHandOffManager()
     {
         int hhPriority = System.getProperty("cassandra.compaction.priority") == null
-                         ? Thread.NORM_PRIORITY
-                         : Integer.parseInt(System.getProperty("cassandra.compaction.priority"));
+                ? Thread.NORM_PRIORITY
+                        : Integer.parseInt(System.getProperty("cassandra.compaction.priority"));
         executor_ = new JMXEnabledThreadPoolExecutor("HINTED-HANDOFF-POOL", hhPriority);
         new UpdatePlayingHintsThread().start();
-        
+
     }
 
     private static boolean sendMessage(InetAddress endPoint, String tableName, String key) throws IOException
@@ -201,7 +201,7 @@ public class HintedHandOffManager
     {
         // done if no hints found or the start column (same as last column processed in previous iteration) is the only one
         return hintColumnFamily == null
-               || (hintColumnFamily.getSortedColumns().size() == 1 && hintColumnFamily.getColumn(startColumn) != null);
+                || (hintColumnFamily.getSortedColumns().size() == 1 && hintColumnFamily.getColumn(startColumn) != null);
     }
 
     protected void deliverHintsToEndpoint(InetAddress endPoint) throws IOException, DigestMismatchException, InvalidRequestException, TimeoutException
@@ -264,21 +264,21 @@ public class HintedHandOffManager
         }
 
         logger_.info(String.format("Finished hinted handoff of %s rows to endpoint %s",
-                                   rowsReplayed, endPoint));
+                rowsReplayed, endPoint));
     }
 
     /*
      * This method is used to deliver hints to a particular endpoint.
      * When we learn that some endpoint is back up we deliver the data
      * to him via an event driven mechanism.
-    */
+     */
     public void deliverHints(final InetAddress to)
     {
         if (!queuedDeliveries.add(to))
             return;
-        
+
         notifyStartPlayingHints(to);
-        
+
         Runnable r = new WrappedRunnable()
         {   
             public void runMayThrow() throws Exception
@@ -288,11 +288,11 @@ public class HintedHandOffManager
                 }finally{
                     //если не пришло новое задание, то нотифицируем об окончании
                     notifyFinishedPlayingHints(to);
-                    
+
                 }
             }
         };
-    	executor_.submit(r);
+        executor_.submit(r);
     }
 
     public void deliverHints(String to) throws UnknownHostException
@@ -312,12 +312,12 @@ public class HintedHandOffManager
     {
         if (logger_.isDebugEnabled())
             logger_.debug("Adding hint for " + hint.getHostAddress());
-        
+
         RowMutation hintedMutation = new RowMutation(Table.SYSTEM_TABLE, rm.getTable());
         hintedMutation.addHints(rm.key(), hint.getAddress());
         hintedMutation.apply();
     }
-    
+
     public boolean isSomebodyPlayingHits(){
         InetAddress localAddress = FBUtilities.getLocalAddress();
         Set<InetAddress> endpoints = Gossiper.instance.getLiveMembers();
@@ -329,7 +329,7 @@ public class HintedHandOffManager
         }
         return false;
     }
-    
+
     public List<InetAddress> getNodesPlayingHits(){
         List<InetAddress>  res = new ArrayList<InetAddress>();
         InetAddress localAddress = FBUtilities.getLocalAddress();
@@ -342,17 +342,17 @@ public class HintedHandOffManager
         }
         return res;
     }
-    
+
     public  List<InetAddress> getPlayingHints(InetAddress endpoint) {
         ApplicationState applicationState = Gossiper.instance.getEndPointStateForEndPoint(endpoint).getApplicationState(APPSTATE_PAYING_HINTS);
         if (applicationState==null)
             return Collections.<InetAddress>emptyList();
-        
+
         String value = applicationState.getValue();
         if (value == null){
             return Collections.<InetAddress>emptyList();
         }
-        
+
         String[] tokens = StringUtils.split(value, ",");
         List<InetAddress> res = new ArrayList<InetAddress>(tokens.length);
         for (String token : tokens) {
@@ -365,28 +365,28 @@ public class HintedHandOffManager
         }
         return res;
     }
-    
-    private List<InetAddress> currentylPlayingHints = new ArrayList<InetAddress>();
-    
+
+    private final List<InetAddress> currentylPlayingHints = new ArrayList<InetAddress>();
+
     private void notifyStartPlayingHints(InetAddress endPoint){
         synchronized(currentylPlayingHints){
             currentylPlayingHints.add(endPoint);
             needUpdatePlayingHints = true;
         }
-        
+
     }
-   
+
 
     private void notifyFinishedPlayingHints(InetAddress endPoint){
         synchronized(currentylPlayingHints){
             currentylPlayingHints.remove(endPoint);
             needUpdatePlayingHints = true;
         }
-        
+
     }
-    
-    
-    
+
+
+
     private  void setPlayingHints(List<InetAddress> endpoints) {
         StringBuilder sb = new StringBuilder();
         if (endpoints != null){
@@ -401,22 +401,20 @@ public class HintedHandOffManager
         Gossiper.instance.addLocalApplicationState(APPSTATE_PAYING_HINTS, new ApplicationState( sb.toString()));
 
         //распечатаем в нормальном виде
-        sb = new StringBuilder();
+        sb = new StringBuilder().append("[");
         if (endpoints != null){
             for (InetAddress endpoint : endpoints) {
                 if (sb.length() > 0){
                     sb.append(",");
-                }else{
-                    sb.append("[");
+                    sb.append(endpoint);
                 }
-                sb.append(endpoint);
             }
+            sb.append("]");
+            logger_.info("Notified cluster about playing hints "+sb.toString());
+
         }
-        sb.append("]");
-        logger_.info("Notified cluster about playing hints "+sb.toString());
-        
-    } 
-    
+    }
+
     class UpdatePlayingHintsThread extends Thread{
 
         public UpdatePlayingHintsThread() {
@@ -425,23 +423,18 @@ public class HintedHandOffManager
 
         @Override
         public void run() {
-           
+
             while(!interrupted()){
-                
+
                 ArrayList<InetAddress> copy =null;
                 //надо как-то гарантирова, что мы все послали, желательно батчем и при этом не заблочить никого на Gossiper
                 synchronized (currentylPlayingHints) {
                     if (needUpdatePlayingHints){
-                        try{
-                            copy = new ArrayList<InetAddress>(currentylPlayingHints);
-                            needUpdatePlayingHints = false;
-                        }catch(Throwable e){
-                           logger_.error("Failed to notify cluster playing hints", e); 
-                        }
-                        
+                        copy = new ArrayList<InetAddress>(currentylPlayingHints);
+                        needUpdatePlayingHints = false;
                     }    
                 } 
-                
+
                 if (copy != null){
                     setPlayingHints(copy);
                 }
@@ -450,9 +443,9 @@ public class HintedHandOffManager
                 }catch(InterruptedException e){
                     return;
                 }
-                
+
             }
         }
-        
+
     }
 }
