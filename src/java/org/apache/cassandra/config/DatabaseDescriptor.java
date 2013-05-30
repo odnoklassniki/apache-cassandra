@@ -177,6 +177,7 @@ public class DatabaseDescriptor
     private static CommitLogSync commitLogSync;
     private static double commitLogSyncBatchMS;
     private static int commitLogSyncPeriodMS;
+    private static int maxCommitLogSegmentsActive=4;
 
     private static DiskAccessMode diskAccessMode;
     private static DiskAccessMode indexAccessMode;
@@ -318,6 +319,21 @@ public class DatabaseDescriptor
                     throw new ConfigurationException("Periodic sync specified, but CommitLogSyncBatchWindowInMS found.  Only specify CommitLogSyncPeriodInMS when using periodic sync.");
                 }
                 logger.debug("Syncing log with a period of " + commitLogSyncPeriodMS);
+            }
+            
+            if (xmlUtils.getNodeValue("/Storage/CommitLogActiveSegments") != null ) {
+                try
+                {
+                    maxCommitLogSegmentsActive = Integer.valueOf(xmlUtils.getNodeValue("/Storage/CommitLogActiveSegments"));
+                }
+                catch (Exception e)
+                {
+                    throw new ConfigurationException("Unrecognized value for CommitLogActiveSegments.  Integer expected.");
+                }
+                
+                if (maxCommitLogSegmentsActive<0)
+                    throw new ConfigurationException("Unrecognized value for CommitLogActiveSegments. Non negative value expected.");
+                
             }
 
             String modeRaw = xmlUtils.getNodeValue("/Storage/DiskAccessMode");
@@ -1782,6 +1798,14 @@ public class DatabaseDescriptor
 
     public static int getCommitLogSyncPeriod() {
         return commitLogSyncPeriodMS;
+    }
+
+    public static int getMaxCommitLogSegmentsActive() {
+        return maxCommitLogSegmentsActive;
+    }
+
+    public static void setMaxCommitLogSegmentsActive(int c) {
+        maxCommitLogSegmentsActive=c;
     }
 
     public static CommitLogSync getCommitLogSync()

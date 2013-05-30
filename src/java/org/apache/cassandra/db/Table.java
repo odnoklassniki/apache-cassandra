@@ -223,6 +223,17 @@ public class Table
         }
         return tableInstance;
     }
+    
+    public static ColumnFamilyStore getColumnFamilyStore(int cfid) {
+        String cfName = TableMetadata.getColumnFamilyName(cfid);
+        for (Table t : Table.all()) {
+            ColumnFamilyStore store = t.getColumnFamilyStore(cfName);
+            if ( store != null )
+                return store;
+        }
+        
+        throw new IllegalArgumentException("Cannot find column family with id="+cfid);
+    }
 
     public Set<String> getColumnFamilies()
     {

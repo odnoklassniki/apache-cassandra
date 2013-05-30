@@ -19,6 +19,8 @@
 package org.apache.cassandra.db;
 
 import org.apache.cassandra.CleanupHelper;
+import org.apache.cassandra.concurrent.StageManager;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.commitlog.CommitLog;
 import org.apache.cassandra.db.commitlog.CommitLogSegment.CommitLogContext;
 import org.apache.cassandra.db.filter.QueryPath;
@@ -39,6 +41,8 @@ public class CommitLogTest extends CleanupHelper
     {
         assert CommitLog.instance().getSegmentCount() == 1;
         CommitLog.setSegmentSize(1000);
+        
+        DatabaseDescriptor.setMaxCommitLogSegmentsActive(0);
 
         Table table = Table.open("Keyspace1");
         ColumnFamilyStore store1 = table.getColumnFamilyStore("Standard1");
@@ -160,5 +164,46 @@ public class CommitLogTest extends CleanupHelper
         assert CommitLog.instance().segmentsCount() == 1 : "Expecting 1 segment, got " + CommitLog.instance().segmentsCount();
     }
 
+    @Test
+    public void testForceFlush() throws IOException, ExecutionException, InterruptedException
+    {
+        assert CommitLog.instance().getSegmentCount() == 1;
+        CommitLog.setSegmentSize(1000);
+        
+        DatabaseDescriptor.setMaxCommitLogSegmentsActive(4);
+
+        Table table = Table.open("Keyspace1");
+        ColumnFamilyStore store1 = table.getColumnFamilyStore("Standard1");
+        ColumnFamilyStore store2 = table.getColumnFamilyStore("Standard2");
+        RowMutation rm;
+        byte[] value = new byte[501];
+
+        // add data.  use relatively large values to force quick segment creation since we have a low flush threshold in the test config.
+        for (int i = 0; i < 10; i++)
+        {
+            rm = new RowMutation("Keyspace1", "key1");
+            rm.add(new QueryPath("Standard1", null, "Column1".getBytes()), value, 0);
+            rm.add(new QueryPath("Standard2", null, "Column1".getBytes()), value, 0);
+            rm.apply();
+        }
+        assert CommitLog.instance().getSegmentCount() > 1;
+
+        // nothing should get removed after flushing just Standard1
+        store1.forceBlockingFlush();
+        assert CommitLog.instance().getSegmentCount() > 1;
+        
+        // wait while store2 flushes by itself
+        long ct = System.currentTimeMillis();
+        while (!store2.getMemtablesPendingFlush().isEmpty()) {
+            Thread.sleep(100);
+            
+            if (ct+2000<System.currentTimeMillis()) {
+                assert false : "Flush timeout";
+            }
+        }
+
+        // after flushing Standard2 we should be able to clean out all segments
+        assert CommitLog.instance().getSegmentCount() == 1;
+    }
     
 }

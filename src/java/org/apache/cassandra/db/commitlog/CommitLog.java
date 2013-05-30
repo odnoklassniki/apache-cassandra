@@ -514,16 +514,36 @@ public class CommitLog
             {
                 // Only unmark this segment if there were not write since the
                 // ReplayPosition was grabbed.
-                header.turnOffIfNotWritten(id, context.position);
-
-                maybeDiscardSegment(iter,segment,header);
+                if (header.turnOffIfNotWritten(id, context.position)) {
+                    maybeDiscardSegment(iter,segment,header);
+                }
                 
                 break;
             }
+            
+            if (header.isDirty(id)) {
+                header.turnOff(id);
+    
+                maybeDiscardSegment(iter, segment, header);
+            }
+        }
+        
+        if (DatabaseDescriptor.getMaxCommitLogSegmentsActive()>0 && segments.size()>DatabaseDescriptor.getMaxCommitLogSegmentsActive()) {
+            // trying to flush memtables, which marked dirty the oldest open segment
+            CommitLogSegment oldestSegment = segments.getFirst();
+            
+            int cfid = oldestSegment.getHeader().getFirstDirtyCFId();
+            
+            assert cfid >=0 : "Commit Log Segment is clear, but open: "+oldestSegment+", header: "+oldestSegment.getHeader();
+            
+            ColumnFamilyStore columnFamilyStore = Table.getColumnFamilyStore(cfid);
+            
+            // only submit flush, is this store is not currently flushing
+            if (columnFamilyStore.getMemtablesPendingFlush().isEmpty()) {
+                logger.info("Current open commit log segment count "+segments.size()+">"+DatabaseDescriptor.getMaxCommitLogSegmentsActive()+". Forcing flush of "+columnFamilyStore.columnFamily_+" to close "+oldestSegment);
 
-            header.turnOff(id);
-
-            maybeDiscardSegment(iter, segment, header);
+                columnFamilyStore.forceFlush();
+            }
         }
     }
 
@@ -545,9 +565,9 @@ public class CommitLog
                 logger.info("Discarding obsolete commit log:" + segment);
                 segment.close();
             }
+            
+            segment.submitDelete();
          
-            DeletionService.submitDelete(segment.getHeaderPath());
-            DeletionService.submitDelete(segment.getPath());
             // usually this will be the first (remaining) segment, but not always, if segment A contains
             // writes to a CF that is unflushed but is followed by segment B whose CFs are all flushed.
             iter.remove();

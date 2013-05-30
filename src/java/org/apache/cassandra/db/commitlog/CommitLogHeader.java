@@ -139,11 +139,18 @@ public class CommitLogHeader
      * 
      * @param index cf id
      * @param position flush position grabbed at memtable flush
+     * 
+     * @return true, if made changes to header
      */
-    void turnOffIfNotWritten(int index, long position)
+    boolean turnOffIfNotWritten(int index, long position)
     {
-        if (isDirty(index) && cfLastWriteAt[index] < position)
+        if (isDirty(index) && cfLastWriteAt[index] < position) {
             turnOff(index);
+            
+            return true;
+        }
+        
+        return false;
     }
 
     boolean isSafeToDelete() 
@@ -195,6 +202,10 @@ public class CommitLogHeader
             }
         }
         return map;
+    }
+    
+    public int getFirstDirtyCFId() {
+        return dirty.nextSetBit(0);
     }
 
 

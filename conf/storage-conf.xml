@@ -515,6 +515,18 @@
    ~ load is such that syncs are taking excessively long times.
   -->
   <CommitLogSyncPeriodInMS>10000</CommitLogSyncPeriodInMS>
+  
+  <!-- MM:
+   ~ Max number of open (not archived) commit log segments allowed
+   ~ cassandra will flush dirty memtables before their normal thresholds
+   ~ to keep this number less than specified.
+   ~ (the less segments open, the less is time to recoved on start and
+   ~  more flushes and compaction activity)
+   ~ 4 is the defaul value, change if it is not appropriate for you
+   ~ set to 0 to turn this feature off   
+  -->
+  <CommitLogActiveSegments>4</CommitLogActiveSegments>
+  
   <!--
    ~ Delay (in milliseconds) during which additional commit log entries
    ~ may be written before fsync in batch mode.  This will increase

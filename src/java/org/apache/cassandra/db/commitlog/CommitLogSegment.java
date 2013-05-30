@@ -34,6 +34,7 @@ import org.apache.cassandra.db.FSReadError;
 import org.apache.cassandra.db.FSWriteError;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
+import org.apache.cassandra.io.DeletionService;
 import org.apache.cassandra.io.util.BufferedRandomAccessFile;
 import org.apache.cassandra.io.util.DataOutputBuffer;
 import org.apache.log4j.Logger;
@@ -205,6 +206,13 @@ public class CommitLogSegment
             throw new FSWriteError(e);
         }
         
+    }
+    
+    public void submitDelete() {
+        if (!isDelayedHeaderWritePending()) {
+            DeletionService.submitDelete(getHeaderPath());
+        }
+        DeletionService.submitDelete(getPath());
     }
 
     @Override
