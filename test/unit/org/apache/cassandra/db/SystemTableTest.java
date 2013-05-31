@@ -24,13 +24,14 @@ import org.junit.Test;
 import org.junit.Assert;
 
 import org.apache.cassandra.CleanupHelper;
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.service.StorageService;
 
 public class SystemTableTest extends CleanupHelper
 {
 
     @Test
-    public void testOnlyOnceCreationOfStorageMetadata() throws IOException
+    public void testOnlyOnceCreationOfStorageMetadata() throws IOException, ConfigurationException
     {
         SystemTable.StorageMetadata storageMetadata1 = SystemTable.initMetadata();
         SystemTable.StorageMetadata storageMetadata2 = SystemTable.initMetadata();
@@ -38,7 +39,7 @@ public class SystemTableTest extends CleanupHelper
     }
 
     @Test
-    public void testTokenGetsUpdated() throws IOException
+    public void testTokenGetsUpdated() throws IOException, ConfigurationException
     {
         SystemTable.StorageMetadata storageMetadata1 = SystemTable.initMetadata();
         SystemTable.updateToken(StorageService.getPartitioner().getToken("503545744:0"));

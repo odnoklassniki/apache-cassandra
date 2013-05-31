@@ -30,6 +30,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.filter.IdentityQueryFilter;
 import org.apache.cassandra.db.filter.NamesQueryFilter;
@@ -38,6 +39,7 @@ import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.Token;
+import org.apache.cassandra.locator.IEndPointSnitch;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
@@ -48,6 +50,7 @@ public class SystemTable
     public static final String STATUS_CF = "LocationInfo"; // keep the old CF string for backwards-compatibility
     private static final String LOCATION_KEY = "L";
     private static final String GOSSIP_KEY = "G"; // persistent gossiper
+    private static final String REPLICATION_KEY = "R"; // persistent replication configuration
     private static final String BOOTSTRAP_KEY = "Bootstrap";
     private static final byte[] BOOTSTRAP = utf8("B");
     private static final byte[] TOKEN = utf8("Token");
@@ -335,7 +338,7 @@ public class SystemTable
      * gets gossiped around and the generation info is used for FD.
      * We also store whether we're in bootstrap mode in a third column
     */
-    public static synchronized StorageMetadata initMetadata() throws IOException
+    public static synchronized StorageMetadata initMetadata() throws IOException, ConfigurationException
     {
         if (metadata != null)  // guard to protect against being called twice
             return metadata;
@@ -435,6 +438,9 @@ public class SystemTable
         
         rm.add(cf);
         rm.apply();
+        
+        validateKeyspaceDefinitions();
+        
         try
         {
             table.getColumnFamilyStore(SystemTable.STATUS_CF).forceBlockingFlush();
@@ -481,6 +487,81 @@ public class SystemTable
         catch (IOException e)
         {
             throw new FSWriteError(e);
+        }
+    }
+    
+    private static void validateKeyspaceDefinitions() throws ConfigurationException, IOException  {
+        /* Read the system table to retrieve the storage ID and the generation */
+        Table table = Table.open(Table.SYSTEM_TABLE);
+        QueryFilter filter = new IdentityQueryFilter(REPLICATION_KEY, new QueryPath(STATUS_CF));
+        ColumnFamily cf = table.getColumnFamilyStore(STATUS_CF).getColumnFamily(filter);
+
+
+        if ( cf != null ) {
+            for (String tablename : DatabaseDescriptor.getNonSystemTables()) {
+
+                // saving replica strategy class name, repl factor, endpoint snitch class name and location
+                IEndPointSnitch endPointSnitch = DatabaseDescriptor.getEndPointSnitch(tablename);
+                IColumn column = cf.getColumn(utf8(tablename));
+                if (column == null)
+                    continue;
+
+                String value = new String(column.value(),"UTF-8");
+
+                if (value==null)
+                    throw new IOException("Corrupted value in replica conf of "+tablename);
+
+                String[] vals = value.split(",");
+                if (vals.length<5)
+                    throw new IOException("Corrupted value in replica conf of "+tablename+":"+value);
+
+                assertEquals(vals[0],DatabaseDescriptor.getReplicaPlacementStrategyClass(tablename).getSimpleName(),"ReplicaPlacementStrategy",tablename);
+                assertEquals(vals[1],String.valueOf(DatabaseDescriptor.getReplicationFactor(tablename)),"ReplicationFactor",tablename);
+                assertEquals(vals[2],endPointSnitch.getClass().getSimpleName(),"EndPointSnitch",tablename);
+                assertEquals(vals[3]+":"+vals[4],endPointSnitch.getLocalDatacenter()+":"+endPointSnitch.getLocalRack(),"Location",tablename);
+            }
+        }
+
+        // no information is saved yet. saving
+        RowMutation rm = new RowMutation(Table.SYSTEM_TABLE, REPLICATION_KEY);
+        cf = ColumnFamily.create(Table.SYSTEM_TABLE, STATUS_CF);
+
+        for (String tablename : DatabaseDescriptor.getNonSystemTables()) {
+
+            // saving replica strategy class name, repl factor, endpoint snitch class name and location
+            IEndPointSnitch endPointSnitch = DatabaseDescriptor.getEndPointSnitch(tablename);
+            String value = DatabaseDescriptor.getReplicaPlacementStrategyClass(tablename).getSimpleName()
+                    +","+DatabaseDescriptor.getReplicationFactor(tablename)
+                    +","+endPointSnitch.getClass().getSimpleName()
+                    +","+endPointSnitch.getLocalDatacenter()
+                    +","+endPointSnitch.getLocalRack();
+
+            cf.addColumn(new Column(utf8(tablename), utf8(value) , System.currentTimeMillis()));
+            if (logger.isDebugEnabled())
+                logger.debug("Replication info not found. Saving "+tablename+"="+value);
+        }
+        rm.add(cf);
+        try
+        {
+            rm.apply();
+        }
+        catch (IOException e)
+        {
+            throw new FSWriteError(e);
+        }
+    }
+    
+    private static void assertEquals(String expected, String actual, String confname, String tablename) throws ConfigurationException
+    {
+        if (!expected.equals(actual)) {
+            if ( Boolean.valueOf( System.getProperty("cassandra.replication_check", "true") ) ) {
+                throw new ConfigurationException("You changed "+confname+" on the working node in storage-conf.xml for keyspace " + tablename+"." +
+                        "This is generally bad idea, because without additional steps this will lead to data loss and unavailability. " +
+                        "You can either change this value in storage-conf.xml back to "+expected+" (the safe way) or, if you really, REALLY sure, start this node with " +
+                        "cassandra.replication_check=false system property");
+            } else {
+                logger.warn("Incompatible change of "+confname+" for keyspace " + tablename+" from "+expected+" to "+actual+" ignored by operator request");
+            }
         }
     }
 
