@@ -84,7 +84,9 @@ public class CommitLogSegment
     {
         if (delayWriteUntil==0 || delayWriteUntil<System.currentTimeMillis()) {
             String headerFile = getHeaderPath();
-            logger.info("Creating new commitlog segment header " + headerFile);
+            if (delayWriteUntil!=0) {
+                logger.info("Creating new commitlog segment header " + headerFile);
+            }
             CommitLogHeader.writeCommitLogHeader(header, headerFile );
 
             delayWriteUntil = 0;
