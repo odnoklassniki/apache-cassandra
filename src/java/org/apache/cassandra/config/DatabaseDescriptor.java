@@ -334,6 +334,9 @@ public class DatabaseDescriptor
                 if (maxCommitLogSegmentsActive<0)
                     throw new ConfigurationException("Unrecognized value for CommitLogActiveSegments. Non negative value expected.");
                 
+                if (maxCommitLogSegmentsActive>0 && commitLogSync != CommitLogSync.periodic)
+                    throw new ConfigurationException("CommitLogActiveSegments is supported only for periodic commit log mode");
+                
             }
 
             String modeRaw = xmlUtils.getNodeValue("/Storage/DiskAccessMode");

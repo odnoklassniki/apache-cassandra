@@ -138,6 +138,7 @@ public class CommitLog
                         try
                         {
                             executor.submit(syncer).get();
+                            watchMaxCommitLogs();
                             Thread.sleep(DatabaseDescriptor.getCommitLogSyncPeriod());
                         }
                         catch (InterruptedException e)
@@ -528,6 +529,32 @@ public class CommitLog
             }
         }
         
+    }
+
+    /**
+     * For use from tests.
+     */
+    public Future<?> watchMaxCommitLogs()
+    {
+        if (DatabaseDescriptor.getMaxCommitLogSegmentsActive()>0) {
+            final Callable maxCommitLogsWatcher = new Callable()
+            {
+                public Object call() throws Exception
+                {
+                    watchMaxCommitLogsInternal();
+                    return null;
+                }
+            };
+
+
+            return executor.submit(maxCommitLogsWatcher);
+        }
+        
+        return null;
+    }
+
+    private void watchMaxCommitLogsInternal()
+    {
         if (DatabaseDescriptor.getMaxCommitLogSegmentsActive()>0 && segments.size()>DatabaseDescriptor.getMaxCommitLogSegmentsActive()) {
             // trying to flush memtables, which marked dirty the oldest open segment
             CommitLogSegment oldestSegment = segments.getFirst();

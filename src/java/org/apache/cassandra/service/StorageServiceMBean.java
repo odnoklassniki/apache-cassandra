@@ -264,4 +264,14 @@ public interface StorageServiceMBean
      * 
      */
     void gossipPurgePersistent();
+
+    /**
+     * @return
+     */
+    int getMaxCommitLogSegmentsActive();
+
+    /**
+     * @param maxCount
+     */
+    void setMaxCommitLogSegmentsActive(int maxCount);
 }

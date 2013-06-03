@@ -2062,4 +2062,12 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         logger_.warn("Removing persistent gossip state by operator request");
         SystemTable.removeEndpointStates();
     }
+    
+    public int getMaxCommitLogSegmentsActive() {
+        return DatabaseDescriptor.getMaxCommitLogSegmentsActive();
+    }
+
+    public void setMaxCommitLogSegmentsActive(int maxCount) {
+        DatabaseDescriptor.setMaxCommitLogSegmentsActive(maxCount);
+    }
 }

@@ -191,6 +191,8 @@ public class CommitLogTest extends CleanupHelper
         // nothing should get removed after flushing just Standard1
         store1.forceBlockingFlush();
         assert CommitLog.instance().getSegmentCount() > 1;
+
+        CommitLog.instance().watchMaxCommitLogs().get();
         
         // wait while store2 flushes by itself
         long ct = System.currentTimeMillis();
