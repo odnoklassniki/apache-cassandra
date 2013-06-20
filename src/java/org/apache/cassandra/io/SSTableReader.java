@@ -26,6 +26,7 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
 
+import org.apache.cassandra.cache.Cache;
 import org.apache.log4j.Logger;
 
 import org.apache.cassandra.cache.InstrumentedCache;
@@ -150,7 +151,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
     private final MappedByteBuffer[] indexBuffers;
     private final MappedByteBuffer[] buffers;
 
-    private InstrumentedCache<Pair<String, DecoratedKey>, PositionSize> keyCache;
+    private Cache<Pair<String, DecoratedKey>, PositionSize> keyCache;
 
     private BloomFilterTracker bloomFilterTracker = new BloomFilterTracker();
     private final boolean columnBloom;

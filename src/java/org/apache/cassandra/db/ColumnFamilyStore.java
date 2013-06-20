@@ -34,6 +34,7 @@ import javax.management.ObjectName;
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Iterators;
+import org.apache.commons.collections.iterators.CollatingIterator;
 import org.apache.log4j.Logger;
 import org.apache.commons.collections.IteratorUtils;
 
@@ -258,12 +259,18 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         String msgSuffix = String.format(" row cache for %s of %s", columnFamily_, table_);
         int rowCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).rowCacheSavePeriodInSeconds;
         int keyCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).keyCacheSavePeriodInSeconds;
+        boolean fullScanLoadRowCache = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).fullScanLoadRowCache;
 
         long start = System.currentTimeMillis();
-        for (String key : readSavedCache(DatabaseDescriptor.getSerializedRowCachePath(table_, columnFamily_), true))
-        {
-            cacheRow(key);
+        Set<String> keys = readSavedCache(DatabaseDescriptor.getSerializedRowCachePath(table_, columnFamily_), true);
+        if (fullScanLoadRowCache) {
+            loadRowCacheFullScan(keys);
+        } else {
+            for (String key : keys) {
+                cacheRow(key);
+            }
         }
+
         if (ssTables_.getRowCache().getSize() > 0)
             logger_.info(String.format("completed loading (%d ms; %d keys) %s",
                                        System.currentTimeMillis() - start,
@@ -298,6 +305,119 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                                        keyCacheSavePeriodInSeconds,
                                                        keyCacheSavePeriodInSeconds,
                                                        TimeUnit.SECONDS);
+        }
+    }
+
+    private void loadRowCacheFullScan(Set<String> keys) {
+        try {
+            forceBlockingFlush();
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Can't correct flush memtables", e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Flushing of memtables was interrupted", e);
+        }
+        final CollatingIterator iterator = FBUtilities.<IteratingRow>getCollatingIterator();
+        for (SSTableReader ssTableReader : getSSTables()) {
+            try {
+                final SSTableScanner ssTableScanner = ssTableReader.getScanner(1048576);
+                iterator.addIterator(ssTableScanner);
+            } catch (IOException e) {
+                logger_.error("Skipping SSTableScanner and continue", e);
+            }
+        }
+        @SuppressWarnings("unchecked")
+        ReducingIterator<IteratingRow, Row> reducingIterator = new ReducingIterator<IteratingRow, Row>(iterator) {
+
+            private IteratingRow lastIteratingRow;
+            private ColumnFamily columnFamily;
+
+            @Override
+            protected boolean isEqual(IteratingRow o1, IteratingRow o2) {
+                return o1.getKey().equals(o2.getKey());
+            }
+
+            @Override
+            public void reduce(IteratingRow current) {
+                this.lastIteratingRow = current;
+                try {
+                    ColumnFamily nextColumnFamily = current.getColumnFamily();
+                    if (this.columnFamily == null) {
+                        this.columnFamily = nextColumnFamily;
+                    } else {
+                        this.columnFamily.addAll(nextColumnFamily);
+                    }
+                } catch (IOException e) {
+                    logger_.error("Skipping row " + current, e);
+                }
+            }
+
+            @Override
+            protected Row getReduced() {
+                final ColumnFamily columnFamily = ColumnFamilyStore.removeDeleted(this.columnFamily, Integer.MAX_VALUE);
+                this.columnFamily = null;
+                return new Row(lastIteratingRow.getKey().key, columnFamily);
+            }
+        };
+
+        int processors = Runtime.getRuntime().availableProcessors() - 1;
+        if (processors > 1) {
+            ExecutorService executorService = new ThreadPoolExecutor(processors, processors, 0, TimeUnit.SECONDS,
+                    new ArrayBlockingQueue<Runnable>(100),
+                    new ThreadFactory() {
+                        private AtomicInteger counter = new AtomicInteger(0);
+                        @Override
+                        public Thread newThread(Runnable r) {
+                            Thread thread = new Thread(r, "Thread-Loader-RowCache-" + counter.incrementAndGet());
+                            thread.setDaemon(true);
+                            return thread;
+                        }
+                    }, new ThreadPoolExecutor.CallerRunsPolicy());
+
+
+            while (reducingIterator.hasNext() && !keys.isEmpty()) {
+                final Row row = reducingIterator.next();
+                final String key = row.key;
+                if (keys.contains(key)) {
+                    executorService.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (ssTables_.getRowCache().get(key) == null) {
+                                ssTables_.getRowCache().put(key, row.cf);
+                            }
+                        }
+                    });
+
+                }
+            }
+
+            executorService.shutdown();
+            try {
+                if (!executorService.awaitTermination(10, TimeUnit.SECONDS))
+                    executorService.shutdownNow();
+            } catch (InterruptedException e) {
+                executorService.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+        else {
+            while(reducingIterator.hasNext() && !keys.isEmpty()) {
+                final Row row = reducingIterator.next();
+                final String key = row.key;
+                if (keys.contains(key) && ssTables_.getRowCache().get(key) == null) {
+                    ssTables_.getRowCache().put(key, row.cf);
+                }
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        Iterable<SSTableScanner> scanners = iterator.getIterators();
+        for (SSTableScanner scanner : scanners) {
+            try {
+                scanner.close();
+            } catch (IOException e) {
+                logger_.error("Skipping closing sstable scanner", e);
+            }
         }
     }
 

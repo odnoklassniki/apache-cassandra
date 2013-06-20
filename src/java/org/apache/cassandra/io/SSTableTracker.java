@@ -27,6 +27,9 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import com.google.common.base.Function;
+import org.apache.cassandra.cache.JMXInstrumentedCacheImpl;
+import org.apache.cassandra.cache.JMXInstrumentedSerializingCacheImpl;
+import org.apache.cassandra.config.CacheType;
 import org.apache.log4j.Logger;
 
 import org.apache.cassandra.cache.JMXInstrumentedCache;
@@ -54,8 +57,12 @@ public class SSTableTracker implements Iterable<SSTableReader>
         this.ksname = ksname;
         this.cfname = cfname;
         sstables = Collections.emptySet();
-        keyCache = new JMXInstrumentedCache<Pair<String, DecoratedKey>, SSTable.PositionSize>(ksname, cfname + "KeyCache", 0);
-        rowCache = new JMXInstrumentedCache<String, ColumnFamily>(ksname, cfname + "RowCache", 0);
+        keyCache = new JMXInstrumentedCacheImpl<Pair<String, DecoratedKey>, SSTable.PositionSize>(ksname, cfname + "KeyCache", 0);
+
+        CacheType rowCacheType = DatabaseDescriptor.getRowCacheType(ksname, cfname);
+        rowCache = CacheType.offheap == rowCacheType
+                ? new JMXInstrumentedSerializingCacheImpl<String, ColumnFamily>(ksname, cfname + "RowCache", 0, ColumnFamily.serializer())
+                : new JMXInstrumentedCacheImpl<String, ColumnFamily>(ksname, cfname + "RowCache", 0);
     }
 
     protected class CacheWriter<K, V>

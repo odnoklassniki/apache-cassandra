@@ -21,13 +21,12 @@ package org.apache.cassandra.cache;
  */
 
 
+import com.reardencommerce.kernel.collections.shared.evictable.ConcurrentLinkedHashMap;
+
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.reardencommerce.kernel.collections.shared.evictable.ConcurrentLinkedHashMap;
-
-public class InstrumentedCache<K, V>
-{
+public class InstrumentedCache<K, V> implements Cache<K,V> {
     private int capacity;
     private final ConcurrentLinkedHashMap<K, V> map;
     private final AtomicLong requests = new AtomicLong(0);
@@ -42,11 +41,19 @@ public class InstrumentedCache<K, V>
         map = ConcurrentLinkedHashMap.create(ConcurrentLinkedHashMap.EvictionPolicy.SECOND_CHANCE, capacity);
     }
 
+    public InstrumentedCache(int capacity, ConcurrentLinkedHashMap.EvictionListener<K,V> listener)
+    {
+        this.capacity = capacity;
+        map = ConcurrentLinkedHashMap.create(ConcurrentLinkedHashMap.EvictionPolicy.SECOND_CHANCE, capacity, listener);
+    }
+
+    @Override
     public void put(K key, V value)
     {
         map.put(key, value);
     }
 
+    @Override
     public V get(K key)
     {
         V v = map.get(key);
@@ -56,53 +63,63 @@ public class InstrumentedCache<K, V>
         return v;
     }
 
+    @Override
     public V getInternal(K key)
     {
         return map.get(key);
     }
 
+    @Override
     public void remove(K key)
     {
         map.remove(key);
     }
 
+    @Override
     public int getCapacity()
     {
         return capacity;
     }
 
+    @Override
     public boolean isCapacitySetManually()
     {
         return capacitySetManually;
     }
     
+    @Override
     public void updateCapacity(int capacity)
     {
         map.setCapacity(capacity);
         this.capacity = capacity;
     }
 
+    @Override
     public void setCapacity(int capacity)
     {
         updateCapacity(capacity);
         capacitySetManually = true;
     }
 
+    @Override
     public int getSize()
     {
         return map.size();
     }
 
+    @Override
     public long getHits()
     {
         return hits.get();
     }
 
+    @Override
     public long getRequests()
     {
         return requests.get();
     }
 
+    @Override
     public double getRecentHitRate()
     {
         long r = requests.get();
@@ -118,6 +135,7 @@ public class InstrumentedCache<K, V>
         }
     }
 
+    @Override
     public void clear()
     {
         map.clear();
@@ -125,8 +143,19 @@ public class InstrumentedCache<K, V>
         hits.set(0);
     }
 
+    @Override
     public Set<K> getKeySet()
     {
         return map.keySet();
+    }
+
+    V removeInternal(K key)
+    {
+        return map.remove(key);
+    }
+
+    V putInternal(K key, V value)
+    {
+        return map.put(key, value);
     }
 }

@@ -42,6 +42,8 @@ public final class CFMetaData
     public final double keyCacheSize; // default 0.01
     public final int rowCacheSavePeriodInSeconds; //default 0 (off)
     public final int keyCacheSavePeriodInSeconds; //default 0 (off)
+    public final CacheType rowCacheType; //default standard heap cache
+    public final boolean fullScanLoadRowCache;
     
     /** MM: do we want column to be checked against bloom filter **/
     public final boolean bloomColumns ;
@@ -62,7 +64,9 @@ public final class CFMetaData
                String comment, double rowCacheSize, double keyCacheSize, int rowCacheSavePeriodInSeconds, int keyCacheSavePeriodInSeconds,
                boolean domainSplit, String domainCFName, Token domainMin, Token domainMax,
                int gcGraceSeconds,
-               List<Pair<Class<? extends IRowProcessor>,Properties>> rowProcClasses
+               List<Pair<Class<? extends IRowProcessor>,Properties>> rowProcClasses,
+               CacheType rowCacheType,
+               boolean fullScanLoadRowCache
                )
     {
         this.tableName = tableName;
@@ -84,6 +88,8 @@ public final class CFMetaData
         this.gcGraceSeconds = gcGraceSeconds;
         
         this.rowProcessors = rowProcClasses;
+        this.rowCacheType = rowCacheType;
+        this.fullScanLoadRowCache = fullScanLoadRowCache;
     }
 
     // a quick and dirty pretty printer for describing the column family...
@@ -110,6 +116,8 @@ public final class CFMetaData
                 && other.keyCacheSize == keyCacheSize
                 && other.rowCacheSavePeriodInSeconds == rowCacheSavePeriodInSeconds
                 && other.keyCacheSavePeriodInSeconds == keyCacheSavePeriodInSeconds
+                && other.rowCacheType == rowCacheType
+                && other.fullScanLoadRowCache == fullScanLoadRowCache
                 && other.domainSplit == domainSplit
                 && other.domainCFName.equals(domainCFName)
                 && other.domainMinToken.compareTo( domainMinToken )==0;

@@ -745,7 +745,9 @@ public class DatabaseDescriptor
                                                                             SystemTable.STATUS_CF,
                                                                             null,null,
                                                                             0,
-                                                                            null
+                                                                            null,
+                                                                            CacheType.standard,
+                                                                            false
                                                                             ));
 
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
@@ -763,7 +765,9 @@ public class DatabaseDescriptor
                                                                                     HintedHandOffManager.HINTS_CF,
                                                                                     null,null,
                                                                                     0,
-                                                                                    null
+                                                                                    null,
+                                                                                    CacheType.standard,
+                                                                                    false
                                                                                     ));
 
             // Configured local storages
@@ -1142,7 +1146,11 @@ public class DatabaseDescriptor
             String keyCacheSavePeriodString = XMLUtils.getAttributeValue(columnFamily, "KeyCacheSavePeriodInSeconds");
             int rowCacheSavePeriod = keyCacheSavePeriodString != null ? Integer.valueOf(keyCacheSavePeriodString) : DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS;
             int keyCacheSavePeriod = rowCacheSavePeriodString != null ? Integer.valueOf(rowCacheSavePeriodString) : DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS;
-            
+
+            String rowCacheTypeValue = XMLUtils.getAttributeValue(columnFamily, "RowCacheType");
+            CacheType rowCacheType = rowCacheTypeValue != null ? CacheType.valueOf(rowCacheTypeValue) : CacheType.standard;
+            boolean fullScanLoadRowCache = Boolean.parseBoolean(XMLUtils.getAttributeValue(columnFamily, "FullScanLoadRowCache"));
+
             // Configuration of row processors:
             // <RowProcessor class=ClassName parameter1="" />
             NodeList rowProcessorsString = xmlUtils.getRequestedNodeList(xqlCF+"RowProcessor");
@@ -1186,12 +1194,12 @@ public class DatabaseDescriptor
                     String postfix='_'+domainToken.toString();
                     domainToken = getPartitioner().getToken(domainToken.toString()+((char)0));
                     Token domainMax = domain==255 ? getPartitioner().getToken(Integer.toHexString(0)) : getPartitioner().getToken(Integer.toHexString(domain+1));
-                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax,gcGraceInSeconds,processors));
+                    meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax,gcGraceInSeconds,processors,rowCacheType,fullScanLoadRowCache));
                 }
             }
             else
             {
-                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds,processors));
+                meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds,processors,rowCacheType,fullScanLoadRowCache));
             }
         }
         
@@ -1753,6 +1761,12 @@ public class DatabaseDescriptor
         CFMetaData cfm = getCFMetaData(tableName, columnFamilyName);
         double v = (cfm == null) ? CFMetaData.DEFAULT_KEY_CACHE_SIZE : cfm.keyCacheSize;
         return (int)Math.min(FBUtilities.absoluteFromFraction(v, expectedKeys), Integer.MAX_VALUE);
+    }
+
+    public static CacheType getRowCacheType(String tableName, String columnFamilyName)
+    {
+        CFMetaData cfm = getCFMetaData(tableName, columnFamilyName);
+        return (cfm == null) ? CacheType.standard : cfm.rowCacheType;
     }
 
     /**
