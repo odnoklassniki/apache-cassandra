@@ -257,9 +257,9 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     public void initRowCache()
     {
         String msgSuffix = String.format(" row cache for %s of %s", columnFamily_, table_);
-        int rowCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).rowCacheSavePeriodInSeconds;
-        int keyCacheSavePeriodInSeconds = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).keyCacheSavePeriodInSeconds;
-        boolean fullScanLoadRowCache = DatabaseDescriptor.getTableMetaData(table_).get(columnFamily_).fullScanLoadRowCache;
+        int rowCacheSavePeriodInSeconds = metadata.rowCacheSavePeriodInSeconds;
+        int keyCacheSavePeriodInSeconds = metadata.keyCacheSavePeriodInSeconds;
+        boolean fullScanLoadRowCache = metadata.fullScanLoadRowCache;
 
         long start = System.currentTimeMillis();
         Set<String> keys = readSavedCache(DatabaseDescriptor.getSerializedRowCachePath(table_, columnFamily_), true);
@@ -363,7 +363,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         int processors = Runtime.getRuntime().availableProcessors() - 1;
         if (processors > 1) {
             ExecutorService executorService = new ThreadPoolExecutor(processors, processors, 0, TimeUnit.SECONDS,
-                    new ArrayBlockingQueue<Runnable>(100),
+                    new SynchronousQueue<Runnable>(),
                     new ThreadFactory() {
                         private AtomicInteger counter = new AtomicInteger(0);
                         @Override
@@ -382,9 +382,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                     executorService.execute(new Runnable() {
                         @Override
                         public void run() {
-                            if (ssTables_.getRowCache().get(key) == null) {
-                                ssTables_.getRowCache().put(key, row.cf);
-                            }
+                            ssTables_.getRowCache().put(key, row.cf);
                         }
                     });
 
@@ -404,7 +402,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             while(reducingIterator.hasNext() && !keys.isEmpty()) {
                 final Row row = reducingIterator.next();
                 final String key = row.key;
-                if (keys.contains(key) && ssTables_.getRowCache().get(key) == null) {
+                if (keys.contains(key)) {
                     ssTables_.getRowCache().put(key, row.cf);
                 }
             }
