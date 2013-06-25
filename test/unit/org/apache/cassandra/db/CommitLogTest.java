@@ -194,6 +194,7 @@ public class CommitLogTest extends CleanupHelper
 
         CommitLog.instance().watchMaxCommitLogs().get();
         
+        Thread.sleep(100);
         // wait while store2 flushes by itself
         long ct = System.currentTimeMillis();
         while (!store2.getMemtablesPendingFlush().isEmpty()) {

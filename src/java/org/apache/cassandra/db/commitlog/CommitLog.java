@@ -563,13 +563,23 @@ public class CommitLog
             
             assert cfid >=0 : "Commit Log Segment is clear, but open: "+oldestSegment+", header: "+oldestSegment.getHeader();
             
-            ColumnFamilyStore columnFamilyStore = Table.getColumnFamilyStore(cfid);
+            final ColumnFamilyStore columnFamilyStore = Table.getColumnFamilyStore(cfid);
             
             // only submit flush, is this store is not currently flushing
             if (columnFamilyStore.getMemtablesPendingFlush().isEmpty()) {
                 logger.info("Current open commit log segment count "+segments.size()+">"+DatabaseDescriptor.getMaxCommitLogSegmentsActive()+". Forcing flush of "+columnFamilyStore.columnFamily_+" to close "+oldestSegment);
 
-                columnFamilyStore.forceFlush();
+                new Thread(
+                        new WrappedRunnable()
+                        {
+
+                            @Override
+                            protected void runMayThrow() throws Exception
+                            {
+                                columnFamilyStore.forceFlush();
+                            }
+                        },
+                        "Flush submit of "+columnFamilyStore).start();
             }
         }
     }
