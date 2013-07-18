@@ -97,6 +97,7 @@ public class NodeCmd {
                                       + "gossipstop%n"
                                       + "gossipstart%n"
                                       + "gossippurge%n"
+                                      + "resumebootstrap%n"
                                       + "cfhistograms <keyspace> <column_family>%n");
         String usage = String.format("java %s --host <arg> <command>%n", NodeCmd.class.getName());
         hf.printHelp(usage, "", options, header);
