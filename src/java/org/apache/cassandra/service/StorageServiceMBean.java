@@ -274,4 +274,8 @@ public interface StorageServiceMBean
      * @param maxCount
      */
     void setMaxCommitLogSegmentsActive(int maxCount);
+     /**
+     * Resume  node paused before joining the ring during bootstrap
+     */
+    void completeBootstrap();
 }

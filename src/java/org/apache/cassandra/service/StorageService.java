@@ -449,7 +449,16 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                     throw new AssertionError(e);
                 }
             }
-            
+
+            if (DatabaseDescriptor.isManualBootstrapComplete()){
+                logger_.info("Bootstrap/move data retrieval completed, waiting manual resume before complete and join ring. Resume with nodetool resumebootstrap.");
+                try {
+                    this.wait();
+                } catch (InterruptedException e) {
+                    throw new AssertionError(e);
+                }
+                
+            }
             SystemTable.setBootstrapped(true);
             setToken(getLocalToken());
 
@@ -1924,6 +1933,16 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         return operationMode;
     }
     
+
+    /**
+     * Resume  node paused before joining the ring during bootstrap
+     */
+    public synchronized void completeBootstrap() 
+    {
+       logger_.info("Resume bootstrarp, joining reing.");
+       this.notify(); 
+        
+    }
     /** shuts node off to writes, empties memtables and the commit log. */
     public synchronized void drain() throws IOException, InterruptedException, ExecutionException
     {

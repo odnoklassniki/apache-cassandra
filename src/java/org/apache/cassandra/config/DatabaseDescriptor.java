@@ -185,6 +185,7 @@ public class DatabaseDescriptor
 
     private static boolean snapshotBeforeCompaction;
     private static boolean autoBootstrap = false;
+    private static boolean manualBootstrapComplete = false;
     
     private static Class<? extends HintedHandOffManager> hintedHandoffManager = null;
 
@@ -604,6 +605,21 @@ public class DatabaseDescriptor
                 else
                 {
                     throw new ConfigurationException("Unrecognized value for AutoBootstrap.  Use 'true' or 'false'.");
+                }
+            }
+
+            String manualBootstrapCompleteS = xmlUtils.getNodeValue("/Storage/ManualBootstrapComplete");
+            if (manualBootstrapCompleteS != null)
+            {
+                if (manualBootstrapCompleteS.equalsIgnoreCase("true") || manualBootstrapCompleteS.equalsIgnoreCase("false"))
+                {
+                    if (logger.isDebugEnabled())
+                        logger.debug("setting manualBootstrapComplete to " + manualBootstrapCompleteS);
+                    manualBootstrapComplete = Boolean.valueOf(manualBootstrapCompleteS);
+                }
+                else
+                {
+                    throw new ConfigurationException("Unrecognized value for PauseAfterBootstrap.  Use 'true' or 'false'.");
                 }
             }
 
@@ -1879,5 +1895,9 @@ public class DatabaseDescriptor
     public static int getIndexInterval()
     {
         return indexinterval;
+    }
+
+    public static boolean isManualBootstrapComplete() {
+        return manualBootstrapComplete;
     }
 }

@@ -681,7 +681,11 @@ public class NodeCmd {
 
             nodeCmd.printCfHistograms(arguments[1], arguments[2], System.out);
         }
-        else
+        else if (cmdName.equals("resumebootstrap"))
+        {
+           
+            probe.completeBootstrap();
+        } else
         {
             System.err.println("Unrecognized command: " + cmdName + ".");
             printUsage();

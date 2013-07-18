@@ -230,6 +230,10 @@ public class NodeProbe
         ssProxy.gossipPurgePersistent();
     }
 
+    public void completeBootstrap() {
+        ssProxy.completeBootstrap();
+    }
+    
     public Map<Range, List<String>> getRangeToEndPointMap(String tableName)
     {
         return ssProxy.getRangeToEndPointMap(tableName);
@@ -626,6 +630,8 @@ public class NodeProbe
             return m;
         }
     }
+
+   
 }
 
 class ColumnFamilyStoreMBeanIterator implements Iterator<Map.Entry<String, ColumnFamilyStoreMBean>>
