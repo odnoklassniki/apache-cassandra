@@ -44,6 +44,7 @@ import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
 import org.apache.cassandra.utils.CLibrary;
+import org.xerial.snappy.Snappy;
 
 /*
  * Commit Log tracks every write operation into the system. The aim
@@ -302,7 +303,6 @@ public class CommitLog
                         break;
                     }
 
-                    ByteArrayInputStream bufIn = new ByteArrayInputStream(bytes);
                     Checksum checksum = new CRC32();
                     checksum.update(bytes, 0, bytes.length);
                     if (claimedCRC32 != checksum.getValue())
@@ -312,6 +312,11 @@ public class CommitLog
                         continue;
                     }
 
+                    // TODO add compression configuration
+                    bytes = Snappy.uncompress(bytes);
+
+                    ByteArrayInputStream bufIn = new ByteArrayInputStream(bytes);
+                    
                     /* deserialize the commit log entry */
                     final RowMutation rm = RowMutation.serializer().deserialize(new DataInputStream(bufIn));
                     

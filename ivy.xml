@@ -51,6 +51,7 @@
     <dependency org="org.apache.rat" name="apache-rat" rev="0.6" />
 
     <dependency org="net.java.dev.jna" name="jna" rev="3.2.7"/>
+    <dependency org="org.xerial.snappy" name="snappy-java" rev="1.0.4.1"/>
 
     <!-- Transitive Dependencies -->
     <dependency org="logkit" name="logkit" rev="1.0.1" conf="*->default"/>
