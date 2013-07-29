@@ -178,6 +178,7 @@ public class DatabaseDescriptor
     private static double commitLogSyncBatchMS;
     private static int commitLogSyncPeriodMS;
     private static int maxCommitLogSegmentsActive=4;
+    private static boolean logFileCompression;
 
     private static DiskAccessMode diskAccessMode;
     private static DiskAccessMode indexAccessMode;
@@ -338,6 +339,19 @@ public class DatabaseDescriptor
                 if (maxCommitLogSegmentsActive>0 && commitLogSync != CommitLogSync.periodic)
                     throw new ConfigurationException("CommitLogActiveSegments is supported only for periodic commit log mode");
                 
+            }
+
+            String lfc = xmlUtils.getNodeValue("/Storage/CommitLogCompression");
+            if (lfc != null)
+            {
+                try
+                {
+                    logFileCompression = Boolean.valueOf(lfc);
+                }
+                catch (Exception e)
+                {
+                    throw new ConfigurationException("Unrecognized value for CommitLogCompression. Boolean expected.");
+                }
             }
 
             String modeRaw = xmlUtils.getNodeValue("/Storage/DiskAccessMode");
@@ -1830,6 +1844,11 @@ public class DatabaseDescriptor
     public static CommitLogSync getCommitLogSync()
     {
         return commitLogSync;
+    }
+
+    public static boolean isLogFileCompression()
+    {
+        return logFileCompression;
     }
 
     public static DiskAccessMode getDiskAccessMode()

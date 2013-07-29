@@ -62,6 +62,11 @@ public class CommitLogSegment
         this.header = new CommitLogHeader(cfCount);
         long now = System.currentTimeMillis();
         String logFile = DatabaseDescriptor.getLogFileLocation() + File.separator + "CommitLog-" + now + ".log";
+        
+        if (DatabaseDescriptor.isLogFileCompression()) {
+            logFile += CommitLog.COMPRESSION_EXTENSION;
+        }
+
         logger.info("Creating new commitlog segment " + logFile);
 
         try
@@ -129,26 +134,36 @@ public class CommitLogSegment
             {
                 DataOutputBuffer buffer = (DataOutputBuffer) serializedRow;
 
-                // TODO add compression configuration
-                byte[] compressed = new byte[Snappy.maxCompressedLength(buffer.getLength())];
-                int compressedSize = Snappy.compress(buffer.getData(), 0, buffer.getLength(), compressed, 0);
-                
-                logWriter.writeLong(compressedSize);
-                logWriter.write(compressed, 0, compressedSize);
-                checkum.update(compressed, 0, compressedSize);
+                if (DatabaseDescriptor.isLogFileCompression()) {
+                    byte[] compressed = new byte[Snappy.maxCompressedLength(buffer.getLength())];
+                    int compressedSize = Snappy.compress(buffer.getData(), 0, buffer.getLength(), compressed, 0);
+                    
+                    logWriter.writeLong(compressedSize);
+                    logWriter.write(compressed, 0, compressedSize);
+                    checkum.update(compressed, 0, compressedSize);
+                } else {
+                    logWriter.writeLong(buffer.getLength());
+                    logWriter.write(buffer.getData(), 0, buffer.getLength());
+                    checkum.update(buffer.getData(), 0, buffer.getLength());
+                }
             }
             else
             {
                 assert serializedRow instanceof byte[];
                 byte[] bytes = (byte[]) serializedRow;
 
-                // TODO add compression configuration
-                byte[] compressed = new byte[Snappy.maxCompressedLength(bytes.length)];
-                int compressedSize = Snappy.compress(bytes, 0, bytes.length, compressed, 0);
-
-                logWriter.writeLong(compressedSize);
-                logWriter.write(compressed, 0, compressedSize);
-                checkum.update(compressed, 0, compressedSize);
+                if (DatabaseDescriptor.isLogFileCompression()) {
+                    byte[] compressed = new byte[Snappy.maxCompressedLength(bytes.length)];
+                    int compressedSize = Snappy.compress(bytes, 0, bytes.length, compressed, 0);
+    
+                    logWriter.writeLong(compressedSize);
+                    logWriter.write(compressed, 0, compressedSize);
+                    checkum.update(compressed, 0, compressedSize);
+                } else {
+                    logWriter.writeLong(bytes.length);
+                    logWriter.write(bytes);
+                    checkum.update(bytes, 0, bytes.length);                    
+                }
             }
             logWriter.writeLong(checkum.getValue());
 

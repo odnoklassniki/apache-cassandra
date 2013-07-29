@@ -78,6 +78,7 @@ public class CommitLog
 {
     private static final int MAX_OUTSTANDING_REPLAY_COUNT = 1024;
     private static volatile int SEGMENT_SIZE = 128*1024*1024; // roll after log gets this big
+    static String COMPRESSION_EXTENSION = ".z";
 
     private static final Logger logger = Logger.getLogger(CommitLog.class);
 
@@ -277,6 +278,10 @@ public class CommitLog
                 if (forced)
                     logger.info("Replaying " + file + " starting at " + replayPosition);
 
+                boolean logFileCompression = file.getName().endsWith(COMPRESSION_EXTENSION);
+                if (logFileCompression && logger.isDebugEnabled())
+                    logger.debug("Filename: " + file + " ends with \"" + COMPRESSION_EXTENSION + "\", expecting compression");
+
                 /* read the logs populate RowMutation and apply */
                 while (!reader.isEOF())
                 {
@@ -312,8 +317,9 @@ public class CommitLog
                         continue;
                     }
 
-                    // TODO add compression configuration
-                    bytes = Snappy.uncompress(bytes);
+                    if (logFileCompression) {
+                        bytes = Snappy.uncompress(bytes);
+                    }
 
                     ByteArrayInputStream bufIn = new ByteArrayInputStream(bytes);
                     

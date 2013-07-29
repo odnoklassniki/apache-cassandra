@@ -161,7 +161,7 @@
     </target>
 
     <target name="ivy-retrieve-build" depends="ivy-init">
-      <ivy:retrieve type="jar,source" sync="true"
+      <ivy:retrieve type="bundle,jar,source" sync="true"
              pattern="${build.dir.lib}/[type]s/[artifact]-[revision].[ext]" />
     </target>
 
