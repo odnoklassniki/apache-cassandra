@@ -172,6 +172,10 @@
         <!--copy file="${ant.file}" tofile="${build.deploy}/build.xml" /-->
     	
     </target>
+	
+	<target name="new-tag">
+		<fail message="new-tag is not supported for this package. please edit build.number patch level by hand, commit and run ant tag target"/>
+	</target>
 
     <!-- ============================================================================ -->
     <!-- MANDATORY TASK -->
