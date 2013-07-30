@@ -537,6 +537,14 @@
   -->
   <!-- <CommitLogSyncBatchWindowInMS>1</CommitLogSyncBatchWindowInMS> --> 
 
+  <!-- 
+     When set to "true", commit logs are compressed during write using
+     Snappy (http://code.google.com/p/snappy-java). Compressed log files 
+     are marked with file extension ".z". 
+     Reading of both compressed and regular commit logs is enabled at all times. 
+  -->
+  <CommitLogCompression>false</CommitLogCompression>
+
   <!--
    ~ Time to wait before garbage-collection deletion markers.  Set this to
    ~ a large enough value that you are confident that the deletion marker

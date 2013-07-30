@@ -44,6 +44,7 @@ import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
 import org.apache.cassandra.utils.CLibrary;
+import org.xerial.snappy.Snappy;
 
 /*
  * Commit Log tracks every write operation into the system. The aim
@@ -77,6 +78,11 @@ public class CommitLog
 {
     private static final int MAX_OUTSTANDING_REPLAY_COUNT = 1024;
     private static volatile int SEGMENT_SIZE = 128*1024*1024; // roll after log gets this big
+
+    /**
+     * File extension for compressed commit logs
+     */
+    static String COMPRESSION_EXTENSION = ".z";
 
     private static final Logger logger = Logger.getLogger(CommitLog.class);
 
@@ -172,7 +178,7 @@ public class CommitLog
         {
             public boolean accept(File dir, String name)
             {
-                return name.matches("CommitLog-\\d+.log");
+                return name.matches("CommitLog-\\d+\\.log(\\.z)?");
             }
         });
         if (files.length == 0)
@@ -276,6 +282,11 @@ public class CommitLog
                 if (forced)
                     logger.info("Replaying " + file + " starting at " + replayPosition);
 
+                // assume file is compressed, if it has the special extension
+                boolean logFileCompression = file.getName().endsWith(COMPRESSION_EXTENSION);
+                if (logFileCompression && logger.isDebugEnabled())
+                    logger.debug("Filename: " + file + " ends with \"" + COMPRESSION_EXTENSION + "\", expecting compression");
+
                 /* read the logs populate RowMutation and apply */
                 while (!reader.isEOF())
                 {
@@ -302,7 +313,6 @@ public class CommitLog
                         break;
                     }
 
-                    ByteArrayInputStream bufIn = new ByteArrayInputStream(bytes);
                     Checksum checksum = new CRC32();
                     checksum.update(bytes, 0, bytes.length);
                     if (claimedCRC32 != checksum.getValue())
@@ -312,6 +322,13 @@ public class CommitLog
                         continue;
                     }
 
+                    // apply decompression
+                    if (logFileCompression) {
+                        bytes = Snappy.uncompress(bytes);
+                    }
+
+                    ByteArrayInputStream bufIn = new ByteArrayInputStream(bytes);
+                    
                     /* deserialize the commit log entry */
                     final RowMutation rm = RowMutation.serializer().deserialize(new DataInputStream(bufIn));
                     

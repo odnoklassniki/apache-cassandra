@@ -64,7 +64,7 @@ public class CleanArchivedLogsTask implements MaintenanceTask, Runnable
             {
                 try {
                     String name = file.getName();
-                    return name.matches("CommitLog-\\d+.log") && Long.parseLong(name.split("-|[.]")[1])<=earliestLogfile;
+                    return name.matches("CommitLog-\\d+\\.log(\\.z)?") && Long.parseLong(name.split("-|[.]")[1])<=earliestLogfile;
                 } catch (Exception e)
                 {
                     logger.warn("Commit log name is not understood and skipped: "+file);
