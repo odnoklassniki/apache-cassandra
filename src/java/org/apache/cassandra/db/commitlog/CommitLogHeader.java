@@ -44,7 +44,7 @@ public class CommitLogHeader
 
     public static boolean possibleCommitLogHeaderFile(String filename)
     {
-        return filename.matches("CommitLog-\\d+.log.header");
+        return filename.matches("CommitLog-\\d+\\.log(\\.z)?\\.header");
     }
     
 

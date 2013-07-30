@@ -344,13 +344,13 @@ public class DatabaseDescriptor
             String lfc = xmlUtils.getNodeValue("/Storage/CommitLogCompression");
             if (lfc != null)
             {
-                try
+                if (lfc.equalsIgnoreCase("true") || lfc.equalsIgnoreCase("false"))
                 {
                     logFileCompression = Boolean.valueOf(lfc);
                 }
-                catch (Exception e)
+                else
                 {
-                    throw new ConfigurationException("Unrecognized value for CommitLogCompression. Boolean expected.");
+                    throw new ConfigurationException("Unrecognized value for CommitLogCompression.  Use 'true' or 'false'.");
                 }
             }
 

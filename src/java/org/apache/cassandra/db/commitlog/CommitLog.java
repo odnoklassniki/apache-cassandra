@@ -174,7 +174,7 @@ public class CommitLog
         {
             public boolean accept(File dir, String name)
             {
-                return name.matches("CommitLog-\\d+.log");
+                return name.matches("CommitLog-\\d+\\.log(\\.z)?");
             }
         });
         if (files.length == 0)
