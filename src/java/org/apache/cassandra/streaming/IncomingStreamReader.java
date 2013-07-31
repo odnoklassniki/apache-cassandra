@@ -66,7 +66,7 @@ public class IncomingStreamReader
         String dataFileLocation = DatabaseDescriptor.getDataFileLocation(cfStore, pendingFile.getExpectedBytes());
         File realFile = new File(new File(dataFileLocation), targetFile.getName());
         pendingFile.setRealTargetFile(realFile);
-        FileOutputStream fos = new FileOutputStream(realFile true);
+        FileOutputStream fos = new FileOutputStream(realFile, true);
         FileChannel fc = fos.getChannel();
         
         long bytesRead = 0;
