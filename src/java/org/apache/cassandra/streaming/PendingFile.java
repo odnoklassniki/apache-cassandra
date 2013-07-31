@@ -23,6 +23,7 @@ package org.apache.cassandra.streaming;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.File;
 import java.io.IOException;
 
 import org.apache.cassandra.io.ICompactSerializer;
@@ -42,6 +43,7 @@ class PendingFile
     }
 
     private String targetFile_;
+    private File realTargetFile_;
     private final long expectedBytes_;
     private final String table_;
     private long ptr_;
@@ -77,6 +79,16 @@ class PendingFile
     public void setTargetFile(String file)
     {
         targetFile_ = file;
+    }
+
+    public File getRealTargetFile()
+    {
+        return realTargetFile_;
+    }
+
+    public void setRealTargetFile(File file)
+    {
+        realTargetFile_ = file;
     }
 
     public long getExpectedBytes()

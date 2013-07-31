@@ -26,6 +26,10 @@ import java.net.InetSocketAddress;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
+import org.apache.cassandra.config.DatabaseDescriptor;
+import org.apache.cassandra.db.ColumnFamilyStore;
+import org.apache.cassandra.db.Table;
+import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
 
 public class IncomingStreamReader
@@ -54,7 +58,15 @@ public class IncomingStreamReader
         InetSocketAddress remoteAddress = (InetSocketAddress)socketChannel.socket().getRemoteSocketAddress();
         if (logger.isDebugEnabled())
           logger.debug("Creating file for " + pendingFile.getTargetFile());
-        FileOutputStream fos = new FileOutputStream(pendingFile.getTargetFile(), true);
+        
+        File targetFile = new File(pendingFile.getTargetFile());
+        String[] pieces = FBUtilities.strip(targetFile.getName(), "-");
+        String cfName = pieces[0];
+        ColumnFamilyStore cfStore = Table.open(pendingFile.getTable()).getColumnFamilyStore(cfName);
+        String dataFileLocation = DatabaseDescriptor.getDataFileLocation(cfStore, pendingFile.getExpectedBytes());
+        File realFile = new File(new File(dataFileLocation), targetFile.getName());
+        pendingFile.setRealTargetFile(realFile);
+        FileOutputStream fos = new FileOutputStream(realFile true);
         FileChannel fc = fos.getChannel();
         
         long bytesRead = 0;
