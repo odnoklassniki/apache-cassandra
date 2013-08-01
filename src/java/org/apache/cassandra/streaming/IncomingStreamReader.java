@@ -25,6 +25,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
+import java.util.List;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.Table;
@@ -56,7 +57,10 @@ public class IncomingStreamReader
         if (fileLocation == null){
             String[] pieces = FBUtilities.strip(pendingFile.getNewName(), "-");
             try {
-                fileLocation = DatabaseDescriptor.getDataFileLocation(Table.open(pendingFile.getTable()).getColumnFamilyStore(pieces[0]), pendingFile.getExpectedBytes());
+                List<PendingFile> incomingFiles = StreamInManager.getIncomingFiles(remoteAddress.getAddress());
+                
+                long expectedDataFileSize = Math.max(pendingFile.getExpectedBytes(),  getExpectedDataFileSize(pendingFile.getNewName(), incomingFiles));
+                fileLocation = DatabaseDescriptor.getDataFileLocation(Table.open(pendingFile.getTable()).getColumnFamilyStore(pieces[0]), expectedDataFileSize);
             } catch (IOException e) {
                throw new IllegalStateException("Can't open table "+pendingFile.getTable(), e);
             }
@@ -76,6 +80,19 @@ public class IncomingStreamReader
         pendingFile.setTargetFile(fileLocation + File.separator + newFileName);
         
         
+    }
+
+    private long getExpectedDataFileSize(String newName, List<PendingFile> incomingFiles) {
+        //просто выберем макс размер
+        long max = 0;
+        for (PendingFile pendingFile : incomingFiles) {
+            if (pendingFile.getNewName().equals(newName)){
+                if (pendingFile.getExpectedBytes() > max){
+                    max = pendingFile.getExpectedBytes();
+                }
+            }
+        }
+        return max;
     }
 
     public void read() throws IOException
