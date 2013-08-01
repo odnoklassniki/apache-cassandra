@@ -23,7 +23,6 @@ package org.apache.cassandra.streaming;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
-import java.io.File;
 import java.io.IOException;
 
 import org.apache.cassandra.io.ICompactSerializer;
@@ -42,15 +41,16 @@ class PendingFile
         return serializer_;
     }
 
-    private String targetFile_;
-    private File realTargetFile_;
+    private String sourceFile_;
     private final long expectedBytes_;
     private final String table_;
     private long ptr_;
+    private transient String newName_;
+    private transient String targetFile_;
 
-    public PendingFile(String targetFile, long expectedBytes, String table)
+    public PendingFile(String sourceFile, long expectedBytes, String table)
     {
-        targetFile_ = targetFile;
+        sourceFile_ = sourceFile;
         expectedBytes_ = expectedBytes;
         table_ = table;
         ptr_ = 0;
@@ -71,24 +71,19 @@ class PendingFile
         return table_;
     }
 
-    public String getTargetFile()
+    public String getSourceFile()
     {
+        return sourceFile_;
+    }
+
+    
+
+    public String getTargetFile() {
         return targetFile_;
     }
 
-    public void setTargetFile(String file)
-    {
-        targetFile_ = file;
-    }
-
-    public File getRealTargetFile()
-    {
-        return realTargetFile_;
-    }
-
-    public void setRealTargetFile(File file)
-    {
-        realTargetFile_ = file;
+    public void setTargetFile(String targetFile) {
+        this.targetFile_ = targetFile;
     }
 
     public long getExpectedBytes()
@@ -102,7 +97,15 @@ class PendingFile
             return false;
 
         PendingFile rhs = (PendingFile)o;
-        return targetFile_.hashCode() == rhs.hashCode();
+        return sourceFile_.hashCode() == rhs.hashCode();
+    }
+
+    public String getNewName() {
+        return newName_;
+    }
+
+    public void setNewName(String newName) {
+        this.newName_ = newName;
     }
 
     public int hashCode()
@@ -112,24 +115,24 @@ class PendingFile
 
     public String toString()
     {
-        return targetFile_ + ":" + expectedBytes_;
+        return sourceFile_ + ":" + expectedBytes_;
     }
 
     private static class InitiatedFileSerializer implements ICompactSerializer<PendingFile>
     {
         public void serialize(PendingFile sc, DataOutputStream dos) throws IOException
         {
-            dos.writeUTF(sc.targetFile_);
+            dos.writeUTF(sc.sourceFile_);
             dos.writeLong(sc.expectedBytes_);
             dos.writeUTF(sc.table_);
         }
 
         public PendingFile deserialize(DataInputStream dis) throws IOException
         {
-            String targetFile = dis.readUTF();
+            String sourceFile = dis.readUTF();
             long expectedBytes = dis.readLong();
             String table = dis.readUTF();
-            return new PendingFile(targetFile, expectedBytes, table);
+            return new PendingFile(sourceFile, expectedBytes, table);
         }
     }
 }

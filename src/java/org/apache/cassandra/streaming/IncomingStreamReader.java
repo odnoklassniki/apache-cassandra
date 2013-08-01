@@ -27,7 +27,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
@@ -40,6 +39,7 @@ public class IncomingStreamReader
     private SocketChannel socketChannel;
     
     private static final int MEGABIT_BYTES = 1024*1024/8;
+    
 
     public IncomingStreamReader(SocketChannel socketChannel)
     {
@@ -50,23 +50,46 @@ public class IncomingStreamReader
         assert pendingFile != null;
         streamStatus = StreamInManager.getStreamStatus(remoteAddress.getAddress());
         assert streamStatus != null;
+        
+        
+        String fileLocation = StreamInManager.getFileLocation(remoteAddress.getAddress(), pendingFile.getNewName());
+        if (fileLocation == null){
+            String[] pieces = FBUtilities.strip(pendingFile.getNewName(), "-");
+            try {
+                fileLocation = DatabaseDescriptor.getDataFileLocation(Table.open(pendingFile.getTable()).getColumnFamilyStore(pieces[0]), pendingFile.getExpectedBytes());
+            } catch (IOException e) {
+               throw new IllegalStateException("Can't open table "+pendingFile.getTable(), e);
+            }
+            StreamInManager.setFileLocation(remoteAddress.getAddress(), pendingFile.getNewName(), fileLocation);
+            if (logger.isDebugEnabled())
+                logger.debug("Registered location for  " + pendingFile.getNewName()+", at "+ fileLocation);
+            
+        }
+        
+        
+        File sourceFile = new File( pendingFile.getSourceFile() );
+        String[] piece = FBUtilities.strip(sourceFile.getName(), "-");
+        String typeOfFile = piece[2];
+
+        
+        String newFileName = pendingFile.getNewName().replace("Data.db", typeOfFile);
+        pendingFile.setTargetFile(fileLocation + File.separator + newFileName);
+        
+        
     }
 
     public void read() throws IOException
     {
         logger.debug("Receiving stream");
         InetSocketAddress remoteAddress = (InetSocketAddress)socketChannel.socket().getRemoteSocketAddress();
-        if (logger.isDebugEnabled())
-          logger.debug("Creating file for " + pendingFile.getTargetFile());
         
         File targetFile = new File(pendingFile.getTargetFile());
-        String[] pieces = FBUtilities.strip(targetFile.getName(), "-");
-        String cfName = pieces[0];
-        ColumnFamilyStore cfStore = Table.open(pendingFile.getTable()).getColumnFamilyStore(cfName);
-        String dataFileLocation = DatabaseDescriptor.getDataFileLocation(cfStore, pendingFile.getExpectedBytes());
-        File realFile = new File(new File(dataFileLocation), targetFile.getName());
-        pendingFile.setRealTargetFile(realFile);
-        FileOutputStream fos = new FileOutputStream(realFile, true);
+        
+        if (logger.isDebugEnabled())
+            logger.debug("Creating file for " + pendingFile.getSourceFile()+", at "+targetFile);
+          
+        
+        FileOutputStream fos = new FileOutputStream(targetFile, true);
         FileChannel fc = fos.getChannel();
         
         long bytesRead = 0;
@@ -92,8 +115,7 @@ public class IncomingStreamReader
             streamStatus.setAction(CompletedFileStatus.StreamCompletionAction.STREAM);
             handleStreamCompletion(remoteAddress.getAddress());
             /* Delete the orphaned file. */
-            File file = new File(pendingFile.getTargetFile());
-            file.delete();
+            targetFile.delete();
             logger.debug("Receiving stream: recovering from IO error");
             throw ex;
         }

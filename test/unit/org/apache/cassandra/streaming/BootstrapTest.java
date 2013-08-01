@@ -46,7 +46,7 @@ public class BootstrapTest
         Map<String, String> paths = new HashMap<String, String>();
         
         for (PendingFile pendingFile : pendingFiles) {
-            String[] pieces = FBUtilities.strip(new File(pendingFile.getTargetFile()).getName(), "-");
+            String[] pieces = FBUtilities.strip(new File(pendingFile.getSourceFile()).getName(), "-");
             String newFileNameExpanded = pendingFile.getTable() + "-" + pieces[0] + "-" + pieces[1];
 
             assert fileNames.containsKey(newFileNameExpanded);
@@ -61,8 +61,6 @@ public class BootstrapTest
         assertEquals(true, result.contains("Data.db"));
         assertEquals(1, fileNames.entrySet().size());
 
-        assertTrue(new File(bivh.getNewFileNameFromOldContextAndNames(fileNames, paths, pendingFiles[0])).getName().matches("Standard1-tmp-\\d+-Data.db"));
-        assertTrue(new File(bivh.getNewFileNameFromOldContextAndNames(fileNames, paths, pendingFiles[1])).getName().matches("Standard1-tmp-\\d+-Index.db"));
-        assertTrue(new File(bivh.getNewFileNameFromOldContextAndNames(fileNames, paths, pendingFiles[2])).getName().matches("Standard1-tmp-\\d+-Filter.db"));
+      
     }
 }

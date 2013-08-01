@@ -72,18 +72,7 @@ public class StreamInitiateVerbHandler implements IVerbHandler
                 return;
             }
 
-            Map<String, String> fileNames = getNewNames(pendingFiles);
-            Map<String, String> pathNames = new HashMap<String, String>();
-            
-            for (PendingFile pendingFile : pendingFiles) {
-                String[] pieces = FBUtilities.strip(new File(pendingFile.getTargetFile()).getName(), "-");
-                String newFileNameExpanded = pendingFile.getTable() + "-" + pieces[0] + "-" + pieces[1];
-
-                assert fileNames.containsKey(newFileNameExpanded);
-                
-                pathNames.put ( newFileNameExpanded, DatabaseDescriptor.getDataFileLocation(Table.open(pendingFile.getTable()).getColumnFamilyStore(pieces[0]), pendingFile.getExpectedBytes()) );
-                
-            }
+            getNewNames(pendingFiles);
             /*
              * For each of stream context's in the incoming message
              * generate the new file names and store the new file names
@@ -91,15 +80,14 @@ public class StreamInitiateVerbHandler implements IVerbHandler
             */
             for (PendingFile pendingFile : pendingFiles)
             {
-                CompletedFileStatus streamStatus = new CompletedFileStatus(pendingFile.getTargetFile(), pendingFile.getExpectedBytes() );
-                String file = getNewFileNameFromOldContextAndNames(fileNames, pathNames, pendingFile);
+                CompletedFileStatus streamStatus = new CompletedFileStatus(pendingFile.getSourceFile(), pendingFile.getExpectedBytes() );
 
                 if (logger.isDebugEnabled())
-                  logger.debug("Received Data from  : " + message.getFrom() + " " + pendingFile.getTargetFile() + " " + file);
-                pendingFile.setTargetFile(file);
+                  logger.debug("Received Data from  : " + message.getFrom() + " " + pendingFile.getSourceFile());
                 addStreamContext(message.getFrom(), pendingFile, streamStatus);
             }
 
+            
             StreamInManager.registerStreamCompletionHandler(message.getFrom(), new StreamCompletionHandler());
             if (logger.isDebugEnabled())
               logger.debug("Sending a stream initiate done message ...");
@@ -110,23 +98,6 @@ public class StreamInitiateVerbHandler implements IVerbHandler
         {
             throw new IOError(ex);
         }
-    }
-
-    public String getNewFileNameFromOldContextAndNames(Map<String, String> fileNames,
-                                                       Map<String, String> pathNames,
-                                                       PendingFile pendingFile)
-    {
-        File sourceFile = new File( pendingFile.getTargetFile() );
-        String[] piece = FBUtilities.strip(sourceFile.getName(), "-");
-        String cfName = piece[0];
-        String ssTableNum = piece[1];
-        String typeOfFile = piece[2];
-
-        String newFileNameExpanded = fileNames.get(pendingFile.getTable() + "-" + cfName + "-" + ssTableNum);
-        String path = pathNames.get(pendingFile.getTable() + "-" + cfName + "-" + ssTableNum);
-        //Drop type (Data.db) from new FileName
-        String newFileName = newFileNameExpanded.replace("Data.db", typeOfFile);
-        return path + File.separator + newFileName;
     }
 
     // todo: this method needs to be private, or package at the very least for easy unit testing.
@@ -143,7 +114,7 @@ public class StreamInitiateVerbHandler implements IVerbHandler
         Set<String> distinctEntries = new HashSet<String>();
         for ( PendingFile pendingFile : pendingFiles)
         {
-            String[] pieces = FBUtilities.strip(new File(pendingFile.getTargetFile()).getName(), "-");
+            String[] pieces = FBUtilities.strip(new File(pendingFile.getSourceFile()).getName(), "-");
             distinctEntries.add(pendingFile.getTable() + "-" + pieces[0] + "-" + pieces[1] );
         }
 
@@ -167,7 +138,12 @@ public class StreamInitiateVerbHandler implements IVerbHandler
               logger.debug("Generating file name for " + distinctEntry + " ...");
             fileNames.put(distinctEntry, cfStore.getTempSSTableFileName());
         }
-
+        /* Generate unique file names per entry */
+        for ( PendingFile pendingFile : pendingFiles)
+        {
+            String[] pieces = FBUtilities.strip(new File(pendingFile.getSourceFile()).getName(), "-");
+            pendingFile.setNewName(fileNames.get(pendingFile.getTable() + "-" + pieces[0] + "-" + pieces[1] ));
+        }
         return fileNames;
     }
 

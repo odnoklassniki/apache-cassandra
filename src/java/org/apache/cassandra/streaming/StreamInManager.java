@@ -19,12 +19,19 @@
 package org.apache.cassandra.streaming;
 
 import java.net.InetAddress;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.log4j.Logger;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
-import org.apache.log4j.Logger;
 
 class StreamInManager
 {
@@ -32,6 +39,9 @@ class StreamInManager
 
     /* Maintain a stream context per host that is the source of the stream */
     public static final Map<InetAddress, List<PendingFile>> ctxBag_ = new Hashtable<InetAddress, List<PendingFile>>();
+    
+    public static final Map<InetAddress, Map<String, String>> fileLocations_ = new Hashtable<InetAddress, Map<String, String>>();
+    
     /* Maintain in this map the status of the streams that need to be sent back to the source */
     public static final Map<InetAddress, List<CompletedFileStatus>> streamStatusBag_ = new Hashtable<InetAddress, List<CompletedFileStatus>>();
     /* Maintains a callback handler per endpoint to notify the app that a stream from a given endpoint has been handled */
@@ -48,6 +58,25 @@ class StreamInManager
         if ( context.isEmpty() )
             ctxBag_.remove(key);
         return pendingFile;
+    }
+    
+    public synchronized static String getFileLocation(InetAddress key, String fileName)
+    {        
+        Map<String, String> context = fileLocations_.get(key);
+        if ( context == null ){
+            return null;
+        }
+        return context.get(fileName);
+    }
+    
+    public synchronized static void setFileLocation(InetAddress key, String fileName, String fileLocation)
+    {        
+        Map<String, String> context = fileLocations_.get(key);
+        if ( context == null ){
+            context = new HashMap<String, String>();
+            fileLocations_.put(key, context);
+        }
+        context.put(fileName, fileLocation);
     }
     
     public synchronized static CompletedFileStatus getStreamStatus(InetAddress key)

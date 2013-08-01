@@ -61,7 +61,7 @@ public class StreamingService implements StreamingServiceMBean
             sb.append(String.format(" %s:\n", source.getHostAddress()));
             for (PendingFile pf : StreamInManager.getIncomingFiles(source))
             {
-                sb.append(String.format("  %s %d/%d\n", pf.getTargetFile(), pf.getPtr(), pf.getExpectedBytes()));
+                sb.append(String.format("  %s %d/%d\n", pf.getSourceFile(), pf.getPtr(), pf.getExpectedBytes()));
             }
         }
         sb.append("Sending to:\n");
@@ -70,7 +70,7 @@ public class StreamingService implements StreamingServiceMBean
             sb.append(String.format(" %s:\n", dest.getHostAddress()));
             for (PendingFile pf : StreamOutManager.getPendingFiles(dest))
             {
-                sb.append(String.format("  %s %d/%d\n", pf.getTargetFile(), pf.getPtr(), pf.getExpectedBytes()));
+                sb.append(String.format("  %s %d/%d\n", pf.getSourceFile(), pf.getPtr(), pf.getExpectedBytes()));
             }
         }
         return sb.toString();
@@ -96,7 +96,7 @@ public class StreamingService implements StreamingServiceMBean
         
         StreamOutManager manager = StreamOutManager.get(dest);
         for (PendingFile f : manager.getFiles())
-            files.add(String.format("%s %d/%d", f.getTargetFile(), f.getPtr(), f.getExpectedBytes()));
+            files.add(String.format("%s %d/%d", f.getSourceFile(), f.getPtr(), f.getExpectedBytes()));
         return files;
     }
 
@@ -112,7 +112,7 @@ public class StreamingService implements StreamingServiceMBean
         List<String> files = new ArrayList<String>();
         for (PendingFile pf : StreamInManager.getIncomingFiles(InetAddress.getByName(host)))
         {
-            files.add(String.format("%s: %s %d/%d", pf.getTable(), pf.getTargetFile(), pf.getPtr(), pf.getExpectedBytes()));
+            files.add(String.format("%s: %s %d/%d", pf.getTable(), pf.getSourceFile(), pf.getPtr(), pf.getExpectedBytes()));
         }
         return files;
     }
