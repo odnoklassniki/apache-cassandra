@@ -79,8 +79,8 @@
     <dependency org="ru.odnoklassniki" name="one-log-server" rev="[2.0.0,)" conf="server->client-all,sources"/>
 
     <!-- Logging to graylog2 -->
-	<dependency org="ru.odnoklassniki" name="gelfj" rev="[0.9.1ok4,)" conf="server->master,sources"/>
-	<dependency  org="com.googlecode.json-simple" name="json-simple" rev="1.1" conf="server->master,sources"/>
+	<dependency org="ru.odnoklassniki" name="gelfj" rev="[0.9.1ok4,)" />
+	<dependency  org="com.googlecode.json-simple" name="json-simple" rev="1.1"/>
 	
     <dependency org="commons-pool" name="commons-pool" rev="1.5.6"/>
    
