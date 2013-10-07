@@ -70,8 +70,8 @@
     <dependency org="org.xerial.snappy" name="snappy-java" rev="1.0.4.1"/>
 
     <!-- odkl statistics collection -->
-    <dependency org="org.aspectj" name="aspectjrt" rev="1.6.10" />
-    <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.10"/>
+    <dependency org="org.aspectj" name="aspectjrt" rev="1.6.12" />
+    <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.12"/>
     <dependency org="log4j" name="log4j" rev="1.2.16" />
 
     <!-- one-log statistics 2.0 transitive style -->
