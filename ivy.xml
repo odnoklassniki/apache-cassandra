@@ -73,7 +73,8 @@
     <dependency org="org.aspectj" name="aspectjrt" rev="1.6.12" />
     <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.12"/>
     <dependency org="log4j" name="log4j" rev="1.2.16" />
-
+    <dependency org="com.inet.tds" name="Sprinta" rev="605a" />
+    
     <!-- one-log statistics 2.0 transitive style -->
     <dependency org="ru.odnoklassniki" name="one-log-server" rev="[2.0.0,)" conf="server->client-all,sources"/>
     
