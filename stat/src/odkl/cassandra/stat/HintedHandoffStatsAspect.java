@@ -53,10 +53,6 @@ public class HintedHandoffStatsAspect extends SystemArchitectureAspect
     private Object collectStats(ProceedingJoinPoint join, String opName, InetAddress endpoint) throws Throwable
     {
         
-        // if no logging is configured doing a shortcut call to dao method
-        if (!opLogger.isTraceEnabled())
-            return join.proceed();
-        
         final long time = LoggerUtil.getMeasureStartTime();
         boolean ok=false;
         try {
