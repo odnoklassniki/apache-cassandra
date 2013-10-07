@@ -70,13 +70,18 @@
     <dependency org="org.xerial.snappy" name="snappy-java" rev="1.0.4.1"/>
 
     <!-- odkl statistics collection -->
-    <dependency org="org.aspectj" name="aspectjrt" rev="1.6.10" />
-    <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.10"/>
+    <dependency org="org.aspectj" name="aspectjrt" rev="1.6.12" />
+    <dependency org="org.aspectj" name="aspectjweaver" rev="1.6.12"/>
     <dependency org="log4j" name="log4j" rev="1.2.16" />
-
+    <dependency org="com.inet.tds" name="Sprinta" rev="605a" />
+    
     <!-- one-log statistics 2.0 transitive style -->
     <dependency org="ru.odnoklassniki" name="one-log-server" rev="[2.0.0,)" conf="server->client-all,sources"/>
-    
+
+    <!-- Logging to graylog2 -->
+	<dependency org="ru.odnoklassniki" name="gelfj" rev="[0.9.1ok4,)" />
+	<dependency  org="com.googlecode.json-simple" name="json-simple" rev="1.1"/>
+	
     <dependency org="commons-pool" name="commons-pool" rev="1.5.6"/>
    
   </dependencies>

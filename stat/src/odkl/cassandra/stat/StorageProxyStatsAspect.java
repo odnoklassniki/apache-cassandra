@@ -110,10 +110,6 @@ public class StorageProxyStatsAspect extends SystemArchitectureAspect
     private Object collectStats(ProceedingJoinPoint join, String opName) throws Throwable
     {
         
-        // if no logging is configured doing a shortcut call to dao method
-        if (!opLogger.isTraceEnabled())
-            return join.proceed();
-        
         final long time = LoggerUtil.getMeasureStartTime();
         boolean ok=false;
         try {
@@ -134,14 +130,9 @@ public class StorageProxyStatsAspect extends SystemArchitectureAspect
     protected LatencyTracker buildTracker(String op)
     {
         Log logger = LogFactory.getLog(OP_LOGGER_NAME);
-        if (logger.isTraceEnabled())
-        {
-            log.debug("Initialized logging tracker for "+op+" by "+this);
-            LoggerLatencyTracker tracker = new LoggerLatencyTracker(logger, op, parameters);
-            return tracker;
-        }
-        else
-            return new LatencyTracker();
+        log.debug("Initialized logging tracker for "+op+" by "+this);
+        LoggerLatencyTracker tracker = new LoggerLatencyTracker(logger, op, parameters);
+        return tracker;
     }
 
     

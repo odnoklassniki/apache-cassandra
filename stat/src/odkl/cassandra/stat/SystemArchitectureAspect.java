@@ -11,8 +11,15 @@ import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.io.CompactionIterator;
 import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.thrift.ConsistencyLevel;
+import org.apache.commons.logging.LogFactory;
 import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.annotation.Pointcut;
+
+import one.conf.Configuration;
+import one.conf.ConfigurationFactory;
+import one.conf.dynamic.ConfigurationException;
+
 
 /**
  * Defines all logging pointcuts for cassandra to collect stats to one-log
@@ -90,6 +97,10 @@ public abstract class SystemArchitectureAspect
     @Pointcut("execution( * org.apache.cassandra.thrift.CassandraDaemon.stop(..) ) ")
     public void cassandraStop() {}
     
+    // start of apache cassandra non embedded server.
+    @Pointcut("execution( * org.apache.cassandra.tools.WrapperMain.start(..) ) ")
+    public void wrapperStart() {}
+    
     /**
      * Called when any message just read from channel was dropped due to rpc timeout.
      * @param verb kind of message
@@ -101,4 +112,20 @@ public abstract class SystemArchitectureAspect
     public void compactionStartedPointcut(ColumnFamilyStore cfs, CompactionIterator ci) {}
     @Pointcut("execution( * org.apache.cassandra.db.CompactionManager.CompactionExecutor.afterExecute(..) )")
     public void compactionCompletedPointcut() {}
+    
+    @Before("wrapperStart()")
+    public void initStatistics()
+    {
+        if ( Configuration.get() == null ) {
+            try {
+                LogFactory.getLog(SystemArchitectureAspect.class).info("Standalone apache cassandra server initialization of statistics 2.0");
+                new ConfigurationFactory().startManaging();
+            } catch (ConfigurationException e) {
+                LogFactory.getLog(SystemArchitectureAspect.class)
+                          .fatal("Cannot initialize one-conf. Cannot continue, sorry",e);
+                System.exit(-1);
+            }
+        }
+    }
+
 }
