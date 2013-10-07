@@ -147,6 +147,8 @@
                 <include name="aspectj*.jar" />
                 <include name="commons-logging*.jar" />
                 <include name="commons-pool*.jar" />
+                <include name="zookeeper*.jar" />
+                <include name="gelf*.jar" />
                 <include name="log4j*.jar" />
                 <include name="Sprinta*.jar" />
                 <include name="libthrift*.jar" />
