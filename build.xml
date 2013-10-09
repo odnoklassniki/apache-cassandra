@@ -246,7 +246,7 @@
 	
     <target name="filter-property">
         <replace dir="${filter.conf.dir}">
-            <replacefilter token="{db.url.conf}" value="${db.url.conf}"/>
+            <replacefilter token="{db.url.configuration}" value="${db.url.configuration}"/>
             <replacefilter token="{db.url.log}" value="${db.url.log}"/>
             <replacefilter token="{db.driver}" value="${db.driver}"/>
 
