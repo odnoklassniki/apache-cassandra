@@ -499,6 +499,11 @@ public class NodeProbe
             ", Max=" +  mcmProxy.getMaximumCompactionThreshold());
     }
 
+    public int getMaxCompactionThreshold()
+    {
+        return mcmProxy.getMaximumCompactionThreshold();
+    }
+
     /**
      * Set the compaction threshold
      *

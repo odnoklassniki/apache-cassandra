@@ -646,10 +646,12 @@ public class NodeCmd {
                 System.exit(1);
             }
             int minthreshold = Integer.parseInt(arguments[1]);
-            int maxthreshold = CompactionManager.instance.getMaximumCompactionThreshold();
+            int maxthreshold;
             if (arguments.length > 2)
             {
                 maxthreshold = Integer.parseInt(arguments[2]);
+            } else {
+                maxthreshold = probe.getMaxCompactionThreshold();
             }
 
             if (minthreshold > maxthreshold)
