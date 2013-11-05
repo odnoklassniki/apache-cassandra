@@ -59,8 +59,8 @@ public class CompactionManager implements CompactionManagerMBean
     private static final Logger logger = Logger.getLogger(CompactionManager.class);
     public static final CompactionManager instance;
 
-    private int minimumCompactionThreshold = 4; // compact this many sstables min at a time
-    private int maximumCompactionThreshold = 32; // compact this many sstables max at a time
+    private int minimumCompactionThreshold = DatabaseDescriptor.getMinimumCompactionThreshold();
+    private int maximumCompactionThreshold = DatabaseDescriptor.getMaximumCompactionThreshold();
 
     static
     {

@@ -129,6 +129,9 @@ public class DatabaseDescriptor
     private static int concurrentReaders = 8;
     private static int concurrentWriters = 32;
 
+    private static int minimumCompactionThreshold = 4; // compact this many sstables min at a time
+    private static int maximumCompactionThreshold = 32; // compact this many sstables max at a time
+
     private static double flushDataBufferSizeInMB = 32;
     private static double flushIndexBufferSizeInMB = 8;
     private static int slicedReadBufferSizeInKB = 64;
@@ -509,6 +512,27 @@ public class DatabaseDescriptor
             if (concurrentWriters < 2)
             {
                 throw new ConfigurationException("ConcurrentWrites must be at least 2");
+            }
+
+            /* Compaction thresholds */
+            String minimumCompactionThresholdStr = xmlUtils.getNodeValue("/Storage/MinimumCompactionThreshold");
+            if (minimumCompactionThresholdStr != null)
+            {
+                minimumCompactionThreshold = Integer.parseInt(minimumCompactionThresholdStr);
+            }
+            String maximumCompactionThresholdStr = xmlUtils.getNodeValue("/Storage/MaximumCompactionThreshold");
+            if (maximumCompactionThresholdStr != null)
+            {
+                maximumCompactionThreshold = Integer.parseInt(maximumCompactionThresholdStr);
+            }
+            if (minimumCompactionThreshold > maximumCompactionThreshold)
+            {
+                throw new ConfigurationException("Minimum compaction threshold can't be greater than Maximum compaction threshold");
+            }
+
+            if (minimumCompactionThreshold < 2 && maximumCompactionThreshold != 0)
+            {
+                throw new ConfigurationException("Minimum compaction threshold must be at least 2");
             }
 
             /** Min and max rpc threads allowed **/
@@ -1674,6 +1698,14 @@ public class DatabaseDescriptor
     public static int getConcurrentWriters()
     {
         return concurrentWriters;
+    }
+
+    public static int getMinimumCompactionThreshold() {
+        return minimumCompactionThreshold;
+    }
+
+    public static int getMaximumCompactionThreshold() {
+        return maximumCompactionThreshold;
     }
 
     public static long getRowWarningThreshold()

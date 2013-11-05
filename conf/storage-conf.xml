@@ -496,6 +496,15 @@
   <ConcurrentWrites>32</ConcurrentWrites>
 
   <!--
+   ~ Minimum number of sstables in queue for minor compaction to kick-off
+  -->
+  <MinimumCompactionThreshold>4</MinimumCompactionThreshold>
+  <!--
+   ~ Maximum number of sstables to compact at once during minor compaction 
+   -->
+  <MaximumCompactionThreshold>32</MaximumCompactionThreshold>
+
+  <!--
    ~ CommitLogSync may be either "periodic" or "batch."  When in batch
    ~ mode, Cassandra won't ack writes until the commit log has been
    ~ fsynced to disk.  It will wait up to CommitLogSyncBatchWindowInMS
