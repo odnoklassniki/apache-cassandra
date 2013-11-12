@@ -20,6 +20,7 @@ package org.apache.cassandra.streaming;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Set;
 
@@ -49,4 +50,11 @@ public interface StreamingServiceMBean
      * @param newMBits
      */
     void setStreamInMBits(int newMBits);
+    
+    /**
+     * Cancels all streaming to host
+     * @param host
+     * @throws UnknownHostException 
+     */
+    void cancelStreamOut(String host) throws UnknownHostException;
 }

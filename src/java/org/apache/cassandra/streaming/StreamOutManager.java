@@ -128,6 +128,25 @@ public class StreamOutManager
             MessagingService.instance.stream(file.getAbsolutePath(), 0L, file.length(), FBUtilities.getLocalAddress(), to);
         }
     }
+    
+    /**
+     * Drops all files to steam to to endpoint and remove them from temp storage.
+     */
+    public void reset() {
+        while (files.size()>0) {
+            PendingFile file = files.remove(0);
+            if (file==null)
+                continue;
+            
+            File f = new File( file.getSourceFile() );
+            logger.warn("Cancelling streaming to " + to + " of file "+ f);
+
+            FileUtils.delete(file.getSourceFile());
+            fileMap.remove(file.getSourceFile());
+        }
+
+        condition.signalAll();
+    }
 
     public void finishAndStartNext(String file) throws IOException
     {

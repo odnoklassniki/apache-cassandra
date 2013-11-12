@@ -21,9 +21,11 @@ package org.apache.cassandra.streaming;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
@@ -137,5 +139,17 @@ public class StreamingService implements StreamingServiceMBean
     {
         RateControl rc = streamRateControl;
         return rc == null ? streamRateControl = new RateControl(getStreamInMBits()) : rc;
+    }
+    
+    /* (non-Javadoc)
+     * @see org.apache.cassandra.streaming.StreamingServiceMBean#cancelStreamOut(java.lang.String)
+     */
+    @Override
+    public void cancelStreamOut(String host) throws UnknownHostException
+    {
+        InetAddress endpoint = InetAddress.getByName(host);
+        StreamOutManager manager = StreamOutManager.get(endpoint);
+        
+        manager.reset();
     }
 }

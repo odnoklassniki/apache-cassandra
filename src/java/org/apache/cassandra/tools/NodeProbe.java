@@ -27,9 +27,11 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.RuntimeMXBean;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
+
 import javax.management.JMX;
 import javax.management.MBeanServerConnection;
 import javax.management.MalformedObjectNameException;
@@ -580,6 +582,15 @@ public class NodeProbe
     public List<String> getIncomingFiles(InetAddress host) throws IOException
     {
         return streamProxy.getIncomingFiles(host.getHostAddress());
+    }
+
+    public void cancelStreamOut(String host2) throws UnknownHostException
+    {
+        streamProxy.cancelStreamOut(host2);
+    }
+    
+    public void setStreamingInMBits(int speed) {
+        streamProxy.setStreamInMBits(speed);
     }
 
     public String getOperationMode()

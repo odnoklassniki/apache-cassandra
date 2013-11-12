@@ -77,7 +77,7 @@ public class NodeCmd {
     {
         HelpFormatter hf = new HelpFormatter();
         String header = String.format("%nAvailable commands:%n"
-                                      + "ring%n"
+                                      + "ring - Print information about the token ring"
                                       + "snapshot [snapshotname]%n"
                                       + "info%n"
                                       + "cfstats%n"
@@ -92,7 +92,9 @@ public class NodeCmd {
                                       + "setcachecapacity <keyspace> <cfname> <keycachecapacity> <rowcachecapacity>%n"
                                       + "getcompactionthreshold%n"
                                       + "setcompactionthreshold [minthreshold] ([maxthreshold])%n"
-                                      + "streams [host]%n"
+                                      + "streams [host]  - see inbound and outbound streams to other nodes%n"
+                                      + "cancelstreamout [host] - cancel outbound streams targeted at host. use when host stopped before completing boostrap/replace.%n"
+                                      + "setstreamthroughput  <value_in_mb> - Set the Mb/s throughput cap for streaming in the system, or 0 to disable throttling."
                                       + "gossipinfo%n"
                                       + "gossipstop%n"
                                       + "gossipstart%n"
@@ -673,6 +675,18 @@ public class NodeCmd {
         {
             String otherHost = arguments.length > 1 ? arguments[1] : null;
             nodeCmd.printStreamInfo(otherHost == null ? null : InetAddress.getByName(otherHost), System.out);
+        }
+        else if (cmdName.equals("cancelstreamout"))
+        {
+            String otherHost=arguments[1] ;
+            probe.cancelStreamOut( host );
+            System.out.println("All streams pending to "+otherHost+" cancelled.");
+            nodeCmd.printStreamInfo(otherHost == null ? null : InetAddress.getByName(otherHost), System.out);
+        }
+        else if (cmdName.equals("setstreamthroughput"))
+        {
+            String mbits=arguments[1] ;
+            probe.setStreamingInMBits( Integer.parseInt( mbits ) );
         }
         else if (cmdName.equals("cfhistograms"))
         {
