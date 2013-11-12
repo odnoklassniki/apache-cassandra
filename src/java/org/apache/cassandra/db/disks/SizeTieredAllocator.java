@@ -9,7 +9,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Comparator;
+import java.util.Random;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
@@ -67,49 +67,35 @@ public class SizeTieredAllocator extends AbstractDiskAllocator
             }
         }
 
-        Pair<File,Integer>[] dirsAndCount = new Pair[dataDirectories.length];
+        Directory[] dirsAndCount = new Directory[dataDirectories.length];
+        Random r = new Random();
         for (int i = 0; i < dataDirectories.length; i++) {
-            dirsAndCount[i]=new Pair<File, Integer>(dataDirectories[i], fileCounts[i]);
+            dirsAndCount[i]=new Directory(dataDirectories[i], fileCounts[i], r);
         }
 
         // sorting disks with less files number first
-        Arrays.sort(dirsAndCount,new Comparator<Pair<File,Integer>>()
-        {
-
-            @Override
-            public int compare(Pair<File, Integer> o1, Pair<File, Integer> o2)
-            {
-                int r = o1.right.compareTo(o2.right);
-                
-                if ( r==0 ) {
-                    // returning disk with more free space first
-                    return o1.left.getUsableSpace() > o1.left.getUsableSpace() ? 1 : -1;
-                }
-                
-                return r;
-            }
-        });
+        Arrays.sort(dirsAndCount);
         
 
-        for (Pair<File, Integer> pair : dirsAndCount) {
-            if( enoughSpaceAvailable(estimatedSize, pair.left))
+        for (Directory dir : dirsAndCount) {
+            if( enoughSpaceAvailable(estimatedSize, dir.dir))
             {
                 if (log.isDebugEnabled()) {
                     StringBuilder sb=new StringBuilder();
-                    for (Pair<File, Integer> p : dirsAndCount) {
-                        sb.append(p.left+","+p.right+","+FileUtils.stringifyFileSize( p.left.getUsableSpace() ));
+                    for (Directory p : dirsAndCount) {
+                        sb.append(p.toString());
                     }
 
-                    log.debug("estimation:"+estimatedSize+", tier="+tier+", by disk counts "+sb+", choosen "+pair);
+                    log.debug("estimation:"+estimatedSize+", tier="+tier+", by disk counts "+sb+", choosen "+dir);
 
                 }
-                return getDataFileLocationForTable(pair.left, table);
+                return getDataFileLocationForTable(dir.dir, table);
             }
         }
 
         return null;
     }
-
+    
     /**
      * @param left
      * @return
@@ -167,4 +153,47 @@ public class SizeTieredAllocator extends AbstractDiskAllocator
         return CompactionManager.instance.getMinimumCompactionThreshold();
     }
     
+    private static class Directory implements Comparable<Directory> {
+        final File dir;
+        final int count;
+        final long randomizedFreeSpace;
+        /**
+         * @param dir
+         * @param count
+         * @param r
+         */
+        public Directory(File dir, int count, Random r)
+        {
+            this.dir = dir;
+            this.count = count;
+            long freesp = dir.getUsableSpace();
+            this.randomizedFreeSpace = freesp-( Math.abs( r.nextLong() ) % ( freesp/10) ) ;
+        }
+        /* (non-Javadoc)
+         * @see java.lang.Comparable#compareTo(java.lang.Object)
+         */
+        @Override
+        public int compareTo(Directory o2)
+        {
+            int r = (count < o2.count) ? -1 : ((count == o2.count) ? 0 : 1);
+            
+            if ( r==0 ) {
+                // returning disk with more free space first
+                return randomizedFreeSpace < o2.randomizedFreeSpace ? 1 : -1;
+            }
+            
+            return r;
+        }
+        
+        /* (non-Javadoc)
+         * @see java.lang.Object#toString()
+         */
+        @Override
+        public String toString()
+        {
+            return dir.toString()+": c="+count+", free(-10% random)="+FileUtils.stringifyFileSize( dir.getUsableSpace() )+"(" +FileUtils.stringifyFileSize( randomizedFreeSpace )+") ";
+        }
+        
+    }
+
 }
