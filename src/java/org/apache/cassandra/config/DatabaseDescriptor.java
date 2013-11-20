@@ -135,6 +135,7 @@ public class DatabaseDescriptor
     private static double flushDataBufferSizeInMB = 32;
     private static double flushIndexBufferSizeInMB = 8;
     private static int slicedReadBufferSizeInKB = 64;
+    private static int flushQueueSize = 2;
 
     static Map<String, KSMetaData> tables = new HashMap<String, KSMetaData>();
     private static int bmtThreshold = 256;
@@ -556,11 +557,15 @@ public class DatabaseDescriptor
             {
                 flushIndexBufferSizeInMB = Double.parseDouble(rawFlushIndex);
             }
-
             String rawSlicedBuffer = xmlUtils.getNodeValue("/Storage/SlicedBufferSizeInKB");
             if (rawSlicedBuffer != null)
             {
                 slicedReadBufferSizeInKB = Integer.parseInt(rawSlicedBuffer);
+            }
+            String rawFlushQueueSize = xmlUtils.getNodeValue("/Storage/FlushQueueSize");
+            if (rawFlushQueueSize != null)
+            {
+                flushQueueSize = Integer.parseInt(rawFlushQueueSize);
             }
 
             String bmtThresh = xmlUtils.getNodeValue("/Storage/BinaryMemtableThroughputInMB");
@@ -1204,7 +1209,21 @@ public class DatabaseDescriptor
 
                     logger.info("Splitting "+cfName+" by domain of keys");
                 }
-            }                    
+            }
+
+            int splitByNativeDomain = 0;
+            if ((value = XMLUtils.getAttributeValue(columnFamily, "SplitByNativeDomain")) != null)
+            {
+                splitByNativeDomain = Integer.parseInt(value);
+                if (splitByNativeDomain < 1 || splitByNativeDomain > 256)
+                {
+                    throw new ConfigurationException("SplitByNativeDomain must be between [1,256]");
+                }
+                if (splitByDomain)
+                {
+                    throw new ConfigurationException("SplitByDomain mode and SplitByNativeDomain are not applicable together");
+                }
+            }
 
             // Parse out user-specified logical names for the various dimensions
             // of a the column family from the config.
@@ -1262,12 +1281,19 @@ public class DatabaseDescriptor
                     meta.cfMetaData.put(cfName+postfix, new CFMetaData(tableName, cfName+postfix, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, true,cfName, domainToken,domainMax,gcGraceInSeconds,processors));
                 }
             }
+            else if (splitByNativeDomain != 0)
+            {
+                for (int domain = 0; domain < splitByNativeDomain; domain++)
+                {
+                    String domainName = cfName + "_" + domain;
+                    meta.cfMetaData.put(domainName, new CFMetaData(tableName, domainName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds,processors));
+                }
+            }
             else
             {
                 meta.cfMetaData.put(cfName, new CFMetaData(tableName, cfName, columnType, comparator, subcolumnComparator, bloomColumns, comment, rowCacheSize, keyCacheSize, keyCacheSavePeriod, rowCacheSavePeriod, false,cfName,null,null,gcGraceInSeconds,processors));
             }
         }
-        
     }
     
     private static void readLocalStoragesFromXml() throws ConfigurationException
@@ -1906,6 +1932,11 @@ public class DatabaseDescriptor
     public static double getFlushIndexBufferSizeInMB()
     {
         return flushIndexBufferSizeInMB;
+    }
+
+    public static int getFlushQueueSize()
+    {
+        return flushQueueSize;
     }
 
     public static int getIndexedReadBufferSizeInKB()

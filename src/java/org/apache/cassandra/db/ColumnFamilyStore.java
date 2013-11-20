@@ -84,14 +84,15 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
                                                Runtime.getRuntime().availableProcessors(),
                                                Integer.MAX_VALUE,
                                                TimeUnit.SECONDS,
-                                               new LinkedBlockingQueue<Runnable>(Runtime.getRuntime().availableProcessors()),
+                                               new ArrayBlockingQueue<Runnable>(Runtime.getRuntime().availableProcessors()),
                                                new NamedThreadFactory("FLUSH-SORTER-POOL"));
     private static final ExecutorService flushWriter
             = new JMXEnabledThreadPoolExecutor(1,
                                                DatabaseDescriptor.getAllDataFileLocations().length,
                                                Integer.MAX_VALUE,
                                                TimeUnit.SECONDS,
-                                               new LinkedBlockingQueue<Runnable>(DatabaseDescriptor.getAllDataFileLocations().length),
+                                               new ArrayBlockingQueue<Runnable>(DatabaseDescriptor.getAllDataFileLocations().length
+                                                       + DatabaseDescriptor.getFlushQueueSize()),
                                                new NamedThreadFactory("FLUSH-WRITER-POOL",DatabaseDescriptor.getCompactionPriority()));
     public static final ExecutorService postFlushExecutor = new JMXEnabledThreadPoolExecutor("MEMTABLE-POST-FLUSHER");
 
@@ -882,6 +883,19 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         try
         {
              return memtable_.getKeyIterator(startWith);
+        }
+        finally
+        {
+            Table.flusherLock.readLock().unlock();
+        }
+    }
+
+    public Iterator<Map.Entry<DecoratedKey, ColumnFamily>> memtableEntryIterator()
+    {
+        Table.flusherLock.readLock().lock();
+        try
+        {
+            return memtable_.getEntryIterator();
         }
         finally
         {
