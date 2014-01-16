@@ -25,7 +25,9 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.text.DecimalFormat;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.RateControl;
@@ -237,4 +239,97 @@ public class FileUtils
         
         return copied;
     }
+    
+    /**
+     * Copy directory recursively. Use hard links to existing files to save space. File name should be unique
+     */
+    public static long[] copyDirLinkDublicates(File fromDir, File toDir, int chunkSize, int chunksPerSec) throws IOException {
+        Map<String, File> fileMap = new HashMap<String, File>();
+        scanFiles(toDir, fileMap);
+        
+        return copyDirLinkDublicates(fromDir, toDir, chunkSize, chunksPerSec, fileMap);
+        
+    }
+    
+    private static long[] copyDirLinkDublicates(File fromDir, File toDir, int chunkSize, int chunksPerSec,Map<String, File> existingFileMap) throws IOException {
+        
+        long copied = 0;
+        long linked = 0;
+        
+        for (File from: fromDir.listFiles())
+        {
+            File to = new File(toDir,from.getName());
+            
+            if (from.isDirectory())
+            {
+                long[] res= copyDirLinkDublicates(from, to, chunkSize, chunksPerSec, existingFileMap);
+                copied+=res[0];
+                linked+=res[1];
+            } else
+            {
+                if (to.exists() ){
+                    if (to.length() == from.length()){
+                        continue;
+                    }else{
+                        to.delete();
+                        logger_.warn("Deleted broke  file "+to.getPath());
+                    }
+                }
+                if (!toDir.exists()){
+                    toDir.mkdirs();
+                }
+                File existing = existingFileMap.get(to.getName());
+                if (existing != null){
+                    if (existing.length() == from.length()){
+                        createHardLink(existing, to);
+                        linked += existing.length();
+                        continue;
+                    }
+                    logger_.warn("Existing file "+existing.getPath()+" found, but its size - "+existing.length()+" differs from source "+from+" size "+from.length());
+                }
+                copied += copyFileSkippingCache(from, to, chunkSize, chunksPerSec);
+                existingFileMap.put(to.getName(), to);
+            }
+        }
+        
+        return new long[]{copied, linked};
+    }
+    
+    private static void  scanFiles(File file, Map<String, File> existingFileMap){
+        if (file.isDirectory()){
+            File[] listFiles = file.listFiles();
+            for (File f : listFiles) {
+                scanFiles(f, existingFileMap);
+            }
+        }else{
+            File old = existingFileMap.get(file.getName());
+            if (old != null){
+                if (file.lastModified() < old.lastModified()){
+                    //найдем самый первый файл
+                    existingFileMap.put(file.getName(), file);
+                }
+            }else{
+                existingFileMap.put(file.getName(), file);
+            }
+        }
+    }
+
+    public static void createHardLink(File from, File to) throws IOException
+    {
+        if (to.exists())
+            throw new RuntimeException("Tried to create duplicate hard link to " + to);
+        if (!from.exists())
+            throw new RuntimeException("Tried to hard link to file that does not exist " + from);
+
+        CLibrary.createHardLink(from, to);
+    }
+
+    public static void main(String[] args) throws IOException {
+        long[] copyDirLinkDublicates = copyDirLinkDublicates(
+                new File("/mnt/db/FeedStats"), 
+                new File("/mnt/arch/FeedStats"), 
+                10240, Integer.MAX_VALUE);
+        System.out.println("Copied "+copyDirLinkDublicates[0]+", linked "+copyDirLinkDublicates[1]);
+    }
+
 }

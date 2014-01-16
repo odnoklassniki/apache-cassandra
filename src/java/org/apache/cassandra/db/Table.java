@@ -32,8 +32,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
-import org.apache.log4j.Logger;
 
+import org.apache.log4j.Logger;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -349,10 +349,31 @@ public class Table
                 File archiveLocation = DatabaseDescriptor.getDataArchiveFileLocationForSnapshot(name);
 
                 logger.info("Moving snapshot directory " + snapshotPath + " to " + archiveLocation + (force ? " (forced, blocking)" :""));
-                
-                long copied = FileUtils.copyDir(snapshotDir, archiveLocation, chunkSize, chunksSec);
 
-                logger.info("Move of "+ (copied/1024/1024) + "MB to "+archiveLocation+" completed. Removing snapshot directory " + snapshotPath);
+                if (DatabaseDescriptor.isDataArchiveHardLinksEnabled()) 
+                {
+                    long copiedAndLinked[] = FileUtils.copyDirLinkDublicates(
+                            snapshotDir, archiveLocation, chunkSize, chunksSec);
+                    StringBuilder stringBuilder = new StringBuilder();
+                    stringBuilder.append("Move of ");
+                    stringBuilder.append(snapshotPath);
+                    stringBuilder.append(" to ");
+                    stringBuilder.append(archiveLocation);
+                    stringBuilder.append(" completed. Copied ");
+                    stringBuilder.append(FileUtils.stringifyFileSize(copiedAndLinked[0]));
+                    stringBuilder.append(", linked ");
+                    stringBuilder.append(FileUtils.stringifyFileSize(copiedAndLinked[1]));
+                    stringBuilder.append(" .Removing snapshot directory ");
+                    stringBuilder.append(snapshotPath);
+                    logger.info(stringBuilder.toString());
+                }
+                else
+                {
+                    long copied = FileUtils.copyDir(snapshotDir, archiveLocation, chunkSize, chunksSec);
+
+                    logger.info("Move of " + (copied / 1024 / 1024) + "MB to " + archiveLocation
+                            + " completed. Removing snapshot directory " + snapshotPath);
+                }
                 FileUtils.deleteDir(snapshotDir);
             }
         }

@@ -117,6 +117,8 @@ public class DatabaseDescriptor
     private static String hintLogDirectory;
     /** MM: where to transfer snapshots for archiving **/
     private static String dataArchiveDirectory;
+    /** MM: use hard links for exiting files in archive**/
+    private static boolean dataArchiveHardLinks = false;
     /** MM: speed of data archive, MBytes/sec **/
     private static int    dataArchiveThrottle = 10;
     /** MM: datacenter:rack location of this endpoint **/
@@ -718,7 +720,12 @@ public class DatabaseDescriptor
             logFileDirectory = xmlUtils.getNodeValue("/Storage/CommitLogDirectory");
             savedCachesDirectory = xmlUtils.getNodeValue("/Storage/SavedCachesDirectory");
             dataArchiveDirectory = xmlUtils.getNodeValue("/Storage/DataArchiveDirectory");
-            
+
+            String dataArchiveHardLinksString = xmlUtils.getNodeValue("/Storage/DataArchiveHardLinks");
+            if (dataArchiveHardLinksString != null) {
+                dataArchiveHardLinks = Boolean.parseBoolean(dataArchiveHardLinksString);
+            }
+
             String dataArThrottleString = xmlUtils.getNodeValue("/Storage/DataArchiveThrottle");
             if (dataArThrottleString != null)
             {
@@ -1824,7 +1831,12 @@ public class DatabaseDescriptor
     {
         return dataArchiveDirectory!=null;
     }
-    
+
+    public static boolean isDataArchiveHardLinksEnabled()
+    {
+        return dataArchiveHardLinks;
+    }
+
     public static int getDataArchiveThrottle()
     {
         return dataArchiveThrottle;
