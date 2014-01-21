@@ -73,10 +73,7 @@ public class StoreLatencyTrackerAspect extends SystemArchitectureAspect
 
     protected LatencyTracker buildTracker(String op)
     {
-        Log logger = LogFactory.getLog(OP_LOGGER_NAME);
         log.debug("Initialized logging tracker for "+op+" by "+this);
-        LoggerLatencyTracker tracker = new LoggerLatencyTracker(logger, op, parameters);
-        return tracker;
+        return new LoggerLatencyTracker(OP_LOGGER_NAME, op, parameters);
     }
-    
 }

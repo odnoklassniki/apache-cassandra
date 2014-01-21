@@ -6,7 +6,6 @@
 package odkl.cassandra.stat;
 
 import org.apache.cassandra.utils.LatencyTracker;
-import org.apache.commons.logging.Log;
 
 import one.log.util.LoggerUtil;
 
@@ -18,17 +17,14 @@ import one.log.util.LoggerUtil;
  */
 public class LoggerLatencyTracker extends LatencyTracker
 {
-    
+
+    private String statId;
     private String opName;
-    private Log logger;
     private Object[] parameters;
     
-    /**
-     * @param opName
-     */
-    public LoggerLatencyTracker(Log logger, String opName, Object[] parameters )
+    public LoggerLatencyTracker(String statId, String opName, Object[] parameters)
     {
-        this.logger = logger;
+        this.statId = statId;
         this.opName = opName;
         this.parameters = parameters;
     }
@@ -45,7 +41,7 @@ public class LoggerLatencyTracker extends LatencyTracker
     {
         super.addNano(nanos);
         
-        LoggerUtil.operationsSuccess(logger, nanos, 1, opName,parameters);
+        LoggerUtil.operationsSuccess(statId, nanos, 1, opName, parameters);
     };
 
 }

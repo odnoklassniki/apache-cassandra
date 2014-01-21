@@ -36,6 +36,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.cassandra.concurrent.StageManager;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -139,7 +140,7 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
     private Set<InetAddress> seeds_ = new HashSet<InetAddress>();
 
     /* map where key is the endpoint and value is the state associated with the endpoint */
-    Map<InetAddress, EndPointState> endPointStateMap_ = new Hashtable<InetAddress, EndPointState>();
+    Map<InetAddress, EndPointState> endPointStateMap_ = new ConcurrentHashMap<InetAddress, EndPointState>();
 
     /* map where key is endpoint and value is timestamp when this endpoint was removed from
      * gossip. We will ignore any gossip regarding these endpoints for Streaming.RING_DELAY time

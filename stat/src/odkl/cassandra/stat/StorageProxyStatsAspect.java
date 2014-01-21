@@ -94,7 +94,7 @@ public class StorageProxyStatsAspect extends SystemArchitectureAspect
     @After("proxyRRPointcut()")
     public void readRepair() throws Throwable
     {
-        LoggerUtil.operationsSuccess(opLogger, 0, 1, "READ.REPAIR",parameters);
+        LoggerUtil.operationsSuccess(OP_LOGGER_NAME, 0, 1, "READ.REPAIR", parameters);
     }
     
     @After("droppedMessage(verb)")
@@ -104,7 +104,7 @@ public class StorageProxyStatsAspect extends SystemArchitectureAspect
         
         String opName = (verb == Verb.MUTATION ? "WRITE" : verb.toString())+".STORE";
         
-        LoggerUtil.operationFailure(opLogger, LoggerUtil.getMeasureStartTime()-rpcTimeout-1 , rpcTimeout, opName,parameters);
+        LoggerUtil.operationFailure(OP_LOGGER_NAME, LoggerUtil.getMeasureStartTime() - rpcTimeout - 1, rpcTimeout, opName, parameters);
     }
 
     private Object collectStats(ProceedingJoinPoint join, String opName) throws Throwable
@@ -117,24 +117,19 @@ public class StorageProxyStatsAspect extends SystemArchitectureAspect
             ok=true;
             
             // method call finished successfully
-            LoggerUtil.operationSuccess(opLogger, time, timeout, opName,parameters  );
+            LoggerUtil.operationSuccess(OP_LOGGER_NAME, time, timeout, opName, parameters);
             return result;
         }
         finally
         {
             if (!ok)
-                LoggerUtil.operationFailure(opLogger, time,timeout, opName,parameters );
+                LoggerUtil.operationFailure(OP_LOGGER_NAME, time, timeout, opName, parameters);
         }
     }
 
     protected LatencyTracker buildTracker(String op)
     {
-        Log logger = LogFactory.getLog(OP_LOGGER_NAME);
         log.debug("Initialized logging tracker for "+op+" by "+this);
-        LoggerLatencyTracker tracker = new LoggerLatencyTracker(logger, op, parameters);
-        return tracker;
+        return new LoggerLatencyTracker(OP_LOGGER_NAME, op, parameters);
     }
-
-    
-    
 }

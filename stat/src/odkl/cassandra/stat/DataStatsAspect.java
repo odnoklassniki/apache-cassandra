@@ -18,7 +18,6 @@ import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.io.CompactionIterator;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -38,10 +37,8 @@ import one.log.util.LoggerUtil;
 public class DataStatsAspect extends SystemArchitectureAspect implements Runnable
 {
     private final Log log = LogFactory.getLog(getClass());
-    private final Log msgLogger = LogFactory.getLog(MSG_LOGGER_NAME);
-    private final Log opLogger = LogFactory.getLog(OP_LOGGER_NAME);
 
-    private static final int MB=1024*1024;
+    private static final int MB = 1024 * 1024;
 
     /**
      * Statistic values are logged for each CF
@@ -68,7 +65,7 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
      */
     private ColumnFamilyStore compactingStore = null;
     private CompactionIterator compactingIterator = null;
-    private long compactionStartedMillis ;
+    private long compactionStartedMillis;
     
     @After("cassandraStart()")
     public void start()
@@ -108,15 +105,18 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
         String clusterName = DatabaseDescriptor.getClusterName();
         String serverName = FBUtilities.getLocalAddress().getHostAddress();
         String cfNameForLogging = cfNameForLogging(compactingStore.getTable().name, compactingStore);
+        long compactionTimeNanos = (System.currentTimeMillis() - compactionStartedMillis) * 1000000;
         
-        LoggerUtil.operationsSuccess(opLogger, (System.currentTimeMillis()-compactionStartedMillis)*1000000, 1, "COMPACTION",clusterName,serverName,cfNameForLogging);
-        LoggerUtil.operationData(msgLogger, Msg.CompactedMBytes.name(), clusterName, serverName,cfNameForLogging,compactingIterator.getBytesRead()/MB);
-        LoggerUtil.operationData(msgLogger, Msg.CompactedRows.name(), clusterName, serverName,cfNameForLogging,compactingIterator.getRow());
+        LoggerUtil.operationsSuccess(OP_LOGGER_NAME, compactionTimeNanos, 1, "COMPACTION",
+                clusterName, serverName, cfNameForLogging);
+        LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.CompactedMBytes.name(),
+                clusterName, serverName, cfNameForLogging, compactingIterator.getBytesRead() / MB);
+        LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.CompactedRows.name(),
+                clusterName, serverName, cfNameForLogging, compactingIterator.getRow());
 
         compactingStore = null;
         compactingIterator = null;
         compactionStartedMillis = 0;
-        
     }
     
     /* (non-Javadoc)
@@ -132,7 +132,7 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
             // Collect statistics for CassandraStat
             //streams pending, completed
             //(MAX seen in 5 minutes)
-            //        LoggerUtil.operationData(msgLogger, Msg.TPStream.name(), clusterName, serverName,null,streamStageMBean.getPendingTasks(),streamStageMBean.getCompletedTasks());
+            //        LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.TPStream.name(), clusterName, serverName,null,streamStageMBean.getPendingTasks(),streamStageMBean.getCompletedTasks());
 
 
             // per CF statistics
@@ -159,8 +159,8 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
                         //                JMXInstrumentedCacheMBean cache = caches.get(table+'.'+columnFamilyName+".row");
                         //                if (cache.getSize()>0)
                         //                {
-                        //                    LoggerUtil.operationData(msgLogger, Msg.RowCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
-                        //                    LoggerUtil.operationData(msgLogger, Msg.RowCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
+                        //                    LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.RowCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
+                        //                    LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.RowCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
                         //                }
 
                         // key caches
@@ -168,8 +168,8 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
                         //                cache = caches.get(table+'.'+columnFamilyName+".key");
                         //                if (cache.getSize()>0)
                         //                {
-                        //                    LoggerUtil.operationData(msgLogger, Msg.KeyCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
-                        //                    LoggerUtil.operationData(msgLogger, Msg.KeyCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
+                        //                    LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.KeyCacheHitRate.name(), clusterName, serverName,columnFamilyName,cache.getRecentHitRate()*100);
+                        //                    LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.KeyCacheSize.name(), clusterName, serverName,columnFamilyName,cache.getSize());
                         //                }
                     }
                 } catch (IOException e) {
@@ -178,10 +178,12 @@ public class DataStatsAspect extends SystemArchitectureAspect implements Runnabl
 
             for (Entry<String, long[]> en : loads.entrySet()) 
             {
-                long[] array=en.getValue();
+                long[] array = en.getValue();
                 String columnFamilyName = en.getKey();
-                LoggerUtil.operationData(msgLogger, Msg.LoadMBytes.name(), clusterName, serverName,columnFamilyName,array[0]/MB, array[1]/MB);
-                LoggerUtil.operationData(msgLogger, Msg.RowSize.name(), clusterName, serverName,columnFamilyName,array[2]/array[3], array[4]);
+                LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.LoadMBytes.name(),
+                        clusterName, serverName, columnFamilyName, array[0] / MB, array[1] / MB);
+                LoggerUtil.operationData(MSG_LOGGER_NAME, Msg.RowSize.name(),
+                        clusterName, serverName, columnFamilyName, array[2] / array[3], array[4]);
             }
         } catch (Throwable e)
         {
