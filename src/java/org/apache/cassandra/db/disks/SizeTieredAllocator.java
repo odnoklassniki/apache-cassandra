@@ -179,7 +179,7 @@ public class SizeTieredAllocator extends AbstractDiskAllocator
             
             if ( r==0 ) {
                 // returning disk with more free space first
-                return randomizedFreeSpace < o2.randomizedFreeSpace ? -1 : (randomizedFreeSpace == o2.randomizedFreeSpace ? 0 : 1);
+                return randomizedFreeSpace < o2.randomizedFreeSpace ? 1 : (randomizedFreeSpace == o2.randomizedFreeSpace ? 0 : -1);
             }
             
             return r;
