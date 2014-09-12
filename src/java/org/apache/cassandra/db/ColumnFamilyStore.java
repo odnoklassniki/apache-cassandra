@@ -1297,15 +1297,23 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             throw new AssertionError(e);
         }
 
-        for (SSTableReader ssTable : ssTables_)
-        {
-            // mkdir
+
+        // ss-table data may be missing on some disk before taking snapshot (it's normal and can occur sometimes),
+        // therefore create snapshot-directory in any case to prevent false monitor alert
+        String[] dataFileLocations = DatabaseDescriptor.getAllDataFileLocations();
+
+        for (String dataDir : dataFileLocations) {
+            String snapshotDirectoryPath = Table.getSnapshotPath(dataDir, table_, snapshotName);
+            FileUtils.createDirectory(snapshotDirectoryPath);
+        }
+
+        for (SSTableReader ssTable : ssTables_) {
+
             File sourceFile = new File(ssTable.getFilename());
             File dataDirectory = sourceFile.getParentFile().getParentFile();
             String snapshotDirectoryPath = Table.getSnapshotPath(dataDirectory.getAbsolutePath(), table_, snapshotName);
-            FileUtils.createDirectory(snapshotDirectoryPath);
 
-            // hard links
+            // create hard links for table data,index,filter files
             File targetLink = new File(snapshotDirectoryPath, sourceFile.getName());
             CLibrary.createHardLink(sourceFile, targetLink);
 
