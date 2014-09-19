@@ -1,14 +1,11 @@
 package org.apache.cassandra.service;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import org.apache.cassandra.db.ReadResponse;
 import org.apache.cassandra.utils.Pair;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -21,11 +18,9 @@ public class ReadTimeoutException extends TimeoutException {
 
     private final List<InetAddress> successReadNodes;
     private final List<InetAddress> failReadNodes;
-    private final String detailedMessage;
 
-    private ReadTimeoutException(String message, String detailedMessage, List<InetAddress> successReadNodes, List<InetAddress> failReadNodes) {
+    private ReadTimeoutException(String message, List<InetAddress> successReadNodes, List<InetAddress> failReadNodes) {
         super(message);
-        this.detailedMessage = detailedMessage;
         this.successReadNodes = successReadNodes;
         this.failReadNodes = failReadNodes;
     }
@@ -54,11 +49,7 @@ public class ReadTimeoutException extends TimeoutException {
         }
         String detailedMessage = String.format("Quorum read timed out: success nodes: [%s], failed nodes : [%s]",
                 getNodesList(successReadNodes), getNodesList(failReadNodes));
-        return new ReadTimeoutException("Parallel read operation timed out", detailedMessage, successReadNodes, failReadNodes);
-    }
-
-    public String getDetailedMessage() {
-        return detailedMessage;
+        return new ReadTimeoutException(detailedMessage, successReadNodes, failReadNodes);
     }
 
     public List<InetAddress> getSuccessReadNodes() {
