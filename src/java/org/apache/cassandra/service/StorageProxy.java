@@ -777,9 +777,15 @@ public class StorageProxy implements StorageProxyMBean
         }
 
         // read results and make a second pass for any digest mismatches
-        for (ParallelQuorumResponseHandler parResponseHandler : parResponseHandlers)
+        for (int i = 0; i < parResponseHandlers.size(); i++)
         {
-            Row row = parResponseHandler.get();
+            ParallelQuorumResponseHandler parResponseHandler = parResponseHandlers.get(i);
+            Row row;
+            try {
+                row = parResponseHandler.get();
+            } catch (TimeoutException e) {
+                throw ReadTimeoutException.quorumTimeout(commandEndPoints.get(i), parResponseHandler.responses);
+            }
 
             if (row != null)
                 rows.add(row);
