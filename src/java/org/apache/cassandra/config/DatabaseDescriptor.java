@@ -31,8 +31,6 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
 import javax.xml.xpath.XPathExpressionException;
 
-import org.apache.log4j.Logger;
-
 import org.apache.cassandra.auth.AllowAllAuthenticator;
 import org.apache.cassandra.auth.IAuthenticator;
 import org.apache.cassandra.db.ColumnFamily;
@@ -71,7 +69,7 @@ import org.apache.cassandra.maint.RackAwareMajorCompactionTask;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
 import org.apache.cassandra.utils.XMLUtils;
-import org.w3c.dom.DOMException;
+import org.apache.log4j.Logger;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
@@ -752,9 +750,25 @@ public class DatabaseDescriptor
                 } else if (fileAllocationPolicy.equalsIgnoreCase("sizetiered")) {
                     dataFileAllocator = new SizeTieredAllocator(dataFileDirectories);
                 } else {
-                    throw new ConfigurationException("Invalid data directories allocator "+fileAllocationPolicy);
+                    //try to find class
+                    Class clazz;
+                    try {
+                        clazz = Class.forName(fileAllocationPolicy);
+                        if (DiskAllocator.class.isAssignableFrom(clazz)) {
+                            Class<? extends DiskAllocator> claz = (Class<? extends DiskAllocator>)clazz;
+                            dataFileAllocator = claz.getConstructor(String[].class).newInstance(new Object[]{dataFileDirectories});
+                        } else {
+                            logger.warn("Class " + fileAllocationPolicy + " must implement DiskAllocator interface ");
+                        }
+                    } catch (InstantiationException e) {
+                        logger.error("Class instantiation exception", e);
+                    } catch (IllegalAccessException e) {
+                        logger.error("Class instantiation exception", e);
+                    } catch (ClassNotFoundException e) {
+                        logger.error("Invalid standard data directories allocator " + fileAllocationPolicy + " and class " + fileAllocationPolicy + " not found", e);
+                    }
                 }
-                
+
                 logger.info("Multiple data directories allocator is set to "+dataFileAllocator.getClass().getSimpleName());
             }
             
