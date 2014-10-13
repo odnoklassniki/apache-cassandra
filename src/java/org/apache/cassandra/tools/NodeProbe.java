@@ -28,8 +28,15 @@ import java.lang.management.MemoryUsage;
 import java.lang.management.RuntimeMXBean;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import javax.management.JMX;
@@ -45,16 +52,11 @@ import org.apache.cassandra.concurrent.IExecutorMBean;
 import org.apache.cassandra.db.ColumnFamilyStoreMBean;
 import org.apache.cassandra.db.CompactionManager;
 import org.apache.cassandra.db.CompactionManagerMBean;
-import org.apache.cassandra.db.SystemTable;
 import org.apache.cassandra.dht.Range;
 import org.apache.cassandra.dht.Token;
-import org.apache.cassandra.gms.Gossiper;
-import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.service.StorageServiceMBean;
 import org.apache.cassandra.streaming.StreamingService;
 import org.apache.cassandra.streaming.StreamingServiceMBean;
-import org.apache.cassandra.utils.FBUtilities;
-import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 /**
@@ -443,6 +445,18 @@ public class NodeProbe
     public void takeSnapshot(String snapshotName) throws IOException
     {
         ssProxy.takeAllSnapshot(snapshotName);
+    }
+
+    /**
+     * Takes a snapshot for every table. System table will be fully snapshotted,
+     * column families in other keyspaces will be filtered using <code>cfNameRegExp</code>
+     *
+     * @param cfNameRegExp regexp for column families selection for snapshot
+     * @param snapshotName the name of the snapshot.
+     */
+    public void takeSnapshot(String cfNameRegExp, String snapshotName) throws IOException
+    {
+        ssProxy.takeAllSnapshot(cfNameRegExp, snapshotName);
     }
 
     /**

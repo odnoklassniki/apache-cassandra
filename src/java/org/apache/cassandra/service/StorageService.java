@@ -1311,11 +1311,33 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         tableInstance.snapshot(tag);
     }
 
+    /**
+     * Takes a snapshot for every table. System table will be fully snapshotted,
+     * column families in other keyspaces will be filtered using <code>cfNameRegExp</code>
+     *
+     * @param cfNameRegExp regexp for column families selection for snapshot
+     * @param tag   the tag given to the snapshot (null is permissible)
+     */
+    public void takeAllSnapshot(String cfNameRegExp, String tag) throws IOException
+    {
+        for (Table table : Table.all())
+        {
+            if (Table.SYSTEM_TABLE.equals(table.name))
+            {
+                table.snapshot(tag);
+            }
+            else
+            {
+                table.snapshot(cfNameRegExp, tag);
+            }
+        }
+    }
+
     private Table getValidTable(String tableName) throws IOException
     {
         if (!DatabaseDescriptor.getTables().contains(tableName))
         {
-            throw new IOException("Table " + tableName + "does not exist");
+            throw new IOException("Table " + tableName + " does not exist");
         }
         return Table.open(tableName);
     }

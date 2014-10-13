@@ -25,7 +25,15 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Random;
+import java.util.Set;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
@@ -958,10 +966,10 @@ public class DatabaseDescriptor
             tasks.add(new CleanArchivedLogsTask(Integer.parseInt(daysBack)));
         }
 
-        String tag = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/ClusterSnapshot");
-        if (tag!=null)
+        String snapshotConfig = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/ClusterSnapshot");
+        if (snapshotConfig!=null)
         {
-            tasks.add(new ClusterSnapshotTask(tag));
+            tasks.add(new ClusterSnapshotTask(snapshotConfig));
         }
 
         String spareNodes = xmlUtils.getNodeValue("/Storage/Maintenance/Tasks/MajorCompaction");

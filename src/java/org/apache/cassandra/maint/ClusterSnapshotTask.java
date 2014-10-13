@@ -27,12 +27,28 @@ public class ClusterSnapshotTask implements MaintenanceTask, Runnable
     
     private MaintenanceContext currentCtx ;
     
-    private String tagname;
-    
-    public ClusterSnapshotTask(String tag)
+    protected final String tagname;
+    protected final String cfRegExp;
+
+    /*example of config: night(tablename1,tablename2)*/
+    public ClusterSnapshotTask(String config)
     {
-        tagname = tag;
-        
+        int openBraceIndex = config.indexOf('(');
+        if (openBraceIndex != -1)
+        {
+            tagname = config.substring(0, openBraceIndex);
+            int closeBraceIndex = config.lastIndexOf(')');
+            if (closeBraceIndex != -1 && closeBraceIndex > openBraceIndex)
+            {
+                cfRegExp = config.substring(openBraceIndex + 1, closeBraceIndex);
+            } else {
+                logger.error("Can't parse table names from snapshot config string");
+                cfRegExp = null;
+            }
+        } else {
+            tagname = config;
+            cfRegExp = null;
+        }
     }
 
     /* (non-Javadoc)
@@ -56,8 +72,26 @@ public class ClusterSnapshotTask implements MaintenanceTask, Runnable
 
         try
         {
-            StorageService.instance.takeAllSnapshot(tagname);
-            logger.debug("local snapshot taken");
+            if (cfRegExp == null)
+            {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Take snapshot for all tables");
+                }
+                StorageService.instance.takeAllSnapshot(tagname);
+            } else {
+                if (logger.isDebugEnabled())
+                {
+                    logger.debug("Take snapshot for all tables for column families according regexp: " + cfRegExp);
+                }
+
+                StorageService.instance.takeAllSnapshot(cfRegExp, tagname);
+            }
+
+            if (logger.isDebugEnabled())
+            {
+                logger.debug("local snapshot taken");
+            }
         }
         catch (IOException e)
         {
@@ -69,7 +103,15 @@ public class ClusterSnapshotTask implements MaintenanceTask, Runnable
             try
             {
                 NodeProbe probe = new NodeProbe( liveNode );
-                probe.takeSnapshot(tagname);
+
+                if (cfRegExp == null)
+                {
+                    probe.takeSnapshot(tagname);
+                } else {
+
+                    probe.takeSnapshot(cfRegExp, tagname);
+                }
+
                 logger.debug(liveNode + " snapshot taken");
             }
             catch (Exception e)
@@ -80,7 +122,7 @@ public class ClusterSnapshotTask implements MaintenanceTask, Runnable
 
         lastSuccessfulWindowMillis = currentCtx.startedMillis();
     }
-    
+
     /* (non-Javadoc)
      * @see java.lang.Object#toString()
      */

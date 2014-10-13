@@ -126,6 +126,14 @@ public interface StorageServiceMBean
     public void takeAllSnapshot(String tag) throws IOException;
 
     /**
+     * Takes a snapshot for every table. System table will be fully snapshotted,
+     * column families in other keyspaces will be filtered using <code>cfNameRegExp</code>
+     * @param cfNameRegExp regexp for column families selection for snapshot
+     * @param tag the tag given to the snapshot (null is permissible)
+     */
+    public void takeAllSnapshot(String cfNameRegExp, String tag) throws IOException;
+
+    /**
      * Remove all the existing snapshots.
      */
     public void clearSnapshot() throws IOException;

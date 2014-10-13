@@ -27,8 +27,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.regex.Pattern;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
@@ -42,10 +42,8 @@ import org.apache.cassandra.db.filter.IdentityQueryFilter;
 import org.apache.cassandra.db.filter.QueryFilter;
 import org.apache.cassandra.db.filter.QueryPath;
 import org.apache.cassandra.dht.Range;
-import org.apache.cassandra.io.SSTableDeletingReference;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.util.FileUtils;
-import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.CopyOnWriteMap;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.WrappedRunnable;
@@ -300,6 +298,32 @@ public class Table
             cfStore.snapshot(snapshotName);
         }
         
+        submitArchiveSnapshot();
+    }
+
+    /**
+     * Take a snapshot of the entire set of column families with a given timestamp.
+     *
+     * @param cfNameRegExp regexp for column families selection for snapshot
+     * @param clientSuppliedName the tag associated with the name of the snapshot.  This
+     *                           value can be null.
+     */
+    public void snapshot(String cfNameRegExp, String clientSuppliedName) throws IOException
+    {
+        Pattern cfNamePattern = Pattern.compile(cfNameRegExp);
+        String snapshotName = Long.toString(System.currentTimeMillis());
+        if (clientSuppliedName != null && !clientSuppliedName.equals(""))
+        {
+            snapshotName = snapshotName + "-" + clientSuppliedName;
+        }
+
+        for (ColumnFamilyStore cfStore : columnFamilyStores.values())
+        {
+            if (cfNamePattern.matcher(cfStore.getColumnFamilyName().toLowerCase()).matches()) {
+                cfStore.snapshot(snapshotName);
+            }
+        }
+
         submitArchiveSnapshot();
     }
 
