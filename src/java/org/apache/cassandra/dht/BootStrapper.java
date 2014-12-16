@@ -198,7 +198,7 @@ public class BootStrapper
             for (InetAddress source : rangesWithSourceTarget.get(range))
             {
                 // ignore the local IP
-                if (failureDetector.isAlive(source) && !source.equals(FBUtilities.getLocalAddress()))
+                if (failureDetector.isAlive(source) && !source.equals(FBUtilities.getLocalAddress()) && System.getProperty("cassandra.bootstrap.ignore", "none").indexOf(source.getHostAddress())<0)
                 {
                     sources.put(source, range);
                     break;
