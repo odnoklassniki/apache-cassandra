@@ -958,7 +958,6 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
             Map<InetAddress, byte[]> endpointStates = SystemTable.loadEndpointStates();
             
             logger_.info("Preloading gossip with "+endpointStates.size()+" states persisted in system table");
-            logger_.info(dumpPersistentState());
             
             for (Entry<InetAddress, byte[]> entry : endpointStates.entrySet()) {
                 
@@ -966,11 +965,33 @@ public class Gossiper implements IFailureDetectionEventListener, IEndPointStateC
                 
                 assert !entry.getKey().equals(localEndPoint_);
                 
-                // TODO may be control last update timestamp and skip/remove stale records
-                
-                handleNewJoin(entry.getKey(), endPointState);
+                // normal nodes must be published first
+                ApplicationState moveState = endPointState.getApplicationState(StorageService.MOVE_STATE);
+                if (moveState!=null && moveState.getValue().startsWith(StorageService.STATE_NORMAL)) {
+                    
+                    handleNewJoin(entry.getKey(), endPointState);
+
+                    logger_.info(endPointState.toString(entry.getKey()));
+
+                }
             }
             
+            for (Entry<InetAddress, byte[]> entry : endpointStates.entrySet()) {
+                
+                EndPointState endPointState = EndPointState.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(entry.getValue())));
+                
+                assert !entry.getKey().equals(localEndPoint_);
+                
+                // then go boostrapping, leaving, left and broken
+                ApplicationState moveState = endPointState.getApplicationState(StorageService.MOVE_STATE);
+                if (moveState==null || !moveState.getValue().startsWith(StorageService.STATE_NORMAL)) {
+                    
+                    handleNewJoin(entry.getKey(), endPointState);
+                    
+                    logger_.info(endPointState.toString(entry.getKey()));
+                }
+            }
+
         } catch (IOException e) {
             logger_.error("Cannot load gossip persistent state ",e);
             throw new RuntimeException("Cannot load gossip persistent state",e);
