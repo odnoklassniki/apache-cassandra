@@ -55,6 +55,7 @@ public class RateControl
                 try {
                     Thread.sleep(millis);
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
 
             // sleeping rest with nanosecond precision (sleep cannot sleep less than 1ms)
