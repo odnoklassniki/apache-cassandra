@@ -203,7 +203,7 @@ public class OdklEvenStrategy extends
        for (int i=0;i<256;i++)
        {
            Range range = toRange(i);
-           for (InetAddress ep : calculateNaturalEndpoints(range.right, metadata, table))
+           for (InetAddress ep : getNaturalEndpoints(range.right, metadata, table))
            {
                map.put(range, ep);
            }
