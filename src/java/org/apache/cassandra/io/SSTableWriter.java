@@ -155,7 +155,7 @@ public class SSTableWriter extends SSTable
         // main data
         dataFile.close(); // calls force
 
-        rename(indexFilename());
+        indexPath = rename(indexFilename());
         rename(filterFilename());
         path = rename(path); // important to do this last since index & filter file names are derived from it
 
