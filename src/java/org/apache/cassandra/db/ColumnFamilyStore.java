@@ -1582,4 +1582,10 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
     {
         return ssTables_.estimatedKeys();
     }
+    
+    public void resetStats()
+    {
+        readStats_ = new LatencyTracker();
+        writeStats_ = new LatencyTracker();
+    }
 }

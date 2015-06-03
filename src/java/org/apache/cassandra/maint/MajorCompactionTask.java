@@ -36,7 +36,7 @@ import org.apache.log4j.Logger;
  * @author Oleg Anastasyev<oa@hq.one.lv>
  *
  */
-public class MajorCompactionTask implements MaintenanceTask
+public class MajorCompactionTask implements MaintenanceTask, FinalMaintenanceTask
 {
     protected final Logger logger = Logger.getLogger(MaintenanceTaskManager.class);
 
@@ -234,6 +234,24 @@ public class MajorCompactionTask implements MaintenanceTask
         }
     }
 
-    
+    /**
+     * Will reset ColumnFamilyStore statistics right after maintenance window end to avoid never compacted CFS bug.
+     */
+    @Override
+    public void runFinally() 
+    {
+        for (String table : DatabaseDescriptor.getTables())
+        {
+            try {
+                for (ColumnFamilyStore cfs : Table.open(table).getColumnFamilyStores()) 
+                {
+                    cfs.resetStats();
+                }
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
 
 }

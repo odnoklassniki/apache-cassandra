@@ -7,18 +7,14 @@ package org.apache.cassandra.maint;
 
 import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.dht.Range;
-import org.apache.cassandra.service.AntiEntropyService;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
 
 /**
@@ -44,6 +40,18 @@ public class MaintenanceTaskManager implements Runnable {
      * Configured tasks list
      */
     private List<MaintenanceTask> tasks;
+
+    /**
+     * Configured final tasks list (run once after the maintenance window has be closed)
+     */
+    private List<FinalMaintenanceTask> finalTasks;
+
+    /**
+     * During maintenance window is set to true. Right after maintenance window set to false.<br>
+     * Used to detect first scheduled run right after maintenance window end.
+     * 
+     */
+    boolean activeWindow = false;
 
     boolean stopped = false;
 
@@ -88,10 +96,12 @@ public class MaintenanceTaskManager implements Runnable {
      */
     private MaintenanceTaskManager(List<MaintenanceTask> tasks) {
         this.tasks = tasks;
-    }
-
-    private boolean inWindow() {
-        return windowMillisLeft() > 0l;
+        this.finalTasks = new ArrayList<FinalMaintenanceTask>();
+        for (MaintenanceTask maintenanceTask : tasks) {
+            if (maintenanceTask instanceof FinalMaintenanceTask) {
+                finalTasks.add((FinalMaintenanceTask) maintenanceTask);
+            }
+        }
     }
 
     /**
@@ -184,6 +194,17 @@ public class MaintenanceTaskManager implements Runnable {
         final long millisLeft = windowMillisLeft();
 
         if (millisLeft == 0) {
+            if (activeWindow) {
+                try {
+                    for (FinalMaintenanceTask task : finalTasks) {
+                        logger.info("Starting final " + task);
+                        task.runFinally();
+                    }
+                } catch (Throwable e) {
+                    logger.error("Maintenance manager error .", e);
+                }
+            }
+            activeWindow = false;
             return;
         }
         try {
@@ -196,6 +217,7 @@ public class MaintenanceTaskManager implements Runnable {
             }
 
             final long windowStartedMillis = windowStartedMillis();
+            activeWindow = true;
 
             MaintenanceContext ctx = new MaintenanceContext() {
 
