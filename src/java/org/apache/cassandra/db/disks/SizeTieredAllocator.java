@@ -167,7 +167,7 @@ public class SizeTieredAllocator extends AbstractDiskAllocator
             this.dir = dir;
             this.count = count;
             long freesp = dir.getUsableSpace();
-            this.randomizedFreeSpace = freesp-( Math.abs( r.nextLong() ) % ( freesp/10) ) ;
+            this.randomizedFreeSpace = freesp==0 ? 0 : freesp-( Math.abs( r.nextLong() ) % ( freesp/10) ) ;
         }
         /* (non-Javadoc)
          * @see java.lang.Comparable#compareTo(java.lang.Object)
