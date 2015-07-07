@@ -75,9 +75,9 @@ public abstract class AbstractEndpointSnitch implements IEndPointSnitch
     {
         InetAddress localAddress = FBUtilities.getLocalAddress();
         
-        Gossiper.instance.addLocalApplicationState(APPSTATE_HOSTNAME, new ApplicationState(FBUtilities.getLocalName()));
-        Gossiper.instance.addLocalApplicationState(APPSTATE_DC, new ApplicationState( getDatacenter(localAddress)));
-        Gossiper.instance.addLocalApplicationState(APPSTATE_RACK, new ApplicationState( getRack(localAddress)));
+        Gossiper.instance.addLocalApplicationState(APPSTATE_HOSTNAME, FBUtilities.getLocalName());
+        Gossiper.instance.addLocalApplicationState(APPSTATE_DC, getDatacenter(localAddress));
+        Gossiper.instance.addLocalApplicationState(APPSTATE_RACK, getRack(localAddress));
     }
     
     /* (non-Javadoc)

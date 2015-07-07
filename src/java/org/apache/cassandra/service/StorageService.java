@@ -372,7 +372,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         if (null != DatabaseDescriptor.getReplaceToken())
         {
             logger_.info("Will replace node with token = "+DatabaseDescriptor.getReplaceToken());
-            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_HIBERNATE+Delimiter+"true"));
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_HIBERNATE+Delimiter+"true");
         }
 
         MessagingService.instance.listen(FBUtilities.getLocalAddress());
@@ -466,7 +466,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             if (current != null)
                 Gossiper.instance.replacedEndpoint(current);
 
-            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken())));
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken()));
             logger_.info("Bootstrap/move completed! Now serving reads.");
             setMode("Normal", false);
 
@@ -476,7 +476,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             SystemTable.setBootstrapped(true);
             Token token = storageMetadata_.getToken();
             tokenMetadata_.updateNormalToken(token, FBUtilities.getLocalAddress());
-            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(token)));
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(token));
             setMode("Normal", false);
         }
 
@@ -528,7 +528,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         SystemTable.updateToken(token); // DON'T use setToken, that makes us part of the ring locally which is incorrect until we are done bootstrapping
         if (null == DatabaseDescriptor.getReplaceToken())
         {
-            Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_BOOTSTRAPPING + Delimiter + partitioner_.getTokenFactory().toString(token)));
+            Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_BOOTSTRAPPING + Delimiter + partitioner_.getTokenFactory().toString(token));
             setMode("Joining: sleeping " + RING_DELAY + " ms for pending range setup", true);
             try
             {
@@ -1728,7 +1728,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
      */
     private void startLeaving()
     {
-        Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_LEAVING + Delimiter + getLocalToken().toString()));
+        Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_LEAVING + Delimiter + getLocalToken().toString());
         tokenMetadata_.addLeavingEndPoint(FBUtilities.getLocalAddress());
         calculatePendingRanges();
     }
@@ -1772,7 +1772,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         tokenMetadata_.removeEndpoint(FBUtilities.getLocalAddress());
         calculatePendingRanges();
 
-        Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_LEFT + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken())));
+        Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_LEFT + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken()));
         try
         {
             Thread.sleep(2 * Gossiper.intervalInMillis_);
@@ -1910,7 +1910,7 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
         }
 
         // bundle two states together. include this nodes state to keep the status quo, but indicate the leaving token so that it can be dealt with.
-        Gossiper.instance.addLocalApplicationState(MOVE_STATE, new ApplicationState(STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken()) + Delimiter + REMOVE_TOKEN + Delimiter + partitioner_.getTokenFactory().toString(token)));
+        Gossiper.instance.addLocalApplicationState(MOVE_STATE, STATE_NORMAL + Delimiter + partitioner_.getTokenFactory().toString(getLocalToken()) + Delimiter + REMOVE_TOKEN + Delimiter + partitioner_.getTokenFactory().toString(token));
     }
 
     public WriteResponseHandler getWriteResponseHandler(int blockFor, int writeEndpointCount, ConsistencyLevel consistency_level, String table)

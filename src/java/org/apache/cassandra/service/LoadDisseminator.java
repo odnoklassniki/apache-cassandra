@@ -21,7 +21,6 @@ import java.util.TimerTask;
 
 import org.apache.log4j.Logger;
 
-import org.apache.cassandra.gms.ApplicationState;
 import org.apache.cassandra.gms.Gossiper;
 
 class LoadDisseminator extends TimerTask
@@ -34,6 +33,6 @@ class LoadDisseminator extends TimerTask
         String diskUtilization = String.valueOf(StorageService.instance.getLoad());
         if (logger_.isDebugEnabled())
           logger_.debug("Disseminating load info ...");
-        Gossiper.instance.addLocalApplicationState(LoadDisseminator.loadInfo_, new ApplicationState(diskUtilization));
+        Gossiper.instance.addLocalApplicationState(LoadDisseminator.loadInfo_, diskUtilization);
     }
 }

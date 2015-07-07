@@ -398,7 +398,7 @@ public class HintedHandOffManager
                 sb.append(token);
             }
         }
-        Gossiper.instance.addLocalApplicationState(APPSTATE_PAYING_HINTS, new ApplicationState( sb.toString()));
+        Gossiper.instance.addLocalApplicationState(APPSTATE_PAYING_HINTS, sb.toString());
 
         //распечатаем в нормальном виде
         sb = new StringBuilder().append("[");
