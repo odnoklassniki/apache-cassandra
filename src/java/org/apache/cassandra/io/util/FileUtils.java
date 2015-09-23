@@ -58,7 +58,11 @@ public class FileUtils
     {
         public int compare(File f, File f2)
         {
-            return (int)(f.lastModified() - f2.lastModified());
+            return compare(f.lastModified(), f2.lastModified());
+        }
+        
+        private int compare(long x, long y) {
+            return (x < y) ? -1 : ((x == y) ? 0 : 1);
         }
     }
 
