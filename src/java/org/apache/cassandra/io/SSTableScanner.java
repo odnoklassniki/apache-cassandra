@@ -142,7 +142,7 @@ public class SSTableScanner implements Iterator<IteratingRow>, Closeable
             }
             catch (IOException e)
             {
-                throw new RuntimeException(e);
+                throw new RuntimeException("Error in file "+file.getPath()+", position "+file.getFilePointer(),e);
             }
         }
 
