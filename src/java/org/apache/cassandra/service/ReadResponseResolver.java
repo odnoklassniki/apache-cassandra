@@ -45,9 +45,16 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
  */
 public class ReadResponseResolver extends SimpleReadResponseResolver implements IResponseResolver<Row>
 {
+    public interface ScheduleRepairListener {
+
+        void listenRepair(ColumnFamily resolved, String table, String key, List<ColumnFamily> versions, List<InetAddress> endPoints, int versionIndex, ColumnFamily diffCf);
+    }
+
+    public static ScheduleRepairListener scheduleRepairListener;
+
 	private final int responseCount;
     private final Map<InetAddress, ReadResponse> results = new NonBlockingHashMap<InetAddress, ReadResponse>();
-    
+
     public ReadResponseResolver(String table, String key, int responseCount)
     {
         super(table,key);
@@ -149,6 +156,10 @@ public class ReadResponseResolver extends SimpleReadResponseResolver implements 
             ColumnFamily diffCf = ColumnFamily.diff(versions.get(i), resolved);
             if (diffCf == null) // no repair needs to happen
                 continue;
+
+            if (scheduleRepairListener != null) {
+                scheduleRepairListener.listenRepair(resolved, table, key, versions, endPoints, i, diffCf);
+            }
 
             // create and send the row mutation message based on the diff
             RowMutation rowMutation = new RowMutation(table, key);
