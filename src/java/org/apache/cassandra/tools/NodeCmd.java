@@ -679,7 +679,7 @@ public class NodeCmd {
         else if (cmdName.equals("cancelstreamout"))
         {
             String otherHost=arguments[1] ;
-            probe.cancelStreamOut( host );
+            probe.cancelStreamOut( otherHost );
             System.out.println("All streams pending to "+otherHost+" cancelled.");
             nodeCmd.printStreamInfo(otherHost == null ? null : InetAddress.getByName(otherHost), System.out);
         }
