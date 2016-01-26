@@ -5,6 +5,9 @@
  */
 package org.apache.cassandra.dht;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 import org.apache.cassandra.config.ConfigurationException;
@@ -158,6 +161,35 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
         } catch (NumberFormatException e) {
             throw new ConfigurationException("Node token must be hex digit : "+initialToken);
         }
+    }
+
+    /**
+     * Ownership calc for odkl partitioner is much simpler. There are only 256 distinct domains, so ownership is just domaincount/256 %
+     */
+    @Override
+    public Map<Token, Float> describeOwnership(List<Token> sortedTokens)
+    {
+        // alltokens will contain the count and be returned, sorted_ranges is shorthand for token<->token math.
+        Map<Token, Float> alltokens = new HashMap<Token, Float>();
+
+        // this initializes the counts to 0 and calcs the ranges in order.
+        Token last_t = sortedTokens.get(sortedTokens.size()-1);
+        for (Token node : sortedTokens)
+        {
+            try {
+                byte last_byte = (byte) Integer.parseInt(last_t.toString(),16);
+                byte node_byte = (byte) Integer.parseInt(node.toString(),16);
+                float domainCount = Math.abs( node_byte - last_byte );
+
+                alltokens.put(node, domainCount / 2.56f );
+            } catch (NumberFormatException e) {
+                alltokens.put(node, 0.0f );
+            }
+
+            last_t = node;
+        }
+
+        return alltokens;
     }
 
 }
