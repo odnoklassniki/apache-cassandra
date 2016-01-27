@@ -590,7 +590,7 @@ public class HintLog
             int batchSize = DatabaseDescriptor.getHintLogPlayBatchSize();
             long batchBytesLimit = DatabaseDescriptor.getHintLogPlayBatchBytes();
             
-            nextMutation = new ArrayList<>(batchSize);
+            nextMutation = new ArrayList<byte[]>(batchSize);
 
             while (nextMutation.size()<batchSize && batchBytesLimit>=0)
             {

@@ -131,7 +131,7 @@ public class HintLogHandoffManager extends HintedHandOffManager
         assert !rm.isEmpty() : "HintLog Reader issued empty list for "+endPoint+", which must never happen";
         
         int packSize = rm.size();
-        ArrayList<IAsyncResult> results = new ArrayList<>(packSize);
+        ArrayList<IAsyncResult> results = new ArrayList<IAsyncResult>(packSize);
         long bytesSize = 0;
         for (byte[] b : rm ) {
             Message message = RowMutation.makeRowMutationMessage(b);
