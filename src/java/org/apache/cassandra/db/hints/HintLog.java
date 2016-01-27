@@ -108,56 +108,49 @@ public class HintLog
         // loading hint logs from disk
         loadSegments();
         
-//        if (DatabaseDescriptor.getCommitLogSync() == DatabaseDescriptor.CommitLogSync.periodic)
-//        {
-            executor = new PeriodicHintLogExecutorService();
-            final Callable<Void> syncer = new Callable<Void>()
+        executor = new PeriodicHintLogExecutorService();
+        final Callable<Void> syncer = new Callable<Void>()
+        {
+            public Void call() throws Exception
             {
-                public Void call() throws Exception
-                {
-                    sync();
-                    return null;
-                }
-            };
+                sync();
+                return null;
+            }
+        };
 
-            (
-            syncerThread=new Thread(new Runnable()
-            {
-                
-                public void run()
+        (
+                syncerThread=new Thread(new Runnable()
                 {
-                    
-                    // wait for ring stabilization first
-                    try {
-                        Thread.sleep(StorageService.RING_DELAY);
-                    } catch (InterruptedException e1) {
-                        logger.error("err",e1);
-                    }
-                    
-                    while (true)
+
+                    public void run()
                     {
-                        try
-                        {
-                            executor.submit(syncer).get();
-                            Thread.sleep(SYNC_PERIOD);
+
+                        // wait for ring stabilization first
+                        try {
+                            Thread.sleep(StorageService.RING_DELAY);
+                        } catch (InterruptedException e1) {
+                            logger.error("err",e1);
                         }
-                        catch (InterruptedException e)
+
+                        while (true)
                         {
-                            throw new AssertionError(e);
-                        }
-                        catch (ExecutionException e)
-                        {
-                            throw new RuntimeException(e);
+                            try
+                            {
+                                executor.submit(syncer).get();
+                                Thread.sleep(SYNC_PERIOD);
+                            }
+                            catch (InterruptedException e)
+                            {
+                                throw new AssertionError(e);
+                            }
+                            catch (ExecutionException e)
+                            {
+                                throw new RuntimeException(e);
+                            }
                         }
                     }
-                }
-            }, "PERIODIC-HINT-LOG-SYNCER") 
-            ).start();
-//        }
-//        else
-//        {
-//            executor = new BatchCommitLogExecutorService();
-//        }
+                }, "PERIODIC-HINT-LOG-SYNCER") 
+                ).start();
     }
     
     private void loadSegments()
@@ -197,42 +190,6 @@ public class HintLog
         }
     }
     
-//    public void stop()
-//    {
-//        try {
-//            executor.submit(new Callable<Void>()
-//            {
-//                /* (non-Javadoc)
-//                 * @see java.util.concurrent.Callable#call()
-//                 */
-//                @Override
-//                public Void call() throws Exception
-//                {
-//                    Collection<Deque<HintLogSegment>> values = segments.values();
-//                    
-//                    for (Deque<HintLogSegment> deque : values) {
-//                        HintLogSegment last = deque.peekLast();
-//                        
-//                        if (last!=null)
-//                            last.close();
-//                        
-//                        deque.clear();
-//                    }
-//                    return null;
-//                    
-//                    
-//                }
-//            }).get();
-//        } catch (Exception e) {
-//            throw new AssertionError(e);
-//        }
-//        
-//        syncerThread.interrupt();
-//        
-//        CLHandle.instance = null;
-//        
-//        logger.debug("HintLog stopped");
-//    }
 
     private Deque<HintLogSegment> getEndpointSegments(String token)
     {
@@ -257,7 +214,7 @@ public class HintLog
      * @param destination endpoint to send.
      * @return iterator (or empty iterator if no hints to deliver)
      */
-    public Iterator<byte[]> getHintsToDeliver(InetAddress endpoint)
+    public Iterator<List<byte[]>> getHintsToDeliver(InetAddress endpoint)
     {
         String address = endpoint.getHostAddress();
         if  (segments.get(address)!=null)
@@ -277,12 +234,12 @@ public class HintLog
      * @param destination endpoint to send.
      * @return iterator (or empty iterator if no hints to deliver)
      */
-    public Iterator<byte[]> getHintsToDeliver(String destination)
+    public Iterator<List<byte[]>> getHintsToDeliver(String destination)
     {
         Deque<HintLogSegment> endpSegments = segments.get(destination);
         
         if (endpSegments==null)
-            return Collections.<byte[]>emptyList().iterator();
+            return Collections.<List<byte[]>>emptyList().iterator();
         
         return new HintLogReader(destination, forceNewSegment(destination));
     }
@@ -535,7 +492,7 @@ public class HintLog
         }
     }
     
-    public class HintLogReader implements Iterator<byte[]>, Closeable
+    public class HintLogReader implements Iterator<List<byte[]>>, Closeable
     {
         private final String token;
         
@@ -545,10 +502,10 @@ public class HintLog
         
         private BufferedRandomAccessFile reader = null;
         
-        private byte[] currentMutation = null, nextMutation = null;
+        private ArrayList<byte[]> currentMutation = null, nextMutation = null;
 
         private long lastHeaderWrite = 0l;
-        private int  unwrittedConfirmations = 0;
+        private int  unwrittenConfirmations = 0;
 
         /**
          * @param
@@ -600,7 +557,7 @@ public class HintLog
                         logger.info("Delivering " + current + " starting at " + reader.getFilePointer());
                         
                         lastHeaderWrite = System.currentTimeMillis();
-                        unwrittedConfirmations = 0;
+                        unwrittenConfirmations = 0;
 
                     } catch (IOException e) {
                         logger.error("Cannot open "+current+". Skipping its replay. Consider starting repair on this node or "+tokenToEndpoint( token ),e);
@@ -622,15 +579,20 @@ public class HintLog
         
         private boolean nextMutation()
         {
-            if (nextMutation!=null)
+            if (nextMutation!=null && !nextMutation.isEmpty())
                 return true;
             
             assert currentMutation == null : "Previous Mutation must be confirmed before getting next one";
 
             if (current == null && ! nextSegment() )
                 return false;
+            
+            int batchSize = DatabaseDescriptor.getHintLogPlayBatchSize();
+            long batchBytesLimit = DatabaseDescriptor.getHintLogPlayBatchBytes();
+            
+            nextMutation = new ArrayList<>(batchSize);
 
-            while (nextMutation==null)
+            while (nextMutation.size()<batchSize && batchBytesLimit>=0)
             {
                 /* read the next valid RowMutation  */
 
@@ -638,8 +600,12 @@ public class HintLog
                 byte[] bytes;
                 try
                 {
-                    if ( reader.isEOF() && !nextSegment() )
-                        return false;
+                    if ( reader.isEOF() ) {
+                        if ( !nextMutation.isEmpty() ) // last batch of the segment can be smaller, but we cannot discard segment until all of its hints are confirmed
+                            return true;
+                        if ( !nextSegment() ) // batch is empty here, so we continue filling it, if there are more segments
+                            return false;
+                    }
 
                     if (logger.isDebugEnabled())
                         logger.debug("Reading mutation at " + reader.getFilePointer());
@@ -687,17 +653,18 @@ public class HintLog
                 }
 
                 /* deserialize the commit log entry */
-                nextMutation = bytes;
+                nextMutation.add(bytes);
+                batchBytesLimit-=bytes.length;
                 
             }
             
-            return nextMutation!=null;
+            return !nextMutation.isEmpty();
         }
         
         /**
          * @return next mutation to deliver
          */
-        public byte[] next()
+        public List<byte[]> next()
         {
             if (nextMutation())
             {
@@ -722,7 +689,6 @@ public class HintLog
                 current = null;
                 reader = null;
             }
-            
         }
         
 
@@ -745,15 +711,17 @@ public class HintLog
             assert currentMutation !=null;
 
             current.getHeader().setReplayedPosition(reader.getFilePointer());
+            
+            unwrittenConfirmations+=currentMutation.size();
 
-            if ( ++unwrittedConfirmations % 1000 == 0 && System.currentTimeMillis()-lastHeaderWrite > DatabaseDescriptor.getCommitLogSyncPeriod() )
+            if ( unwrittenConfirmations > 1000 && System.currentTimeMillis()-lastHeaderWrite > DatabaseDescriptor.getCommitLogSyncPeriod() )
             {
                 try {
                     current.writeHeader();
                 } catch (IOException e) {
                 }
                 
-                unwrittedConfirmations = 0;
+                unwrittenConfirmations = 0;
                 lastHeaderWrite = System.currentTimeMillis();
             }
             

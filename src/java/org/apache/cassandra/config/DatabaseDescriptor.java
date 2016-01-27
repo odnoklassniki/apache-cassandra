@@ -144,6 +144,10 @@ public class DatabaseDescriptor
     private static double flushIndexBufferSizeInMB = 8;
     private static int slicedReadBufferSizeInKB = 64;
     private static int flushQueueSize = 2;
+    /** MM: number of mutations sent in 1 batch when playing hintlog **/
+    private static int hintLogBatchSize = 10;
+    /** MM: total size in bytes of mutations sent in 1 batch when playing hintlog **/
+    private static long hintLogBatchBytes = 10*1024*1024;
 
     static Map<String, KSMetaData> tables = new HashMap<String, KSMetaData>();
     private static int bmtThreshold = 256;
@@ -2016,4 +2020,23 @@ public class DatabaseDescriptor
     public static boolean isManualBootstrapComplete() {
         return manualBootstrapComplete;
     }
+    
+    public static int getHintLogPlayBatchSize() {
+        return hintLogBatchSize;
+    }
+    
+    public static void setHintLogPlayBatchSize(int newsize) {
+        assert newsize > 0;
+        hintLogBatchSize = newsize;
+    }
+
+    public static long getHintLogPlayBatchBytes() {
+        return hintLogBatchBytes;
+    }
+    
+    public static void setHintLogPlayBatchBytes(long newsize) {
+        assert newsize > 0;
+        hintLogBatchBytes = newsize;
+    }
+
 }

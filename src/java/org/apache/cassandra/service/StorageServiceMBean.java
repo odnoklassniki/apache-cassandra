@@ -191,6 +191,11 @@ public interface StorageServiceMBean
     /** force hint delivery to an endpoint **/
     public void deliverHints(String host) throws UnknownHostException;
     
+    public int getHintlogPlayBatchSize();
+    public void setHintlogPlayBatchSize(int newsize);
+    void setHintlogPlayBatchBytes(long newsize);
+    long getHintlogPlayBatchBytes();
+    
     /**
      * 
      * @return currently configured value
@@ -286,4 +291,5 @@ public interface StorageServiceMBean
      * Resume  node paused before joining the ring during bootstrap
      */
     void completeBootstrap();
+
 }

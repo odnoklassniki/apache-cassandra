@@ -26,6 +26,7 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicIntegerArray;
@@ -37,7 +38,6 @@ import org.apache.cassandra.CleanupHelper;
 import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.ColumnFamilyStore;
-import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.db.Table;
 import org.apache.cassandra.db.filter.QueryPath;
@@ -55,6 +55,7 @@ public class HintLogTest extends CleanupHelper
         HintLog.setHintDelivery(false);
 
         DatabaseDescriptor.setHintedHandoffManager("hintlog");
+        DatabaseDescriptor.setHintLogPlayBatchSize(7);
         
         MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
         unregisterBean(mbs);
@@ -70,7 +71,7 @@ public class HintLogTest extends CleanupHelper
         
         assert hl.getSegmentCount(local) == 1;
 
-        Iterator<byte[]> iterator = hl.getHintsToDeliver(local);
+        Iterator<List<byte[]>> iterator = hl.getHintsToDeliver(local);
         assert !iterator.hasNext();
 
         Table table = Table.open("Keyspace1");
@@ -109,14 +110,17 @@ public class HintLogTest extends CleanupHelper
         int ii=0;
         while (iterator.hasNext())
         {
-            byte[] bb = iterator.next();
-            RowMutation r = RowMutation.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(bb)));
-            
-            assert r.getTable().equals("Keyspace1");
-            assert r.key().equals("key1");
-            assert r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0]==(byte) (ii % 127);
-            assert r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0]==(byte) (ii % 127);
-            ii++;
+            List<byte[]> batch = iterator.next();
+            assert !batch.isEmpty();
+            for (byte[] bb : batch ) {
+                RowMutation r = RowMutation.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(bb)));
+
+                assert r.getTable().equals("Keyspace1");
+                assert r.key().equals("key1");
+                assert r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0]==(byte) (ii % 127);
+                assert r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0]==(byte) (ii % 127);
+                ii++;
+            }
             
             iterator.remove();
         }
@@ -159,16 +163,19 @@ public class HintLogTest extends CleanupHelper
         ii=1290;
         while (iterator.hasNext())
         {
-            byte[] bb = iterator.next();
-            RowMutation r = RowMutation.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(bb)));
-            
-            assert r.getTable().equals("Keyspace1");
-            assert r.key().equals("key1");
-            byte b = r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0];
-            assert b==(byte) (ii % 127) : ""+b+","+ ii%127 +" - "+ii;
-            byte d = r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0];
-            assert d==(byte) (ii % 127) : ""+d+","+ ii%127 +" - "+ii;
-            ii++;
+            List<byte[]> batch = iterator.next();
+            assert !batch.isEmpty();
+            for (byte[] bb : batch ) {
+                RowMutation r = RowMutation.serializer().deserialize(new DataInputStream(new ByteArrayInputStream(bb)));
+
+                assert r.getTable().equals("Keyspace1");
+                assert r.key().equals("key1");
+                byte b = r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0];
+                assert b==(byte) (ii % 127) : ""+b+","+ ii%127 +" - "+ii;
+                byte d = r.getColumnFamilies().iterator().next().getColumnsMap().values().iterator().next().value()[0];
+                assert d==(byte) (ii % 127) : ""+d+","+ ii%127 +" - "+ii;
+                ii++;
+            }
             
             iterator.remove();
         }

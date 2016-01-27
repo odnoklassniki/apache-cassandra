@@ -1221,6 +1221,30 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
     {
         HintedHandOffManager.instance().deliverHints(host);
     }
+    
+    @Override
+    public int getHintlogPlayBatchSize()
+    {
+        return DatabaseDescriptor.getHintLogPlayBatchSize();
+    }
+    
+    @Override
+    public void setHintlogPlayBatchSize(int newsize)
+    {
+        DatabaseDescriptor.setHintLogPlayBatchSize(newsize);
+    }
+
+    @Override
+    public long getHintlogPlayBatchBytes()
+    {
+        return DatabaseDescriptor.getHintLogPlayBatchBytes();
+    }
+    
+    @Override
+    public void setHintlogPlayBatchBytes(long newsize)
+    {
+        DatabaseDescriptor.setHintLogPlayBatchBytes(newsize);
+    }
 
     public Token getLocalToken()
     {

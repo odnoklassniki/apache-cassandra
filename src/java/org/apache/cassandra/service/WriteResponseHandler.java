@@ -21,12 +21,9 @@ package org.apache.cassandra.service;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import org.apache.log4j.Logger;
@@ -34,7 +31,6 @@ import org.apache.log4j.Logger;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.net.IAsyncCallback;
 import org.apache.cassandra.net.Message;
-import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.SimpleCondition;
 
@@ -66,7 +62,7 @@ public class WriteResponseHandler implements IAsyncCallback
         this.responseCount = responseCount;
         startNanos = System.nanoTime();
     }
-    
+
     public static final int toInt(byte[] b) {
         return b[0]<<24 | (b[1]&0xff)<<16 | (b[2]&0xff)<<8 | (b[3]&0xff);
     }

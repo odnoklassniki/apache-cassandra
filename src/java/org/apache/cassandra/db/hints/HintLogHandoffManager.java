@@ -5,25 +5,24 @@
  */
 package org.apache.cassandra.db.hints;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.HintedHandOffManager;
 import org.apache.cassandra.db.RowMutation;
 import org.apache.cassandra.gms.FailureDetector;
-import org.apache.cassandra.gms.Gossiper;
+import org.apache.cassandra.net.IAsyncResult;
 import org.apache.cassandra.net.Message;
 import org.apache.cassandra.net.MessagingService;
 import org.apache.cassandra.service.DigestMismatchException;
 import org.apache.cassandra.service.StorageService;
-import org.apache.cassandra.service.WriteResponseHandler;
 import org.apache.cassandra.thrift.InvalidRequestException;
-import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
 
 /**
@@ -63,7 +62,7 @@ public class HintLogHandoffManager extends HintedHandOffManager
         long started=System.currentTimeMillis();
         long counter = 0;
 
-        Iterator<byte[]> hintsToDeliver = HintLog.instance().getHintsToDeliver(endPoint);
+        Iterator<List<byte[]>> hintsToDeliver = HintLog.instance().getHintsToDeliver(endPoint);
         String throttleRaw = System.getProperty("hinted_handoff_throttle");
         int throttle = throttleRaw == null ? 0 : Integer.valueOf(throttleRaw);
         
@@ -74,14 +73,14 @@ public class HintLogHandoffManager extends HintedHandOffManager
         HINT_DELIVERY:
         while (hintsToDeliver.hasNext())
         {
-            byte[] rm = hintsToDeliver.next();
+            List<byte[]> rm = hintsToDeliver.next();
             int leftRetries = 10;
-            Long timeout = null; //первый раз используем дефалтный таймаут
+            long timeout = DatabaseDescriptor.getRpcTimeout();
             while (!deliverHint(endPoint, rm, timeout))
             {
                 leftRetries --;
                 if (leftRetries == 0){
-                    logger_.info("Hint delivery skipped to "+endPoint.getHostAddress() +" due to multiple errors");
+                    logger_.error("Hint delivery skipped to "+endPoint.getHostAddress() +" due to multiple errors");
                     
                     break;
                 }
@@ -99,17 +98,12 @@ public class HintLogHandoffManager extends HintedHandOffManager
                     break HINT_DELIVERY;
                 }
                 
-                if (timeout == null){
-                  //второй раз используем дефалтный таймаут не без учета времени отсылки 
-                    timeout = DatabaseDescriptor.getRpcTimeout();
-                }else{
-                  //каждый следующий раз увеличиваем таймаут в 2 раза
-                    timeout += timeout;
-                }
+                //каждый следующий раз увеличиваем таймаут в 2 раза
+                timeout += timeout;
             }
             
             hintsToDeliver.remove();
-            counter ++;
+            counter +=rm.size();
             
             if (throttle>0)
             {
@@ -131,26 +125,47 @@ public class HintLogHandoffManager extends HintedHandOffManager
         
     }
 
-    private boolean deliverHint(InetAddress endPoint, byte[] rm, Long timeout)
+    private boolean deliverHint(InetAddress endPoint, List<byte[]> rm, long timeout)
             throws IOException
     {
-        Message message = RowMutation.makeRowMutationMessage(rm);
-        WriteResponseHandler responseHandler = new WriteResponseHandler(1, 1, RowMutation.tableNameSerializer_().deserialize(new DataInputStream(new ByteArrayInputStream(rm))));
-        MessagingService.instance.sendRR(message, endPoint, responseHandler,false /* we dont want this hint to be saved again on timeout **/);
-        try
-        {
-            if (timeout == null){
-                responseHandler.get();
-            }else{
-                responseHandler.get(timeout);
-            }
-            
-            return true;
+        assert !rm.isEmpty() : "HintLog Reader issued empty list for "+endPoint+", which must never happen";
+        
+        int packSize = rm.size();
+        ArrayList<IAsyncResult> results = new ArrayList<>(packSize);
+        long bytesSize = 0;
+        for (byte[] b : rm ) {
+            Message message = RowMutation.makeRowMutationMessage(b);
+            IAsyncResult result = MessagingService.instance.sendRR(message, endPoint, false /* we don't want this hint to be saved again on timeout **/);
+            results.add(result);
+            bytesSize += b.length;
         }
-        catch (TimeoutException e)
-        {
-            logger_.error ("Timeout sending hint to "+endPoint+", size = "+rm.length);
-            return false;
+        
+        long sentMillis = System.currentTimeMillis();
+        // going from tail to head for index number stability
+        int i = results.size();
+        while (i-->0) {
+            IAsyncResult result = results.get(i);
+            if (!result.isDone()) {
+                try {
+                    result.get(timeout-System.currentTimeMillis()+sentMillis, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException e) {
+                    removeAppliedHints(rm,results,i);
+                    logger_.error ("Timeout sending hint pack to "+endPoint+", size = "+packSize+", bytes = "+bytesSize+", "+rm.size()+" hints were not applied");
+                    return rm.isEmpty();
+                }
+            }
+        }
+        
+        return true;
+    }
+
+    private void removeAppliedHints(List<byte[]> rm, ArrayList<IAsyncResult> results, int i)
+    {
+        while (i>=0) {
+            if (results.get(i).isDone()) {
+                rm.remove(i);
+            }
+            i--;
         }
     }
 
