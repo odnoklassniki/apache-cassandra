@@ -177,11 +177,11 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
         for (Token node : sortedTokens)
         {
             try {
-                byte last_byte = (byte) Integer.parseInt(last_t.toString(),16);
-                byte node_byte = (byte) Integer.parseInt(node.toString(),16);
-                float domainCount = Math.abs( node_byte - last_byte );
+                int last_byte = Integer.parseInt(last_t.toString(),16);
+                int node_byte = Integer.parseInt(node.toString(),16);
+                float domainCount = Math.abs( (byte) ( node_byte - last_byte ) );
 
-                alltokens.put(node, domainCount / 2.56f );
+                alltokens.put(node, domainCount / 256 );
             } catch (NumberFormatException e) {
                 alltokens.put(node, 0.0f );
             }
