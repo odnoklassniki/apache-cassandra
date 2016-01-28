@@ -5,13 +5,21 @@
  */
 package org.apache.cassandra.dht;
 
+import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 
 import org.apache.cassandra.config.ConfigurationException;
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.DecoratedKey;
+import org.apache.cassandra.db.Table;
+import org.apache.cassandra.locator.AbstractReplicationStrategy;
+import org.apache.cassandra.locator.TokenMetadata;
+import org.apache.cassandra.service.StorageService;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.log4j.Logger;
 
@@ -169,24 +177,34 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
     @Override
     public Map<Token, Float> describeOwnership(List<Token> sortedTokens)
     {
-        // alltokens will contain the count and be returned, sorted_ranges is shorthand for token<->token math.
-        Map<Token, Float> alltokens = new HashMap<Token, Float>();
-
-        // this initializes the counts to 0 and calcs the ranges in order.
-        Token last_t = sortedTokens.get(sortedTokens.size()-1);
-        for (Token node : sortedTokens)
-        {
-            try {
-                int last_byte = Integer.parseInt(last_t.toString(),16);
-                int node_byte = Integer.parseInt(node.toString(),16);
-                float domainCount = Math.abs( (byte) ( node_byte - last_byte ) );
-
-                alltokens.put(node, domainCount / 256 );
-            } catch (NumberFormatException e) {
-                alltokens.put(node, 0.0f );
+        
+        TokenMetadata tm = StorageService.instance.getTokenMetadata();
+        
+        Map<InetAddress,Integer> rangesPerEndpoint = new HashMap<InetAddress,Integer>();
+        float totalCount = 0;
+        
+        for (String table : DatabaseDescriptor.getNonSystemTables() ) {
+            AbstractReplicationStrategy strategy = StorageService.getReplicationStrategy(tm, table);
+            
+            for (int domain=0;domain<256;domain++) {
+                ArrayList<InetAddress> endpoints = strategy.getNaturalEndpoints(toStringToken(domain, "1"), table);
+                for (InetAddress p : endpoints) {
+                    Integer count = rangesPerEndpoint.get(p);
+                    if (count==null)
+                        count=1;
+                    else 
+                        count+=1;
+                    rangesPerEndpoint.put(p,count);
+                    totalCount ++;
+                }
             }
-
-            last_t = node;
+        }
+        
+        Map<Token, Float> alltokens = new HashMap<Token, Float>();
+        for ( Entry<InetAddress, Integer> en : rangesPerEndpoint.entrySet() ) {
+            if (tm.isMember(en.getKey())) {
+                alltokens.put( tm.getToken(en.getKey()), en.getValue() / totalCount );
+            }
         }
 
         return alltokens;
