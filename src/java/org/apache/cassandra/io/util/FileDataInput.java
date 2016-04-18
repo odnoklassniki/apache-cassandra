@@ -38,4 +38,6 @@ public interface FileDataInput extends DataInput, Closeable
     public int bytesPastMark();
 
     long getAbsolutePosition();
+    
+    void skipLong() throws IOException;
 }

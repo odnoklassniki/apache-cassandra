@@ -22,6 +22,7 @@ import java.io.*;
 import java.lang.ref.Reference;
 import java.lang.ref.ReferenceQueue;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.*;
@@ -41,8 +42,6 @@ import org.apache.cassandra.utils.BloomFilter;
 import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
-
-import com.sun.corba.se.spi.legacy.connection.GetEndPointInfoAgainException;
 
 import sun.nio.ch.DirectBuffer;
 
@@ -171,6 +170,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
                 MappedByteBuffer buffer = mmap(indexFilename(), i * BUFFER_SIZE, (int) Math.min(remaining, BUFFER_SIZE));
                 if (DatabaseDescriptor.isDiskRandomHintEnabled())
                     bufferMakeRandom(buffer);
+                buffer.order(ByteOrder.BIG_ENDIAN);
                 indexBuffers[i] = buffer;
                 remaining -= BUFFER_SIZE;
             }
@@ -191,6 +191,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
                 MappedByteBuffer buffer = mmap(path, i * BUFFER_SIZE, (int) Math.min(remaining, BUFFER_SIZE));
                 if (DatabaseDescriptor.isDiskRandomHintEnabled())
                     bufferMakeRandom(buffer);
+                buffer.order(ByteOrder.BIG_ENDIAN);
                 buffers[i] = buffer;
                 remaining -= BUFFER_SIZE;
             }
@@ -402,12 +403,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         
         bb.flip();
         
-        boolean present = bf.isPresent(bb);
-
-        if (logger.isDebugEnabled())
-            logger.debug("Checking bloom column of "+getFilename()+":"+FBUtilities.bytesToHex(bb.array())+'='+present+", stats: "+getBloomFilterTracker());
-        
-        return present;
+        return bf.isPresent(bb);
     }
     
     /**
@@ -498,11 +494,11 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 
                 // read key & data position from index entry
                 DecoratedKey indexDecoratedKey = partitioner.convertFromDiskFormat(input.readUTF());
-                long dataPosition = input.readLong();
 
                 int v = indexDecoratedKey.compareTo(decoratedKey);
                 if (v == 0)
                 {
+                    long dataPosition = input.readLong();
                     PositionSize info = getDataPositionSize(input, dataPosition);
                     if (keyCache != null && keyCache.getCapacity() > 0)
                         keyCache.put(unifiedKey, info);
@@ -514,6 +510,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
                     bloomFilterTracker.addFalsePositive();
                     return null;
                 }
+                input.skipLong();
             } while  (++i < interval);
         }
         finally

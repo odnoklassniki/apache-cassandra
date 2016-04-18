@@ -52,16 +52,18 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
     
     private boolean isHexDigit(char c)
     {
-        return Character.isDigit(c) || (c>='a' && c<='f');
+        return ( c>='0' && c<='9' ) || (c>='a' && c<='f');
     }
     
     protected StringToken toStringToken(String key)
     {
-        key=key.toLowerCase();
+        key=fastToLower(key);
         
-        assert key.length()>0 : "Size of key is minimum single digit to partition odnoklassniki style";
-        
-        if (key.length()<2) {
+        int klen = key.length();
+        if (klen<2) {
+            
+            assert klen>0 : "Size of key is minimum single digit to partition odnoklassniki style";
+
             if (isHexDigit(key.charAt(0)))
                 return new StringToken('0'+key);
 
@@ -71,29 +73,33 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
             return new StringToken(key);
         }
         
-        if (key.length()==2 && isHexDigit(key.charAt(0)) && isHexDigit(key.charAt(1)))
+        if (klen==2 && isHexDigit(key.charAt(0)) && isHexDigit(key.charAt(1)))
         {
             return new StringToken(key);
         }
         
-        StringBuilder token = new StringBuilder(key.length()).append(key.substring(key.length()-2));
-        if ( !isHexDigit(token.charAt(0)) || !isHexDigit(token.charAt(1)) )
+        char[] ctoken = new char[klen];
+        ctoken[0] = key.charAt(klen-2);
+        ctoken[1] = key.charAt(klen-1);
+        if ( !isHexDigit(ctoken[0]) || !isHexDigit(ctoken[1]) )
         {
             if (logger.isDebugEnabled())
                 logger.debug("Last 2 chars of key must be hex digits, but in "+key+" they're not. This is ok for system table. reverting to OrderedPartitioner");
             return new StringToken(key);
         }
+
+        key.getChars(0, klen-2, ctoken, 2);
         
-        token.append(key,0,key.length()-2);
-        
-        return new StringToken(token.toString());
+        return new StringToken(new String(ctoken));
     }
     
     public DecoratedKey<StringToken> decorateKey(String key)
     {
         return new DecoratedKey<StringToken>(toStringToken(key), key);
     }
-    
+
+    // it is meaningless to make toLowerCase for data read from disk
+    // because wrong case can only be supplied by programmer
     public DecoratedKey<StringToken> convertFromDiskFormat(String key)
     {
         return new DecoratedKey<StringToken>(toStringToken(key), key);
@@ -209,5 +215,67 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
 
         return alltokens;
     }
+    
+    /*
+     * Trying to make faster tolowercase assuming already lowered case in key on most cases and
+     * ascii chars more preferable there.
+     * If these assumptions fail - reverts to String.toLowerCase
+     */
+    private String fastToLower(String s) {
+        int p = 0;
+        int len = s.length();
+        while ( p<len && isAsciiLower(s.charAt(p))) {
+            p++;
+        }
+        if (p==len) return s; // already lowercase
+        
+        // no, it is not. 
+        char c = s.charAt(p), c1 = toAsciiLower(c);
+        if ( c == c1 ) {
+            return s.toLowerCase(); // not ascii
+        }
+        char[] chars = new char[len];
+        s.getChars(0, p, chars, 0);
+        chars[p++]=c1;
+        while (p<len) {
+            c = s.charAt(p);
+            if ( isAsciiLower(c) ) {
+                chars[p++] = c;
+            } else {
+                c1 = toAsciiLower(c);
+                if ( c == c1 ) {
+                    return s.toLowerCase(); // not ascii
+                }
+                chars[p++]=c1;
+            }
+        }
+        return new String(chars);
+    }
 
+    private boolean isAsciiLower(char c)
+    {
+        return ( c>='0' && c<='9' ) || (c>='a' && c<='z');
+    }
+    
+    private char toAsciiLower(char c) {
+        if (c>='A' && c<='Z') {
+            return (char) (c-'A'+'a');
+        } else {
+            return c;
+        }
+    }
+
+    /*
+    public static void main(String[] args) {
+        OdklDomainPartitioner p = new OdklDomainPartitioner();
+        StringToken k = p.toStringToken("abcd");
+        System.out.println(k);
+        k = p.toStringToken("aBCd");
+        System.out.println(k);
+        k = p.toStringToken("ебанаab");
+        System.out.println(k);
+        k = p.toStringToken("ЕБАНАab");
+        System.out.println(k);
+    }
+*/
 }

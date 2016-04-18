@@ -683,13 +683,12 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
 
     private static void removeDeletedStandard(ColumnFamily cf, int gcBefore)
     {
-        for (byte[] cname : cf.getColumnNames())
-        {
-            IColumn c = cf.getColumnsMap().get(cname);
+        for (Iterator<IColumn> iterator = cf.getSortedColumns().iterator(); iterator.hasNext();) {
+            IColumn c = iterator.next();
             if ((c.isMarkedForDelete() && c.getLocalDeletionTime() <= gcBefore)
                 || c.timestamp() <= cf.getMarkedForDeleteAt())
             {
-                cf.remove(cname);
+                iterator.remove();
             }
         }
     }
@@ -699,9 +698,8 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
         // TODO assume deletion means "most are deleted?" and add to clone, instead of remove from original?
         // this could be improved by having compaction, or possibly even removeDeleted, r/m the tombstone
         // once gcBefore has passed, so if new stuff is added in it doesn't used the wrong algorithm forever
-        for (byte[] cname : cf.getColumnNames())
-        {
-            IColumn c = cf.getColumnsMap().get(cname);
+        for (Iterator<IColumn> iterator = cf.getSortedColumns().iterator(); iterator.hasNext();) {
+            IColumn c = iterator.next();
             long minTimestamp = Math.max(c.getMarkedForDeleteAt(), cf.getMarkedForDeleteAt());
             for (IColumn subColumn : c.getSubColumns())
             {
@@ -713,7 +711,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             }
             if (c.getSubColumns().isEmpty() && c.getLocalDeletionTime() <= gcBefore)
             {
-                cf.remove(c.name());
+                iterator.remove();
             }
         }
     }

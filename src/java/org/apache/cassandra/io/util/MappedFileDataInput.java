@@ -22,6 +22,7 @@ package org.apache.cassandra.io.util;
 
 
 import java.io.*;
+import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 
 public class MappedFileDataInput extends InputStream implements FileDataInput
@@ -40,6 +41,8 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
     public MappedFileDataInput(MappedByteBuffer buffer, String filename, long absoluteStartPosition, int position)
     {
         assert buffer != null;
+        assert buffer.order()==ByteOrder.BIG_ENDIAN; 
+        
         this.absoluteStartPosition = absoluteStartPosition;
         this.buffer = buffer;
         this.filename = filename;
@@ -91,6 +94,11 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
         return position == buffer.capacity();
     }
 
+    public boolean isEOF(int len) throws IOException
+    {
+        return position + len > buffer.capacity();
+    }
+
     public String getPath()
     {
         return filename;
@@ -112,6 +120,13 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
         assert ((long)oldPosition) + n <= Integer.MAX_VALUE;
         position = Math.min(buffer.capacity(), position + n);
         return position - oldPosition;
+    }
+
+    public  void skipLong() throws IOException {
+        if ( (position+=8) > buffer.capacity()) {
+            position = buffer.capacity();
+            throw new EOFException();
+        };
     }
 
     /*
@@ -168,11 +183,13 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      *             if this file is closed or another I/O error occurs.
      */
     public final char readChar() throws IOException {
-        byte[] buffer = new byte[2];
-        if (read(buffer, 0, buffer.length) != buffer.length) {
+        if ( isEOF(2) ) {
+            skipBytes(2);
             throw new EOFException();
         }
-        return (char) (((buffer[0] & 0xff) << 8) + (buffer[1] & 0xff));
+        char c = buffer.getChar(position); 
+        position+=2;
+        return c;
     }
 
     /**
@@ -247,21 +264,19 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      */
     public final void readFully(byte[] buffer, int offset, int count)
             throws IOException {
-        if (buffer == null) {
-            throw new NullPointerException();
-        }
         // avoid int overflow
         if (offset < 0 || offset > buffer.length || count < 0
                 || count > buffer.length - offset) {
             throw new IndexOutOfBoundsException();
         }
-        while (count > 0) {
-            int result = read(buffer, offset, count);
-            if (result < 0) {
-                throw new EOFException();
-            }
-            offset += result;
-            count -= result;
+        if (isEOF(count)) {
+            // rare path
+            read(buffer, offset, count);
+            throw new EOFException();
+        }
+        // fast common path
+        while (count-- > 0) {
+            buffer[ offset ++ ] = this.buffer.get( position++ );
         }
     }
 
@@ -277,12 +292,13 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      *             if this file is closed or another I/O error occurs.
      */
     public final int readInt() throws IOException {
-        byte[] buffer = new byte[4];
-        if (read(buffer, 0, buffer.length) != buffer.length) {
+        if ( isEOF(4) ) {
+            skipBytes(4);
             throw new EOFException();
         }
-        return ((buffer[0] & 0xff) << 24) + ((buffer[1] & 0xff) << 16)
-                + ((buffer[2] & 0xff) << 8) + (buffer[3] & 0xff);
+        int i = buffer.getInt(position); 
+        position+=4;
+        return i;
     }
 
     /**
@@ -341,17 +357,13 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      *             if this file is closed or another I/O error occurs.
      */
     public final long readLong() throws IOException {
-        byte[] buffer = new byte[8];
-        int n = read(buffer, 0, buffer.length);
-        if (n != buffer.length) {
-            throw new EOFException("expected 8 bytes; read " + n + " at final position " + position);
+        if ( isEOF(8) ) {
+            skipBytes(8);
+            throw new EOFException();
         }
-        return ((long) (((buffer[0] & 0xff) << 24) + ((buffer[1] & 0xff) << 16)
-                + ((buffer[2] & 0xff) << 8) + (buffer[3] & 0xff)) << 32)
-                + ((long) (buffer[4] & 0xff) << 24)
-                + ((buffer[5] & 0xff) << 16)
-                + ((buffer[6] & 0xff) << 8)
-                + (buffer[7] & 0xff);
+        long l = buffer.getLong(position); 
+        position+=8;
+        return l;
     }
 
     /**
@@ -366,11 +378,13 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      *             if this file is closed or another I/O error occurs.
      */
     public final short readShort() throws IOException {
-        byte[] buffer = new byte[2];
-        if (read(buffer, 0, buffer.length) != buffer.length) {
+        if ( isEOF(2) ) {
+            skipBytes(2);
             throw new EOFException();
         }
-        return (short) (((buffer[0] & 0xff) << 8) + (buffer[1] & 0xff));
+        short s = buffer.getShort(position); 
+        position +=2;
+        return s;
     }
 
     /**
@@ -404,11 +418,13 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      *             if this file is closed or another I/O error occurs.
      */
     public final int readUnsignedShort() throws IOException {
-        byte[] buffer = new byte[2];
-        if (read(buffer, 0, buffer.length) != buffer.length) {
+        if ( isEOF(2) ) {
+            skipBytes(2);
             throw new EOFException();
         }
-        return ((buffer[0] & 0xff) << 8) + (buffer[1] & 0xff);
+        int i = buffer.getShort(position) & 0xFFFF; 
+        position +=2;
+        return i;
     }
 
     /**
@@ -428,6 +444,84 @@ public class MappedFileDataInput extends InputStream implements FileDataInput
      *             if the bytes read cannot be decoded into a character string.
      */
     public final String readUTF() throws IOException {
-        return DataInputStream.readUTF(this);
+        int utflen = readUnsignedShort();
+        
+        if (isEOF(utflen)) {
+            skipBytes(utflen);
+            throw new EOFException();
+        }
+        
+        char[] chars = null;
+        chars = new char[utflen];
+
+        int c, c2, c3;
+        int count = 0;
+        int chararr_count=0;
+
+        while (count < utflen) {
+            c = this.buffer.get( position ) & 0xff;
+            if (c > 127) break;
+            chars[count++]=(char)c;
+            position++;
+        }
+        
+        if (count==utflen) 
+            return new String(chars);
+        
+        chararr_count = count;
+
+        while (count < utflen) {
+            c = this.buffer.get( position++ ) & 0xff;
+            switch (c >> 4) {
+                case 0: case 1: case 2: case 3: case 4: case 5: case 6: case 7:
+                    /* 0xxxxxxx*/
+                    count++;
+                    chars[chararr_count++]=(char)c;
+                    break;
+                case 12: case 13:
+                    /* 110x xxxx   10xx xxxx*/
+                    count += 2;
+                    if (count > utflen) {
+                        skipBytes(1);
+                        throw new UTFDataFormatException(
+                            "malformed input: partial character at end");
+                    }
+                    c2 = this.buffer.get( position++ );
+                    if ((c2 & 0xC0) != 0x80) {
+                        skipBytes(utflen - count);
+                        throw new UTFDataFormatException(
+                            "malformed input around byte " + count);
+                    }
+                    chars[chararr_count++]=(char)(((c & 0x1F) << 6) |
+                                                    (c2 & 0x3F));
+                    break;
+                case 14:
+                    /* 1110 xxxx  10xx xxxx  10xx xxxx */
+                    count += 3;
+                    if (count > utflen) {
+                        skipBytes(2);
+                        throw new UTFDataFormatException(
+                            "malformed input: partial character at end");
+                    }
+                    c2 = this.buffer.get( position++ );
+                    c3 = this.buffer.get( position++ );
+                    if (((c2 & 0xC0) != 0x80) || ((c3 & 0xC0) != 0x80)) {
+                        skipBytes( utflen - count );
+                        throw new UTFDataFormatException(
+                            "malformed input around byte " + (count-1));
+                    }
+                    chars[chararr_count++]=(char)(((c     & 0x0F) << 12) |
+                                                    ((c2 & 0x3F) << 6)  |
+                                                    ((c3 & 0x3F) << 0));
+                    break;
+                default:
+                    /* 10xx xxxx,  1111 xxxx */
+                    skipBytes( utflen - count );
+                    throw new UTFDataFormatException(
+                        "malformed input around byte " + count);
+            }
+        }
+        // The number of chars produced may be less than utflen
+        return new String(chars, 0, chararr_count);
     }
 }

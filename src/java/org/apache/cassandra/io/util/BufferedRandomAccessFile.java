@@ -390,6 +390,12 @@ public class BufferedRandomAccessFile extends RandomAccessFile implements FileDa
 
         return 0;
     }
+    
+    @Override
+    public void skipLong() throws IOException
+    {
+        skipBytes(8);
+    }
 
     public long length() throws IOException
     {
