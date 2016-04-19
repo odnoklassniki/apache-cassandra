@@ -272,7 +272,8 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
 
     void loadBloomFilter() throws IOException
     {
-        DataInputStream stream = new DataInputStream(new FileInputStream(filterFilename()));
+        FileInputStream fileInputStream = new FileInputStream(filterFilename());
+        DataInputStream stream = new DataInputStream(new BufferedInputStream(fileInputStream, 128*1024 ));
         try
         {
             bf = BloomFilter.serializerForSSTable().deserialize(stream);
@@ -280,6 +281,8 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         }
         finally
         {
+            CLibrary.trySkipCache( CLibrary.getfd(fileInputStream.getFD()) ,0,0);
+
             stream.close();
         }
     }

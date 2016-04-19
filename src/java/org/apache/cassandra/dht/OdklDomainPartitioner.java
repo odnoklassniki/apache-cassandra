@@ -16,7 +16,6 @@ import java.util.Random;
 import org.apache.cassandra.config.ConfigurationException;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.DecoratedKey;
-import org.apache.cassandra.db.Table;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.TokenMetadata;
 import org.apache.cassandra.service.StorageService;
@@ -57,15 +56,16 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
     
     protected StringToken toStringToken(String key)
     {
-        key=fastToLower(key);
         
         int klen = key.length();
         if (klen<2) {
             
             assert klen>0 : "Size of key is minimum single digit to partition odnoklassniki style";
+            
+            char c = fastToLower( key.charAt(0) );
 
-            if (isHexDigit(key.charAt(0)))
-                return new StringToken('0'+key);
+            if (isHexDigit(c))
+                return new StringToken(new String(new char[] { '0',c }));
 
             if (logger.isDebugEnabled())
                 logger.debug("Last 2 chars of key must be hex digits, but in "+key+" they're not. This is ok for system table. reverting to OrderedPartitioner");
@@ -73,22 +73,26 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
             return new StringToken(key);
         }
         
-        if (klen==2 && isHexDigit(key.charAt(0)) && isHexDigit(key.charAt(1)))
-        {
-            return new StringToken(key);
+        if (klen==2) {
+            char c0 = fastToLower( key.charAt(0) );
+            char c1 = fastToLower( key.charAt(1) );
+            if (isHexDigit(c0) && isHexDigit(c1)) {
+                return new StringToken(new String( new char[] { c0,c1 }));
+            }
         }
         
         char[] ctoken = new char[klen];
-        ctoken[0] = key.charAt(klen-2);
-        ctoken[1] = key.charAt(klen-1);
+        
+        ctoken[0] = fastToLower(key.charAt(klen-2));
+        ctoken[1] = fastToLower(key.charAt(klen-1));
         if ( !isHexDigit(ctoken[0]) || !isHexDigit(ctoken[1]) )
         {
             if (logger.isDebugEnabled())
                 logger.debug("Last 2 chars of key must be hex digits, but in "+key+" they're not. This is ok for system table. reverting to OrderedPartitioner");
-            return new StringToken(key);
+            return new StringToken(key.toLowerCase());
         }
 
-        key.getChars(0, klen-2, ctoken, 2);
+        fastToLower(key,0,klen-2,ctoken,2);
         
         return new StringToken(new String(ctoken));
     }
@@ -98,8 +102,6 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
         return new DecoratedKey<StringToken>(toStringToken(key), key);
     }
 
-    // it is meaningless to make toLowerCase for data read from disk
-    // because wrong case can only be supplied by programmer
     public DecoratedKey<StringToken> convertFromDiskFormat(String key)
     {
         return new DecoratedKey<StringToken>(toStringToken(key), key);
@@ -221,61 +223,35 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
      * ascii chars more preferable there.
      * If these assumptions fail - reverts to String.toLowerCase
      */
-    private String fastToLower(String s) {
-        int p = 0;
-        int len = s.length();
-        while ( p<len && isAsciiLower(s.charAt(p))) {
-            p++;
+    private void fastToLower(String s,int sstart,int send,char[] chars,int cstart) {
+        while ( sstart<send) {
+            chars[cstart++]= fastToLower(s.charAt(sstart++));
         }
-        if (p==len) return s; // already lowercase
-        
-        // no, it is not. 
-        char c = s.charAt(p), c1 = toAsciiLower(c);
-        if ( c == c1 ) {
-            return s.toLowerCase(); // not ascii
-        }
-        char[] chars = new char[len];
-        s.getChars(0, p, chars, 0);
-        chars[p++]=c1;
-        while (p<len) {
-            c = s.charAt(p);
-            if ( isAsciiLower(c) ) {
-                chars[p++] = c;
-            } else {
-                c1 = toAsciiLower(c);
-                if ( c == c1 ) {
-                    return s.toLowerCase(); // not ascii
-                }
-                chars[p++]=c1;
-            }
-        }
-        return new String(chars);
     }
 
-    private boolean isAsciiLower(char c)
+    private char fastToLower(char c)
     {
-        return ( c>='0' && c<='9' ) || (c>='a' && c<='z');
+        if (c <= 0x7f)
+            return c<'A' || c>'Z' ? c : (char) (c-'A'+'a');
+            
+        return Character.toLowerCase(c);
     }
     
-    private char toAsciiLower(char c) {
-        if (c>='A' && c<='Z') {
-            return (char) (c-'A'+'a');
-        } else {
-            return c;
-        }
-    }
-
     /*
     public static void main(String[] args) {
         OdklDomainPartitioner p = new OdklDomainPartitioner();
         StringToken k = p.toStringToken("abcd");
         System.out.println(k);
-        k = p.toStringToken("aBCd");
+        k = p.toStringToken("1234aB-123Cd");
         System.out.println(k);
         k = p.toStringToken("ебанаab");
         System.out.println(k);
         k = p.toStringToken("ЕБАНАab");
         System.out.println(k);
+        k = p.toStringToken("B");
+        System.out.println(k);
+        k = p.toStringToken("AB");
+        System.out.println(k);
     }
-*/
+    */
 }
