@@ -70,7 +70,7 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
             if (logger.isDebugEnabled())
                 logger.debug("Last 2 chars of key must be hex digits, but in "+key+" they're not. This is ok for system table. reverting to OrderedPartitioner");
             
-            return new StringToken(key);
+            return new StringToken(String.valueOf(c));
         }
         
         if (klen==2) {
