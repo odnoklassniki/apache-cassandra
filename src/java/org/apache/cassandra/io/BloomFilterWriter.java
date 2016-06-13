@@ -71,10 +71,7 @@ public class BloomFilterWriter implements IColumnNameObserver
     @Override
     public void add(DecoratedKey<?> key, byte[] name)
     {
-        assert bloomColumns : "This method makes extra load for keys only index. Plz dont callit";
-    
         bf().add(key.key,name);
-        
     }
     
     @Override

@@ -393,25 +393,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         if (!columnBloom)
             return true;
         
-        boolean may = bf.isPresent(key, name);
-        
-        // TODO remove after tests pass
-        int capacity = key.length()*2+name.length;
-        ByteBuffer bb = ByteBuffer.allocate(capacity); // this alloc is evil
-        
-        bb = BloomFilter.toByteBuffer(key, bb);
-        
-        bb.position(bb.limit()).limit(capacity);
-        
-        bb.put(name);
-        
-        assert bb.remaining() == 0;
-        
-        bb.flip();
-        
-        assert may == bf.isPresent(bb); // TODO remove after tests pass
-        
-        return may;
+        return bf.isPresent(key, name);
     }
     
     /**

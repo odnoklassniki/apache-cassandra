@@ -30,6 +30,8 @@ import org.apache.cassandra.io.BloomFilterWriter;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.google.common.annotations.VisibleForTesting;
+
 public class BloomFilterTest
 {
     public BloomFilter bf;
@@ -116,7 +118,7 @@ public class BloomFilterTest
         for (int i=1;i<100000;i++)
         {
             DecoratedKey<?> key = p.decorateKey(Integer.toHexString(i));
-            assert mayPresent(built,key, FBUtilities.toByteArray(i+2)) : "Did not found:"+i;
+            assert built.isPresent(key.key,FBUtilities.toByteArray(i+2)) : "Did not found:"+i;
         }
 
         BloomFilter read;
@@ -133,29 +135,9 @@ public class BloomFilterTest
         for (int i=1;i<100000;i++)
         {
             DecoratedKey<?> key = p.decorateKey(Integer.toHexString(i));
-            assert mayPresent(read,key, FBUtilities.toByteArray(i+2));
+            assert read.isPresent(key.key,FBUtilities.toByteArray(i+2));
         }
 
-    }
-
-    public boolean mayPresent(BloomFilter bf, DecoratedKey key, byte[] name)
-    {
-        int capacity = key.key.length()*2+name.length;
-        ByteBuffer bb = ByteBuffer.allocate(capacity);
-        
-        // this is fuckup:
-        bb=BloomFilter.toByteBuffer(key.key, bb);
-        
-        bb.position(bb.limit()).limit(capacity);
-        
-        bb.put(name);
-        
-        assert bb.remaining() == 0;
-        
-        // this was fuckup:
-        boolean present = bf.isPresent((ByteBuffer) bb.flip());
-
-        return present;
     }
     
     /* TODO move these into a nightly suite (they take 5-10 minutes each) 
