@@ -388,15 +388,18 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
      * 
      * @return true, if key+column combination MAY present in this file. false - definitely not 
      */
-    public boolean mayPresent(DecoratedKey key, byte[] name)
+    public boolean mayPresent(String key, byte[] name)
     {
         if (!columnBloom)
             return true;
         
-        int capacity = key.key.length()*2+name.length;
-        ByteBuffer bb = ByteBuffer.allocate(capacity);
+        boolean may = bf.isPresent(key, name);
         
-        bb = BloomFilter.toByteBuffer(key.key, bb);
+        // TODO remove after tests pass
+        int capacity = key.length()*2+name.length;
+        ByteBuffer bb = ByteBuffer.allocate(capacity); // this alloc is evil
+        
+        bb = BloomFilter.toByteBuffer(key, bb);
         
         bb.position(bb.limit()).limit(capacity);
         
@@ -406,7 +409,9 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         
         bb.flip();
         
-        return bf.isPresent(bb);
+        assert may == bf.isPresent(bb); // TODO remove after tests pass
+        
+        return may;
     }
     
     /**

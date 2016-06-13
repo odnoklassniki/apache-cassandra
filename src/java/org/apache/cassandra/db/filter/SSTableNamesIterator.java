@@ -50,7 +50,6 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator
         assert columnNames != null;
         this.columns = columnNames;
 
-        DecoratedKey decoratedKey = ssTable.getPartitioner().decorateKey(key);
         List<byte[]> filteredColumnNames = new ArrayList<byte[]>(columnNames.size());
         
         if (ssTable.isColumnBloom())
@@ -58,17 +57,15 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator
             // filtering early by key + column bloom filter
             for (byte[] name : columnNames)
             {
-                if (ssTable.mayPresent(decoratedKey, name))
+                if (ssTable.mayPresent(key, name))
                 {
                     filteredColumnNames.add(name);
                 }
             }
             if (filteredColumnNames.isEmpty())
             {
-                if (!ssTable.mayPresent(decoratedKey, BloomFilterWriter.MARKEDFORDELETE))
+                if (!ssTable.mayPresent(key, BloomFilterWriter.MARKEDFORDELETE))
                 {
-                    if (logger.isDebugEnabled())
-                        logger.debug("Read avoided by bloom columns filter from "+ssTable.getFilename());
                     ssTable.getBloomFilterTracker().addColumnNegativeCount();
                     return;
                 }
@@ -76,6 +73,7 @@ public class SSTableNamesIterator extends SimpleAbstractColumnIterator
             ssTable.getBloomFilterTracker().addColumnReadsCount();
         }
 
+        DecoratedKey decoratedKey = ssTable.getPartitioner().decorateKey(key);
         FileDataInput file = ssTable.getFileDataInput(decoratedKey, DatabaseDescriptor.getIndexedReadBufferSizeInKB() * 1024);
         if (file == null)
             return;

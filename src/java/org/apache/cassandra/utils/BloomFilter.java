@@ -26,6 +26,8 @@ import org.apache.cassandra.utils.obs.OpenBitSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.sun.jna.ptr.ByteByReference;
+
 public class BloomFilter extends Filter
 {
     private static final Logger logger = LoggerFactory.getLogger(BloomFilter.class);
@@ -34,8 +36,6 @@ public class BloomFilter extends Filter
     static ICompactSerializer2<BloomFilter> serializerWithEC_ = new BloomFilterWithElementCountSerializer();
 
     public OpenBitSet bitset;
-    
-    private ByteBuffer strBuffer;
     
     private long elementCount;
 
@@ -135,16 +135,23 @@ public class BloomFilter extends Filter
 
     static long[] getHashBuckets(String key, int hashCount, long max)
     {
-        return getHashBuckets(toByteBuffer(key, null), hashCount, max);
+        return getHashBuckets(toByteBuffer(key, (ByteBuffer) null), hashCount, max);
     }
     
     public void add(ByteBuffer key)
     {
         elementCount++;
         
-        for (long bucketIndex : getHashBuckets(key))
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64(key, key.position(), key.remaining(), 0L);
+        final long hash2 = MurmurHash.hash64(key, key.position(), key.remaining(), hash1);
+        long[] buckets = getHashBuckets(key); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
         {
+            long bucketIndex = Math.abs(hash1 % max);
+            hash1+=hash2;
             bitset.set(bucketIndex);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
         }
     }
 
@@ -158,43 +165,123 @@ public class BloomFilter extends Filter
     
     public boolean isPresent(ByteBuffer key)
     {
-      for (long bucketIndex : getHashBuckets(key))
-      {
-          if (!bitset.get(bucketIndex))
-          {
-              return false;
-          }
-      }
-      return true;
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64(key, key.position(), key.remaining(), 0L);
+        final long hash2 = MurmurHash.hash64(key, key.position(), key.remaining(), hash1);
+        long[] buckets = getHashBuckets(key); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
+        {
+            long bucketIndex = Math.abs(hash1 % max);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
+            if (!bitset.get(bucketIndex))
+            {
+                return false;
+            }
+            hash1+=hash2;
+        }
+
+        return true;
     }
     
     public void add(byte[] key)
     {
-        add(ByteBuffer.wrap(key));
+        elementCount++;
+        
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64u(key, 0, key.length, 0L);
+        final long hash2 = MurmurHash.hash64u(key, 0, key.length, hash1);
+        long[] buckets = getHashBuckets(ByteBuffer.wrap(key)); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
+        {
+            long bucketIndex = Math.abs(hash1 % max);
+            hash1+=hash2;
+            bitset.set(bucketIndex);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
+        }
     }
     
     public boolean isPresent(byte[] key)
     {
-        return isPresent(ByteBuffer.wrap(key));
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64u(key, 0, key.length, 0L);
+        final long hash2 = MurmurHash.hash64u(key, 0, key.length, hash1);
+        long[] buckets = getHashBuckets(ByteBuffer.wrap(key)); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
+        {
+            long bucketIndex = Math.abs(hash1 % max);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
+            if (!bitset.get(bucketIndex))
+            {
+                return false;
+            }
+            hash1+=hash2;
+        }
+
+        return true;
     }
 
     public void add(String key)
     {
-        add(toBB(key));
+        elementCount++;
+        
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64u(key, 0L);
+        final long hash2 = MurmurHash.hash64u(key, hash1);
+        long[] buckets = getHashBuckets(toByteBuffer(key, (ByteBuffer) null)); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
+        {
+            long bucketIndex = Math.abs(hash1 % max);
+            hash1+=hash2;
+            bitset.set(bucketIndex);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
+        }
     }
     
+    public void add(String key, byte[] column)
+    {
+        elementCount++;
+        
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64u(key, column, 0L);
+        final long hash2 = MurmurHash.hash64u(key, column, hash1);
+        long[] buckets = getHashBuckets(toByteBuffer(key, column)); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
+        {
+            long bucketIndex = Math.abs(hash1 % max);
+            hash1+=hash2;
+            bitset.set(bucketIndex);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
+        }
+    }
+
     /**
      * 
      */
     public boolean isPresent(String key)
     {
-        // cannot use shared byte buffer here, because calls here are highly concurrent
-        return isPresent(toByteBuffer(key,null));
+        return isPresent(key, ByteBufferUtil.EMPTY_BYTES);
     }
-    
-    private ByteBuffer toBB(String s)
+
+    public boolean isPresent(String key, byte[] column)
     {
-        return this.strBuffer=toByteBuffer(s,strBuffer);
+        final long max = buckets();
+        long hash1 = MurmurHash.hash64u(key, column, 0L);
+        final long hash2 = MurmurHash.hash64u(key, column, hash1);
+        long[] buckets = getHashBuckets(toByteBuffer(key, column)); // TODO remove
+        for (int i = 0; i < hashCount; ++i)
+        {
+            long bucketIndex = Math.abs(hash1 % max);
+            assert bucketIndex == buckets[i] : String.format("bloom mismatch: %s != %s at %s",bucketIndex,buckets[i],i); // TODO remove
+            if (!bitset.get(bucketIndex))
+            {
+                assert !isPresent(toByteBuffer(key,column)); // TODO remove 
+                return false;
+            }
+            hash1+=hash2;
+        }
+
+        return true;
+
     }
     
     public static ByteBuffer toByteBuffer(String s, ByteBuffer byteBuffer)
@@ -221,6 +308,14 @@ public class BloomFilter extends Filter
         byteBuffer.limit(strLen).position(0);
         
         return byteBuffer;
+    }
+    
+    private ByteBuffer toByteBuffer(String key, byte[] name) {
+        ByteBuffer bb = toByteBuffer(key, ByteBuffer.allocate(key.length()*2+name.length));
+        
+        bb.position(bb.limit()).limit(bb.capacity());
+        
+        return (ByteBuffer) bb.put(name).flip();
     }
 
     public void clear()

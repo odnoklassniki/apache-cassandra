@@ -92,9 +92,6 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
         if (collectedCount>=limit)
             return emptyColumnIterator; // we already found all columns in memtable
          
-        if (decoratedKey == null)
-            decoratedKey = sstable.getPartitioner().decorateKey(key);
-        
         Iterator<byte[]> it = names.iterator();
         while (collectedCount<limit && it.hasNext())
         {
@@ -104,7 +101,7 @@ public class ColumnsMayExistQueryFilter extends QueryFilter
                 continue;
             
             // did not found it previously. inspecting sstable bloom filter
-            if (sstable.mayPresent(decoratedKey, name))
+            if (sstable.mayPresent(key, name))
             {
                 collector.collect(name);
                 collectedCount++;

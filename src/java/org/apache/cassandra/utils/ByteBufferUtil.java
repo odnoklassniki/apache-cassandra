@@ -75,6 +75,7 @@ import org.apache.commons.lang.ArrayUtils;
 public class ByteBufferUtil
 {
     public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(ArrayUtils.EMPTY_BYTE_ARRAY);
+    public static final byte[] EMPTY_BYTES = new byte[0];
     private static final Charset UTF_8 = Charset.forName("UTF-8");
 
     public static int compareUnsigned(ByteBuffer o1, ByteBuffer o2)

@@ -32,7 +32,6 @@ public class BloomFilterWriter implements IColumnNameObserver
     
     private final String filterFilename;
     private BloomFilter bf;
-    private ByteBuffer bb;
     private final boolean bloomColumns;
     private long keyCount;
     private long estimatedKeyCount;
@@ -46,7 +45,6 @@ public class BloomFilterWriter implements IColumnNameObserver
         this.filterFilename = filterFilename;
         this.bloomColumns = bloomColumns;
         
-        this.bb = ByteBuffer.allocate(512);
         this.estimatedKeyCount = keyCount;
         
     }
@@ -73,62 +71,25 @@ public class BloomFilterWriter implements IColumnNameObserver
     @Override
     public void add(DecoratedKey<?> key, byte[] name)
     {
-        assert bloomColumns : "This method is unneeded extra load for keys only index. Plz dont callit";
+        assert bloomColumns : "This method makes extra load for keys only index. Plz dont callit";
     
-        bb.clear();
-        
-        bb = BloomFilter.toByteBuffer(key.key, bb);
-        
-        bb.position(bb.limit()).limit(bb.capacity());
-        
-        ensureRemaining(name.length);
-        
-        bb.put(name).flip();
-        
-        bf().add(bb);
-        
-        if (logger.isDebugEnabled()) {
-            logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
-        }
+        bf().add(key.key,name);
         
     }
     
     @Override
     public void add(DecoratedKey<?> key, ColumnFamily cf)
     {
-        bb = BloomFilter.toByteBuffer(key.key, bb);
-        
-        int keyPosition = bb.limit();
         
         SortedSet<byte[]> columns = cf.getColumnNames();
         for (byte[] bs : columns) {
-            bb.limit(bb.capacity()).position(keyPosition);
-            
-            ensureRemaining(bs.length);
-            
-            bb.put(bs).flip();
-            
-            
-            bf().add(bb);
-            
-            if (logger.isDebugEnabled())
-            {
-                logger.debug("Adding bloom column:"+FBUtilities.bytesToHex(Arrays.copyOf(bb.array(),bb.limit())));
-            }
+            bf().add(key.key,bs);
         }
         
         if (cf.isMarkedForDelete())
             add(key,MARKEDFORDELETE);
     }
     
-    private void ensureRemaining(int length)
-    {
-        if (bb.remaining()<length)
-        {
-            bb = ByteBuffer.allocate(bb.capacity()+length*2).put((ByteBuffer) bb.flip());
-        }
-    }
-
     public void add(DecoratedKey<?> key)
     {
         bf().add(key.key);
