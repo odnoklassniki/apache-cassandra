@@ -168,8 +168,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
 
     public void addBootstrapSource(InetAddress s, String table)
     {
-        if (logger_.isDebugEnabled())
-            logger_.debug(String.format("Added %s/%s as a bootstrap source", s, table));
+        logger_.info(String.format("Added %s/%s as a bootstrap source", s, table));
+
         bootstrapSet.put(s, table);
     }
 
@@ -179,8 +179,8 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
             bootstrapSet.removeAll(s);
         else
             bootstrapSet.remove(s, table);
-        if (logger_.isDebugEnabled())
-            logger_.debug(String.format("Removed %s/%s as a bootstrap source; remaining is [%s]", s, table == null ? "<ALL>" : table, StringUtils.join(bootstrapSet.keySet(), ", ")));
+
+        logger_.info(String.format("Removed %s/%s as a bootstrap source; remaining is [%s]", s, table == null ? "<ALL>" : table, StringUtils.join(bootstrapSet.keySet(), ", ")));
 
         if (bootstrapSet.isEmpty())
         {
@@ -435,30 +435,37 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                     throw new UnsupportedOperationException("Cannnot replace a token for a Live node... ");
                 setMode("Joining: Replacing a node with token: " + token, true);
             }
-
-            startBootstrap(token);
-            // don't finish startup (enabling thrift) until after bootstrap is done
-            while (isBootstrapMode)
-            {
-                try
+            
+            if ( !Boolean.valueOf(System.getProperty("cassandra.skip.streaming", "false")) ) {
+                
+                startBootstrap(token);
+                // don't finish startup (enabling thrift) until after bootstrap is done
+                while (isBootstrapMode)
                 {
-                    Thread.sleep(100);
+                    try
+                    {
+                        Thread.sleep(100);
+                    }
+                    catch (InterruptedException e)
+                    {
+                        throw new AssertionError(e);
+                    }
                 }
-                catch (InterruptedException e)
-                {
-                    throw new AssertionError(e);
-                }
-            }
 
-            if (DatabaseDescriptor.isManualBootstrapComplete()){
-                logger_.info("Bootstrap/move data retrieval completed, waiting manual resume before complete and join ring. Resume with nodetool resumebootstrap.");
-                try {
-                    this.wait();
-                } catch (InterruptedException e) {
-                    throw new AssertionError(e);
+                if (DatabaseDescriptor.isManualBootstrapComplete()){
+                    logger_.info("Bootstrap/move data retrieval completed, waiting manual resume before complete and join ring. Resume with nodetool resumebootstrap.");
+                    try {
+                        this.wait();
+                    } catch (InterruptedException e) {
+                        throw new AssertionError(e);
+                    }
+
                 }
                 
+            } else {
+                finishBootstrapping();
             }
+            
             SystemTable.setBootstrapped(true);
             setToken(getLocalToken());
 

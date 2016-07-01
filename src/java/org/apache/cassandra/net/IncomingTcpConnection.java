@@ -39,14 +39,22 @@ public class IncomingTcpConnection extends Thread
         assert socket != null;
         this.socket = socket;
     }
+    
+    @Override
+    public void run() {
+        try {
+            runMayThrow();
+        } catch (Throwable e) {
+            logger.error("Unexpected error on incoming connection handler "+socket,e);
+        }
+    };
 
     /**
      * A new connection will either stream or message for its entire lifetime: because streaming
      * bypasses the InputStream implementations to use sendFile, we cannot begin buffering until
      * we've determined the type of the connection.
      */
-    @Override
-    public void run()
+    public void runMayThrow()
     {
         DataInputStream input;
         boolean isStream;

@@ -558,6 +558,9 @@ public class MessagingService
                 {
                     throw new RuntimeException(e);
                 }
+                catch (Throwable e) {
+                    logger_.error("Unexpected error ",e);
+                }
             }
         }
         

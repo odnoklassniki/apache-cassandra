@@ -124,7 +124,8 @@ public class IncomingStreamReader
                     rateControlledBytes+=MEGABIT_BYTES;
                 }
             }
-            logger.debug("Receiving stream: finished reading chunk, awaiting more");
+            if (logger.isDebugEnabled())
+                logger.debug("Receiving stream: finished reading chunk, awaiting more for "+targetFile);
         }
         catch (IOException ex)
         {
@@ -133,7 +134,7 @@ public class IncomingStreamReader
             handleStreamCompletion(remoteAddress.getAddress());
             /* Delete the orphaned file. */
             targetFile.delete();
-            logger.debug("Receiving stream: recovering from IO error");
+            logger.debug("Receiving stream: recovering from IO error",ex);
             throw ex;
         }
         finally
