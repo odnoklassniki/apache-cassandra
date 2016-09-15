@@ -39,6 +39,7 @@ import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 
 import org.apache.cassandra.concurrent.JMXEnabledThreadPoolExecutor;
@@ -384,6 +385,26 @@ public class StorageService implements IEndPointStateChangeSubscriber, StorageSe
                 && !SystemTable.isBootstrapped())
             throw new UnsupportedOperationException("This node will not auto bootstrap/replace because it is configured to be a seed node.");
 
+//      we don't want to allow node with tables with RF == 1 to join the cluster
+//      as most probably this is missconfiguration copypasted from test environment
+        if(DatabaseDescriptor.isRFOneForMultyNodeDisabled()) 
+        {
+            Set<InetAddress> c = Gossiper.instance.getLiveMembers();
+            if(c != null && c.size() > 1) 
+            {
+                for (String table : DatabaseDescriptor.getNonSystemTables())
+                {
+                    if(DatabaseDescriptor.getReplicationFactor(table) == 1) 
+                    {
+                        throw new ConfigurationException("Joining to multy-node cluster is disabled due to ReplicationFactor is set to 1 for table ["+table+"] and -DRFOneForMultyNodeDisabled=false is NOT passed to JVM");
+                    }
+                }
+            }
+        } else {
+            logger_.info("Check for joining cluster for nodes with tables configured to have ReplicationFactor = 1 is Disabled.");
+        }
+        
+        
         InetAddress current = null;
         if (DatabaseDescriptor.isAutoBootstrap()
             && !(DatabaseDescriptor.getSeeds().contains(FBUtilities.getLocalAddress()) || SystemTable.isBootstrapped()))

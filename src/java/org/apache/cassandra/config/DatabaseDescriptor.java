@@ -229,6 +229,9 @@ public class DatabaseDescriptor
 
     public static final int DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS = 0;
     public static final int DEFAULT_KEY_CACHE_SAVE_PERIOD_IN_SECONDS = 0;
+    
+    private static boolean rfOneForMultyNodeDisabled = true;
+    
 
     public static File getSerializedRowCachePath(String ksName, String cfName)
     {
@@ -893,6 +896,8 @@ public class DatabaseDescriptor
             
             /* Init maintenance manager **/
             readMaintenanceManagerConfig(xmlUtils);
+            
+            rfOneForMultyNodeDisabled = Boolean.valueOf(System.getProperty("cassandra.RFOneForMultyNodeDisabled", "true"));
         }
         catch (UnknownHostException e)
         {
@@ -2039,4 +2044,18 @@ public class DatabaseDescriptor
         hintLogBatchBytes = newsize;
     }
 
+    /**
+     * Returns <code>true</code> if joining cluster is disabled for nodes with configuration containing
+     * tables with replication factor set to 1, as we assume this is missconfiguration 
+     * copypasted from testing environment.
+     * To set this field use JVM parameter <code>-Dcassandra.RFOneForMultyNodeDisabled=false</code>
+     * @return
+     */
+    public static boolean isRFOneForMultyNodeDisabled() {
+        return rfOneForMultyNodeDisabled;
+    }
+    
+    public static void setRfOneForMultyNodeDisabled(boolean disabled) {
+        rfOneForMultyNodeDisabled = disabled;
+    }
 }
