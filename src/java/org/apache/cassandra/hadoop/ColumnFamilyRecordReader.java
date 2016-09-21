@@ -33,6 +33,7 @@ import com.google.common.collect.AbstractIterator;
 
 import org.apache.cassandra.db.IColumn;
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.Types;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.thrift.*;
 import org.apache.cassandra.utils.FBUtilities;
@@ -122,8 +123,8 @@ public class ColumnFamilyRecordReader extends RecordReader<String, SortedMap<byt
                 socket.open();
                 partitioner = FBUtilities.newPartitioner(client.describe_partitioner());
                 Map<String, String> info = client.describe_keyspace(keyspace).get(cfName);
-                comparator = FBUtilities.getComparator(info.get("CompareWith"));
-                subComparator = FBUtilities.getComparator(info.get("CompareSubcolumnsWith"));
+                comparator = Types.get(info.get("CompareWith"));
+                subComparator = Types.get(info.get("CompareSubcolumnsWith"));
             }
             catch (TException e)
             {

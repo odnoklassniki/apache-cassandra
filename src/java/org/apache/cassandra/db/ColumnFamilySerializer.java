@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.util.Collection;
 
 import org.apache.cassandra.db.marshal.AbstractType;
+import org.apache.cassandra.db.marshal.Types;
 import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.io.SSTableReader;
 import org.apache.cassandra.io.util.CalcSizeOutput;
@@ -138,18 +139,7 @@ public class ColumnFamilySerializer implements ICompactSerializer2<ColumnFamily>
             return null;
         }
 
-        try
-        {
-            return (AbstractType)Class.forName(className).getConstructor().newInstance();
-        }
-        catch (ClassNotFoundException e)
-        {
-            throw new RuntimeException("Unable to load comparator class '" + className + "'.  probably this means you have obsolete sstables lying around", e);
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
+        return Types.get( className );
     }
 
     public ColumnFamily deserializeFromSSTableNoColumns(String name, String type, AbstractType comparator, AbstractType subComparator, DataInput input) throws IOException

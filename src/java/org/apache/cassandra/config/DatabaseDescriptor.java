@@ -57,6 +57,7 @@ import org.apache.cassandra.db.hints.HintLog;
 import org.apache.cassandra.db.hints.HintLogHandoffManager;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
+import org.apache.cassandra.db.marshal.Types;
 import org.apache.cassandra.db.proc.IRowProcessor;
 import org.apache.cassandra.dht.IPartitioner;
 import org.apache.cassandra.dht.OdklDomainPartitioner;
@@ -844,10 +845,11 @@ public class DatabaseDescriptor
             // Hardcoded system tables
             KSMetaData systemMeta = new KSMetaData(Table.SYSTEM_TABLE, null, -1, null);
             tables.put(Table.SYSTEM_TABLE, systemMeta);
+            AbstractType bytesType = Types.register( new BytesType() );
             systemMeta.cfMetaData.put(SystemTable.STATUS_CF, new CFMetaData(Table.SYSTEM_TABLE,
                                                                             SystemTable.STATUS_CF,
                                                                             "Standard",
-                                                                            new BytesType(),
+                                                                            bytesType,
                                                                             null,
                                                                             false,
                                                                             "persistent metadata for the local node",
@@ -865,8 +867,8 @@ public class DatabaseDescriptor
             systemMeta.cfMetaData.put(HintedHandOffManager.HINTS_CF, new CFMetaData(Table.SYSTEM_TABLE,
                                                                                     HintedHandOffManager.HINTS_CF,
                                                                                     "Super",
-                                                                                    new BytesType(),
-                                                                                    new BytesType(),
+                                                                                    bytesType,
+                                                                                    bytesType,
                                                                                     false,
                                                                                     "hinted handoff data",
                                                                                     0.0,
@@ -1413,10 +1415,16 @@ public class DatabaseDescriptor
             ex.initCause(e);
             throw ex;
         }
+        
+        if ( compareWith == null ) {
+            return Types.register( new BytesType() );
+        }
 
+        String className = compareWith.contains(".") ? compareWith : "org.apache.cassandra.db.marshal." + compareWith;
+        
         try
         {
-            return FBUtilities.getComparator(compareWith);
+            return Types.register( Types.get( className ) );
         }
         catch (Exception e)
         {

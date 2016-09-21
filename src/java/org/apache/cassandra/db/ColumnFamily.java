@@ -375,13 +375,13 @@ public class ColumnFamily implements IColumnContainer
 
     String getComparatorName()
     {
-        return getComparator().getClass().getCanonicalName();
+        return getComparator().canonicalName;
     }
 
     String getSubComparatorName()
     {
         AbstractType subcolumnComparator = getSubComparator();
-        return subcolumnComparator == null ? "" : subcolumnComparator.getClass().getCanonicalName();
+        return subcolumnComparator == null ? "" : subcolumnComparator.canonicalName;
     }
 
     public static AbstractType getComparatorFor(String table, String columnFamilyName, byte[] superColumnName)

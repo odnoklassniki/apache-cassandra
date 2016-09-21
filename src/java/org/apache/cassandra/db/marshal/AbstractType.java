@@ -36,6 +36,9 @@ import org.apache.cassandra.db.IColumn;
  */
 public abstract class AbstractType implements Comparator<byte[]>
 {
+    // used in serialization of column families
+    public final String canonicalName = getClass().getCanonicalName();
+    
     /** get a string representation of the bytes suitable for log messages */
     public abstract String getString(byte[] bytes);
 
@@ -93,5 +96,5 @@ public abstract class AbstractType implements Comparator<byte[]>
             return false;
         else
             return obj.getClass().getName().equals(getClass().getName());
-}
+    }
 }

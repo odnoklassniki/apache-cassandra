@@ -538,28 +538,6 @@ public class FBUtilities
         }
     }
 
-    public static AbstractType getComparator(String compareWith)
-    {
-        Class<? extends AbstractType> typeClass;
-        try
-        {
-            if (compareWith == null)
-            {
-                typeClass = BytesType.class;
-            }
-            else
-            {
-                String className = compareWith.contains(".") ? compareWith : "org.apache.cassandra.db.marshal." + compareWith;
-                typeClass = (Class<? extends AbstractType>)Class.forName(className);
-            }
-            return typeClass.getConstructor().newInstance();
-        }
-        catch (Exception e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
     /**
      * Used to get access to protected/private field of the specified class
      * @param klass - name of the class
