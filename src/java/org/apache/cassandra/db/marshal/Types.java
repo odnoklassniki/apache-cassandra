@@ -18,7 +18,7 @@ public class Types
 
 
     public static synchronized AbstractType register(AbstractType type) {
-        AbstractType t = types.get( type );
+        AbstractType t = types.get( type.canonicalName );
         if ( t != null )
             return t;
         
