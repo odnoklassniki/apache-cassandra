@@ -50,9 +50,6 @@ public abstract class Filter
      * @return 
      * @return
      */
-    public static ICompactSerializer2<BloomFilter> getSerializer()
-    {
-        return BloomFilter.serializer();
-    }
+    abstract ICompactSerializer2<BloomFilter> getSerializer();
     
 }

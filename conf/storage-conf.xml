@@ -419,6 +419,24 @@
    -->
   <DiskAccessMode>auto</DiskAccessMode>
 
+  <!-- 
+   ~ MM: Access mode used for bloom filters. 
+   ~ Stock cassandra reads bloom filter files conventionally into java heap memory, which could
+   ~ lead to enourmous heap sizes occupied by them, especially if you use bloom by columns mode.
+   ~ This heap occupation grows as fast as your data per mode grow, which leads to operational burden
+   ~ increasing java heap from time to time.
+   ~ Stock C*>= 2.0 has the option to store bloom filters offheap.
+   ~ We have a new mode for them - mmap+mlock, which maps bloom filter files directly into java process memory,
+   ~ so disk cache of these files become the memory we read bloom filter data from. This is, obviuosly
+   ~ most efficient way of working with large files. Unlike data files, bloom filter files are mlocked, to make
+   ~ sure all data is in RAM and will not suffer from accidental page fault hiccups
+   ~
+   ~ standard = This is the default behavior, 
+   ~ mmap = Map+mlock bloom filters to memory. !!! ACTIVATING THIS MODE REQUIRES TO LOWER YOUR HEAP SIZE to make room for bloom filters
+   ~        in disk cache .
+   -->
+  <FilterAccessMode>standard</FilterAccessMode>
+  
   <!--
    ~ Size of compacted row above which to log a warning.  If compacted
    ~ rows do not fit in memory, Cassandra will crash.  (This is explained

@@ -16,16 +16,6 @@ import java.io.IOException;
 public class BloomFilterWithElementCountSerializer extends
         BloomFilterSerializer
 {
-    /* (non-Javadoc)
-     * @see org.apache.cassandra.utils.BloomFilterSerializer#serialize(org.apache.cassandra.utils.BloomFilter, java.io.DataOutput)
-     */
-    @Override
-    public void serialize(BloomFilter bf, DataOutput dos) throws IOException
-    {
-        dos.writeLong(bf.getElementCount());
-
-        super.serialize(bf, dos);
-    }
     
     /* (non-Javadoc)
      * @see org.apache.cassandra.utils.BloomFilterSerializer#deserialize(java.io.DataInput)
@@ -40,12 +30,16 @@ public class BloomFilterWithElementCountSerializer extends
         return bf;
     }
     
-    /* (non-Javadoc)
-     * @see org.apache.cassandra.utils.BloomFilterSerializer#serializeSize(org.apache.cassandra.utils.BloomFilter)
-     */
     @Override
-    public long serializeSize(BloomFilter bf)
+    public long headerSize( long words )
     {
-        return super.serializeSize(bf)+8;
+        return super.headerSize( words ) + 8;
+    }
+
+    protected void serializeHeader( BloomFilter bf, DataOutput dos ) throws IOException
+    {
+        dos.writeLong(bf.getElementCount());
+        
+        super.serializeHeader( bf, dos );
     }
 }

@@ -45,7 +45,7 @@ public class SSTableWriter extends SSTable
     
     
 
-    public SSTableWriter(String filename, long keyCount, IPartitioner partitioner) throws IOException
+    public SSTableWriter(String filename, long keyCount, long columnCount, IPartitioner partitioner) throws IOException
     {
         super(filename, partitioner);
         indexSummary = new IndexSummary();
@@ -53,10 +53,12 @@ public class SSTableWriter extends SSTable
         dataFile.setSkipCache(true);
         indexFile = new BufferedRandomAccessFile(indexFilename(), "rw", (int)(DatabaseDescriptor.getFlushIndexBufferSizeInMB() * 1024 * 1024));
         
-        bfw = new BloomFilterWriter(filterFilename(), keyCount, DatabaseDescriptor.getBloomColumns(getTableName(), getColumnFamilyName()));
+        boolean bloomColumns = DatabaseDescriptor.getBloomColumns(getTableName(), getColumnFamilyName());
+        
+        bfw = new BloomFilterWriter(filterFilename(),  keyCount, columnCount, bloomColumns);
     }
 
-    public SSTableWriter(String filename, long keyCount, IPartitioner partitioner, boolean columnBloom) throws IOException
+    public SSTableWriter(String filename, long keyCount, long columnCount, IPartitioner partitioner, boolean columnBloom) throws IOException
     {
         super(filename, partitioner);
         indexSummary = new IndexSummary();
@@ -64,7 +66,7 @@ public class SSTableWriter extends SSTable
         dataFile.setSkipCache(true);
         indexFile = new BufferedRandomAccessFile(indexFilename(), "rw", (int)(DatabaseDescriptor.getFlushIndexBufferSizeInMB() * 1024 * 1024));
         
-        bfw = new BloomFilterWriter(filterFilename(), keyCount, columnBloom );
+        bfw = new BloomFilterWriter(filterFilename(), keyCount, columnCount, columnBloom );
     }
 
     private long beforeAppend(DecoratedKey decoratedKey) throws IOException

@@ -154,12 +154,13 @@ public class Memtable implements Comparable<Memtable>, IFlushable
 
     private SSTableReader writeSortedContents() 
     {
+        BloomFilterWriter bloomFilterWriter = null;
         try {
             logger.info("Writing " + this);
-            SSTableWriter writer = new SSTableWriter(cfs.getFlushPath(), columnFamilies.size(), StorageService.getPartitioner());
+            SSTableWriter writer = new SSTableWriter(cfs.getFlushPath(), columnFamilies.size(),getCurrentOperations(), StorageService.getPartitioner());
             
             boolean bloomColumns = writer.getBloomFilterWriter().isBloomColumns();
-            BloomFilterWriter bloomFilterWriter = writer.getBloomFilterWriter();
+            bloomFilterWriter = writer.getBloomFilterWriter();
             
             IRowProcessor rowProc = null;
             if (cfs.metadata.rowProcessors!=null)
@@ -170,9 +171,6 @@ public class Memtable implements Comparable<Memtable>, IFlushable
                     rowProc = null;
             }
             
-            if (bloomColumns)
-                bloomFilterWriter.setEstimatedColumnCount(getCurrentOperations());
-
             DataOutputBuffer buffer = new DataOutputBuffer();
             for (Map.Entry<DecoratedKey, ColumnFamily> entry : columnFamilies.entrySet())
             {
@@ -202,6 +200,8 @@ public class Memtable implements Comparable<Memtable>, IFlushable
                                       ssTable.getFilename(), new File(ssTable.getFilename()).length()));
             return ssTable;
         } catch (IOException e) {
+            if ( bloomFilterWriter != null )
+                bloomFilterWriter.getFilter().close();
             throw new FSWriteError(e);
         }
     }

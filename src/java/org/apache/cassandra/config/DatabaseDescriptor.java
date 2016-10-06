@@ -83,6 +83,8 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
 
+import com.google.common.annotations.VisibleForTesting;
+
 public class DatabaseDescriptor
 {
     private static Logger logger = Logger.getLogger(DatabaseDescriptor.class);
@@ -199,6 +201,7 @@ public class DatabaseDescriptor
 
     private static DiskAccessMode diskAccessMode;
     private static DiskAccessMode indexAccessMode;
+    private static DiskAccessMode filterAccessMode;
     private static boolean diskRandomHint = false;
 
     private static boolean snapshotBeforeCompaction;
@@ -408,6 +411,18 @@ public class DatabaseDescriptor
             {
                 indexAccessMode = diskAccessMode;
                 logger.info("DiskAccessMode is " + diskAccessMode + ", indexAccessMode is " + indexAccessMode );
+            }
+
+            String filterModeRaw = xmlUtils.getNodeValue( "/Storage/FilterAccessMode" );
+            try {
+                filterAccessMode = filterModeRaw == null ? DiskAccessMode.standard : DiskAccessMode.valueOf( filterModeRaw );
+                if ( filterAccessMode != DiskAccessMode.standard && filterAccessMode != DiskAccessMode.mmap )
+                    throw new IllegalArgumentException();
+
+                logger.info( "FilterAccessMode is " + filterAccessMode + "" );
+            } catch ( IllegalArgumentException e ) {
+                filterAccessMode = DiskAccessMode.standard;
+                throw new ConfigurationException( "FilterAccessMode must be either 'mmap' or 'standard'" );
             }
 
             /* Authentication and authorization backend, implementing IAuthenticator */
@@ -1973,6 +1988,17 @@ public class DatabaseDescriptor
     public static DiskAccessMode getIndexAccessMode()
     {
         return indexAccessMode;
+    }
+
+    public static DiskAccessMode getFilterAccessMode()
+    {
+        return filterAccessMode;
+    }
+    
+    @VisibleForTesting
+    public static void setFilterAccessMode( DiskAccessMode filterAccessMode )
+    {
+        DatabaseDescriptor.filterAccessMode = filterAccessMode;
     }
 
     public static double getFlushDataBufferSizeInMB()

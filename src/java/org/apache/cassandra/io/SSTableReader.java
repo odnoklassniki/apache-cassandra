@@ -29,6 +29,8 @@ import java.util.*;
 
 import org.apache.log4j.Logger;
 
+import sun.nio.ch.DirectBuffer;
+
 import org.apache.cassandra.cache.InstrumentedCache;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
@@ -42,8 +44,6 @@ import org.apache.cassandra.utils.BloomFilter;
 import org.apache.cassandra.utils.CLibrary;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.cassandra.utils.Pair;
-
-import sun.nio.ch.DirectBuffer;
 
 /**
  * SSTableReaders are open()ed by Table.onStart; after that they are created by SSTableWriter.renameAndOpen.
@@ -136,7 +136,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         sstable.setTrackedBy(tracker);
         logger.info("Opening " + dataFileName);
         sstable.loadIndexAndCache(savedKeyCacheKeys);
-        sstable.loadBloomFilter();
+        sstable.loadBloomFilter( );
 
         if (logger.isDebugEnabled())
             logger.debug("INDEX LOAD TIME for "  + dataFileName + ": " + (System.currentTimeMillis() - start) + " ms.");
@@ -270,21 +270,9 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         return indexSummary.getIndexPositions().size() * DatabaseDescriptor.getIndexInterval();
     }
 
-    void loadBloomFilter() throws IOException
+    void loadBloomFilter(  ) throws IOException
     {
-        FileInputStream fileInputStream = new FileInputStream(filterFilename());
-        DataInputStream stream = new DataInputStream(new BufferedInputStream(fileInputStream, 128*1024 ));
-        try
-        {
-            bf = BloomFilter.serializerForSSTable().deserialize(stream);
-            assert bf.getElementCount()>0;
-        }
-        finally
-        {
-            CLibrary.trySkipCache( CLibrary.getfd(fileInputStream.getFD()) ,0,0);
-
-            stream.close();
-        }
+        bf = BloomFilter.open(filterFilename( ));
     }
 
     void loadIndexAndCache(Collection<String> keysToLoadInCache) throws IOException
@@ -294,6 +282,7 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
         // a single mmapped segment.
         indexSummary = new IndexSummary();
         BufferedRandomAccessFile input = new BufferedRandomAccessFile(indexFilename(), "r");
+        input.setSkipCache( true );
         try
         {
             if (keyCache != null && keyCache.getCapacity() - keyCache.getSize() < keysToLoadInCache.size())
@@ -597,6 +586,10 @@ public class SSTableReader extends SSTable implements Comparable<SSTableReader>
                 throw new IOException("Unable to create compaction marker");
             }
             phantomReference.deleteOnCleanup();
+            
+            // we want to release memory held by bloom filter as fast as possible,
+            // so cannot wait until GC
+            phantomReference.scheduleBloomFilterClose( DatabaseDescriptor.getRpcTimeout() * 2 );
         } catch (IOException e) {
             throw new FSWriteError(e);
         }

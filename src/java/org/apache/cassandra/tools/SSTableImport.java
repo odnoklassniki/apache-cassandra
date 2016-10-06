@@ -145,20 +145,19 @@ public class SSTableImport
         {
             JSONObject json = (JSONObject)JSONValue.parseWithException(new FileReader(jsonFile));
             
-            SSTableWriter writer = new SSTableWriter(ssTablePath, json.size(), partitioner);
+            long columnCount = 0;
+            for (Object v : json.values())
+            {
+                if ( v instanceof JSONArray )
+                    columnCount += ( (JSONArray) v ).size();
+                else if ( v instanceof JSONObject )
+                    columnCount += ( (JSONObject) v ).size();
+            }
+                
+            SSTableWriter writer = new SSTableWriter(ssTablePath, json.size(), columnCount, partitioner);
             List<DecoratedKey<?>> decoratedKeys = new ArrayList<DecoratedKey<?>>();
             BloomFilterWriter bfw = writer.getBloomFilterWriter();
             boolean bloomColumns = bfw.isBloomColumns();
-            if (bloomColumns)
-            {
-                long columnCount = 0;
-                for (Object v : json.values())
-                {
-                    columnCount+=((JSONArray)v).size();
-                }
-                    
-                bfw.setEstimatedColumnCount(columnCount);
-            }
             
             for (String key : (Set<String>)json.keySet())
                 decoratedKeys.add(partitioner.decorateKey(key));

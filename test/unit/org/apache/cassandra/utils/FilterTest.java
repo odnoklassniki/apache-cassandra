@@ -142,18 +142,4 @@ public class FilterTest
         assert fp_ratio < 1.03 : fp_ratio;
     }
 
-    public static Filter testSerialize(Filter f) throws IOException
-    {
-        f.add("a");
-        DataOutputBuffer out = new DataOutputBuffer();
-        f.getSerializer().serialize((BloomFilter) f, out);
-
-        ByteArrayInputStream in = new ByteArrayInputStream(out.getData(), 0, out.getLength());
-        Filter f2 = f.getSerializer().deserialize(new DataInputStream(in));
-
-        assert f2.isPresent("a");
-        assert !f2.isPresent("b");
-        return f2;
-    }
-
 }

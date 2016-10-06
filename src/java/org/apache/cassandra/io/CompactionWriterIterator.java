@@ -66,7 +66,7 @@ public class CompactionWriterIterator extends CompactionIterator
             return writer;
         
         try {
-            writer = new SSTableWriter(newFilename, expectedBloomFilterSize, StorageService.getPartitioner(),cfs.metadata.bloomColumns);
+            writer = new SSTableWriter(newFilename, expectedBloomFilterSize, 0, StorageService.getPartitioner(),cfs.metadata.bloomColumns);
             if (cfs.metadata.bloomColumns)
                 setColumnNameObserver(writer.getBloomFilterWriter());
             

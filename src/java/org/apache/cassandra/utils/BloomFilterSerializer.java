@@ -26,51 +26,69 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 import org.apache.cassandra.io.ICompactSerializer2;
+import org.apache.cassandra.utils.obs.IBitSet;
 import org.apache.cassandra.utils.obs.OpenBitSet;
 
 public class BloomFilterSerializer implements ICompactSerializer2<BloomFilter>
 {
-    public void serialize(BloomFilter bf, DataOutput dos) throws IOException
+
+    protected void serializeHeader( BloomFilter bf, DataOutput dos ) throws IOException
     {
-        int bitLength = bf.bitset.getNumWords();
-        int pageSize = bf.bitset.getPageSize();
-        int pageCount = bf.bitset.getPageCount();
+        long wordsLength = bf.bitset.sizeInWords();
         
         dos.writeInt(bf.getHashCount());
-        dos.writeInt(bitLength);
-
-        for (int p = 0;p<pageCount;p++)
-        {
-            long[] bits = bf.bitset.getPage(p);
-            for (int i = 0; i < pageSize && bitLength-->0; i++)
-                dos.writeLong(bits[i]);
+        if (wordsLength < Integer.MAX_VALUE ) {
+            dos.writeInt( (int) wordsLength );
+        } else {
+            dos.writeInt(-1);
+            dos.writeLong( wordsLength );
         }
     }
 
+    public void serialize(BloomFilter bf, DataOutput dos) throws IOException
+    {
+        serializeHeader( bf, dos );
+
+        bf.bitset.serialize( dos );
+    }
+    
     public BloomFilter deserialize(DataInput dis) throws IOException
     {
         int hashes = dis.readInt();
         long bitLength = dis.readInt();
-        OpenBitSet bs = new OpenBitSet( bitLength<< 6 );
-        int pageSize = bs.getPageSize();
-        int pageCount = bs.getPageCount();
-        
-        for (int p = 0;p<pageCount;p++)
-        {
-            long[] bits = bs.getPage(p);
-            for (int i = 0; i < pageSize && bitLength-->0; i++)
-                bits[i] = dis.readLong();
+        if (bitLength<0) {
+            bitLength = dis.readLong();
         }
         
+        IBitSet bs = deserializeBitSet( dis, bitLength );
+        
         return new BloomFilter(hashes, bs);
+    }
+
+    protected IBitSet deserializeBitSet( DataInput dis, long bitLength ) throws IOException
+    {
+        OpenBitSet bs = new OpenBitSet( bitLength<< 6 );
+        bs.deserialize( dis );
+        return bs;
     }
     
     public long serializeSize(BloomFilter bf)
     {
-        int bitLength = bf.bitset.getNumWords();
+        // padding to the closest long word boundary
+        long words = bf.bitset.sizeInWords();
 
-        return 4+4+bitLength*8;
+        return serializeSize( words ) ;
     }
+
+    public long serializeSize( long words )
+    {
+        return headerSize( words ) + ( words << 3 );
+    }
+    
+    public long headerSize( long words ) {
+        return words < Integer.MAX_VALUE ? 4 + 4 : 4 + 4/*-1 marker*/ + 8 /* real num */;
+    }
+
 }
 
 

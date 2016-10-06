@@ -96,7 +96,7 @@ public class SSTableUtils
     public static SSTableReader writeRawSSTable(String tablename, String cfname, SortedMap<String, byte[]> entries) throws IOException
     {
         File f = tempSSTableFile(tablename, cfname);
-        SSTableWriter writer = new SSTableWriter(f.getAbsolutePath(), entries.size(), StorageService.getPartitioner());
+        SSTableWriter writer = new SSTableWriter(f.getAbsolutePath(), entries.size(), entries.size()*10, StorageService.getPartitioner());
 
         assert !writer.getBloomFilterWriter().isBloomColumns();
         

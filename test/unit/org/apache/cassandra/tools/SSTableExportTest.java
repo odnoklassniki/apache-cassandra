@@ -50,7 +50,7 @@ public class SSTableExportTest
         ColumnFamily cfamily = ColumnFamily.create("Keyspace1", "Standard1");
         IPartitioner<?> partitioner = DatabaseDescriptor.getPartitioner();
         DataOutputBuffer dob = new DataOutputBuffer();
-        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, partitioner);
+        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, 20, partitioner);
         
         // Add rowA
         cfamily.addColumn(new QueryPath("Standard1", null, "colA".getBytes()), "valA".getBytes(), 1, false);
@@ -88,7 +88,7 @@ public class SSTableExportTest
         ColumnFamily cfamily = ColumnFamily.create("Keyspace1", "Standard1");
         IPartitioner<?> partitioner = DatabaseDescriptor.getPartitioner();
         DataOutputBuffer dob = new DataOutputBuffer();
-        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, partitioner);
+        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, 20, partitioner);
         
         // Add rowA
         cfamily.addColumn(new QueryPath("Standard1", null, "colA".getBytes()), "valA".getBytes(), 1, false);
@@ -138,7 +138,7 @@ public class SSTableExportTest
         ColumnFamily cfamily = ColumnFamily.create("Keyspace1", "Super4");
         IPartitioner<?> partitioner = DatabaseDescriptor.getPartitioner();
         DataOutputBuffer dob = new DataOutputBuffer();
-        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, partitioner);
+        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, 20, partitioner);
         
         // Add rowA
         cfamily.addColumn(new QueryPath("Super4", "superA".getBytes(), "colA".getBytes()), "valA".getBytes(), 1, false);
@@ -185,7 +185,7 @@ public class SSTableExportTest
         ColumnFamily cfamily = ColumnFamily.create("Keyspace1", "Standard1");
         IPartitioner<?> partitioner = DatabaseDescriptor.getPartitioner();
         DataOutputBuffer dob = new DataOutputBuffer();
-        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, partitioner);
+        SSTableWriter writer = new SSTableWriter(tempSS.getPath(), 2, 20, partitioner);
         
         // Add rowA
         cfamily.addColumn(new QueryPath("Standard1", null, "name".getBytes()), "val".getBytes(), 1, false);

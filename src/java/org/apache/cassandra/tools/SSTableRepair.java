@@ -47,7 +47,7 @@ public class SSTableRepair {
         
         String newName = new File(args[2], file.getName()).getCanonicalPath();
         System.out.println("Repairing " + file.getCanonicalPath() + " into " + newName);
-        SSTableWriter writer = new SSTableWriter(newName, 0L, reader.getPartitioner(), false);
+        SSTableWriter writer = new SSTableWriter(newName, 0L, 0l, reader.getPartitioner(), false);
         
         SSTableScanner scanner = reader.getScanner(INPUT_FILE_BUFFER_SIZE);
         int good = 0, bad = 0;

@@ -20,7 +20,7 @@ package org.apache.cassandra.utils.obs;
 /**  A variety of high efficiency bit twiddling routines.
  * @lucene.internal
  */
-final class BitUtil {
+public final class BitUtil {
 
   /** Returns the number of bits set in the long */
   public static int pop(long x) {
@@ -811,5 +811,10 @@ final class BitUtil {
     v++;
     return v;
   }
+
+/** returns the number of 64 bit words it would take to hold numBits */
+public static int bits2words(long numBits) {
+    return (int)(((numBits-1)>>>6)+1);
+}
 
 }
