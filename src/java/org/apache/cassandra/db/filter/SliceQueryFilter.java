@@ -31,7 +31,7 @@ import org.apache.log4j.Logger;
 import org.apache.commons.collections.IteratorUtils;
 import org.apache.commons.collections.comparators.ReverseComparator;
 import org.apache.commons.collections.iterators.ReverseListIterator;
-
+import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.db.*;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.io.SSTableReader;
@@ -104,12 +104,19 @@ public class SliceQueryFilter extends QueryFilter
     public void collectReducedColumns(IColumnContainer container, Iterator<IColumn> reducedColumns, int gcBefore)
     {
         int liveColumns = 0;
+        int totalColumns = 0;
+        
         AbstractType comparator = container.getComparator();
 
         while (reducedColumns.hasNext())
         {
             if (liveColumns >= count)
                 break;
+            
+            if (totalColumns >= DatabaseDescriptor.getReadColumnsLimit()){
+                logger.error("Too many columns read from "+this.path+" ("+key+"), total : "+totalColumns+", live : "+liveColumns+", requested : "+count);
+                return;
+            }
 
             IColumn column = reducedColumns.next();
             if (logger.isDebugEnabled())
@@ -127,10 +134,16 @@ public class SliceQueryFilter extends QueryFilter
             {
                 liveColumns++;
             }
+            totalColumns++;
 
             // but we need to add all non-gc-able columns to the result for read repair:
             if (QueryFilter.isRelevant(column, container, gcBefore))
                 container.addColumn(column);
+        }
+        
+        if (totalColumns > DatabaseDescriptor.getReadColumnsWarning()){
+              logger.warn("Too many columns read from "+this.path+" ("+key+"), total : "+totalColumns+", live : "+liveColumns+", requested : "+count);
+
         }
     }
 }

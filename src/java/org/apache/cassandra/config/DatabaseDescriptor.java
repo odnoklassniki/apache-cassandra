@@ -229,6 +229,10 @@ public class DatabaseDescriptor
     public static int thriftMaxMessageLengthMB = 16;
     public static int thriftFramedTransportSizeMB = 15;
 
+    private static int readColumnsWarning = 10000;
+    private static int readColumnsLimit = 100000;
+
+    
     private final static String STORAGE_CONF_FILE = "storage-conf.xml";
 
     public static final int DEFAULT_ROW_CACHE_SAVE_PERIOD_IN_SECONDS = 0;
@@ -915,6 +919,16 @@ public class DatabaseDescriptor
             readMaintenanceManagerConfig(xmlUtils);
             
             rfOneForMultyNodeDisabled = Boolean.valueOf(System.getProperty("cassandra.RFOneForMultyNodeDisabled", "true"));
+            
+            String readColumnsWarningString = xmlUtils.getNodeValue("/Storage/ReadColumnsWarning");
+            if (readColumnsWarningString != null) {
+                readColumnsWarning = Integer.parseInt(readColumnsWarningString);
+            }
+            
+            String readColumnsLimitString = xmlUtils.getNodeValue("/Storage/ReadColumnsLimit");
+            if (readColumnsLimitString != null) {
+                readColumnsLimit = Integer.parseInt(readColumnsLimitString);
+            }
         }
         catch (UnknownHostException e)
         {
@@ -1584,6 +1598,7 @@ public class DatabaseDescriptor
         return allowedLocations;
     }
   
+    
     public static String getReplaceToken()
     {
         return System.getProperty("cassandra.replace_token", null);
@@ -1618,7 +1633,7 @@ public class DatabaseDescriptor
     }
     
     private static Random consistencyRandom = new Random();
-
+    
     public static boolean getConsistencyCheck()
     {
         if (doConsistencyCheck==1.0f)
@@ -2091,5 +2106,13 @@ public class DatabaseDescriptor
     
     public static void setRfOneForMultyNodeDisabled(boolean disabled) {
         rfOneForMultyNodeDisabled = disabled;
+    }
+    
+    public static int getReadColumnsWarning() {
+        return readColumnsWarning;
+    }
+    
+    public static int getReadColumnsLimit() {
+        return readColumnsLimit;
     }
 }
