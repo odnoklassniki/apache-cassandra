@@ -114,8 +114,7 @@ public class SliceQueryFilter extends QueryFilter
                 break;
             
             if (totalColumns >= DatabaseDescriptor.getReadColumnsLimit()){
-                logger.error("Too many columns read from "+this.path+" ("+key+"), total : "+totalColumns+", live : "+liveColumns+", requested : "+count);
-                return;
+                throw new RuntimeException("Too many columns read from "+this.path+" ("+key+"), total : "+totalColumns+", live : "+liveColumns+", requested : "+count);
             }
 
             IColumn column = reducedColumns.next();
