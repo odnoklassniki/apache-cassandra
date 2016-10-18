@@ -46,7 +46,7 @@ public class BloomFilterWriter implements IColumnNameObserver
         
         this.estimatedElementCount = bloomColumns ? keyCount + columnCount : keyCount;
         
-        this.bf = BloomFilter.create(estimatedElementCount, 15, filterFilename);
+        this.bf = BloomFilter.create(estimatedElementCount, 15);
     }
     
     /* (non-Javadoc)
@@ -102,15 +102,11 @@ public class BloomFilterWriter implements IColumnNameObserver
      */
     public BloomFilter build() throws IOException
     {
-        if ( DatabaseDescriptor.getFilterAccessMode() == DiskAccessMode.standard ) {
-            // bloom filter
-            BufferedRandomAccessFile file = new BufferedRandomAccessFile(filterFilename, "rw", 128*1024);
-            file.setSkipCache(true);
-            BloomFilter.serializerForSSTable().serialize(bf, file);
-            file.close();
-        } else {
-            BloomFilter.serializerForSSTable().serialize(bf, bf.bitset.newDataOutput());
-        }
+        // bloom filter
+        BufferedRandomAccessFile file = new BufferedRandomAccessFile(filterFilename, "rw", 128*1024);
+        file.setSkipCache(true);
+        BloomFilter.serializerForSSTable().serialize(bf, file);
+        file.close();
         
         if (logger.isInfoEnabled())
             logger.info("Written filter "+filterFilename+", with actual elements (estimated elements) counts: "+this.bf.getElementCount()+'('+estimatedElementCount+')' );

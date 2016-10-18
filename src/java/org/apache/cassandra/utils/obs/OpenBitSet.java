@@ -398,11 +398,6 @@ public class OpenBitSet implements IBitSet {
         }
     }
 
-    @Override
-    public DataOutput newDataOutput()
-    {
-        throw new UnsupportedOperationException("Method OpenBitSet.newDataOutput() is not supported");
-    }
 }
 
 

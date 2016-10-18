@@ -65,9 +65,9 @@ public class BloomFilterSerializer implements ICompactSerializer2<BloomFilter>
         return new BloomFilter(hashes, bs);
     }
 
-    protected IBitSet deserializeBitSet( DataInput dis, long bitLength ) throws IOException
+    protected IBitSet deserializeBitSet( DataInput dis, long wordLength ) throws IOException
     {
-        OpenBitSet bs = new OpenBitSet( bitLength<< 6 );
+        OpenBitSet bs = new OpenBitSet( wordLength<< 6 );
         bs.deserialize( dis );
         return bs;
     }

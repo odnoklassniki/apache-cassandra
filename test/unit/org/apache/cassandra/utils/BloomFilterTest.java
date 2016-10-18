@@ -22,14 +22,14 @@ import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.util.Random;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
-import org.apache.cassandra.config.DatabaseDescriptor.DiskAccessMode;
+import org.apache.cassandra.config.DatabaseDescriptor.FilterAccessMode;
 import org.apache.cassandra.db.DecoratedKey;
 import org.apache.cassandra.dht.RandomPartitioner;
 import org.apache.cassandra.io.BloomFilterWriter;
 import org.apache.cassandra.io.util.DataOutputBuffer;
-import org.apache.cassandra.utils.obs.MappedFileBitSet;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -46,7 +46,7 @@ public class BloomFilterTest
     public void clear() throws IOException
     {
         new File("/tmp/ram/filter1.db").delete();
-        bf = BloomFilter.create(FilterTest.ELEMENTS, FilterTest.MAX_FAILURE_RATE, "/tmp/ram/filter1.db");
+        bf = BloomFilter.create(FilterTest.ELEMENTS, FilterTest.MAX_FAILURE_RATE);
     }
     
     @After
@@ -98,7 +98,7 @@ public class BloomFilterTest
         {
             return;
         }
-        BloomFilter bf2 = BloomFilter.create(KeyGenerator.WordGenerator.WORDS / 2, FilterTest.MAX_FAILURE_RATE,"/tmp/filter.db");
+        BloomFilter bf2 = BloomFilter.create(KeyGenerator.WordGenerator.WORDS / 2, FilterTest.MAX_FAILURE_RATE);
         int skipEven = KeyGenerator.WordGenerator.WORDS % 2 == 0 ? 0 : 2;
         FilterTest.testFalsePositives(bf2,
                                       new KeyGenerator.WordGenerator(skipEven, 2),
@@ -123,6 +123,15 @@ public class BloomFilterTest
     @Test
     public void testBloom() throws Exception
     {
+        FilterAccessMode mode = DatabaseDescriptor.getFilterAccessMode();
+        testBloom(FilterAccessMode.standard);
+        testBloom(FilterAccessMode.offheap);
+        DatabaseDescriptor.setFilterAccessMode( mode );
+    }
+
+    private void testBloom(FilterAccessMode mode) throws IOException
+    {
+        DatabaseDescriptor.setFilterAccessMode( mode );
         BloomFilterWriter bw=new BloomFilterWriter("/tmp/ram/filter.db", 100000, 100000, true);
         
         RandomPartitioner p = new RandomPartitioner();
@@ -149,19 +158,15 @@ public class BloomFilterTest
             assert read.isPresent(key.key,FBUtilities.toByteArray(i+2));
         }
         
-        DatabaseDescriptor.setFilterAccessMode( DiskAccessMode.mmap );
+        DatabaseDescriptor.setFilterAccessMode( FilterAccessMode.values()[ mode.ordinal() ^ 1 ] );
 
         read = BloomFilter.open("/tmp/ram/filter.db");
-        
-        assert read.bitset instanceof MappedFileBitSet;
         
         for (int i=1;i<100000;i++)
         {
             DecoratedKey<?> key = p.decorateKey(Integer.toHexString(i));
             assert read.isPresent(key.key,FBUtilities.toByteArray(i+2));
         }
-
-        DatabaseDescriptor.setFilterAccessMode( DiskAccessMode.standard );
 
     }
     
@@ -171,7 +176,7 @@ public class BloomFilterTest
     public void testBigInt() throws IOException {
         int size = 100 * 1000 * 1000;
         new File("/tmp/ram/filter2.db").delete();
-        bf = BloomFilter.create(size, FilterTest.spec.bucketsPerElement,"/tmp/ram/filter2.db");
+        bf = BloomFilter.create(size, FilterTest.spec.bucketsPerElement);
         FilterTest.testFalsePositives(bf,
                                       new KeyGenerator.IntGenerator(size),
                                       new KeyGenerator.IntGenerator(size, size * 2));
@@ -183,7 +188,7 @@ public class BloomFilterTest
     public void testBigRandom() throws IOException {
         int size = 100 * 1000 * 1000;
         new File("/tmp/ram/filter2.db").delete();
-        bf = BloomFilter.create(size, FilterTest.spec.bucketsPerElement,"/tmp/ram/filter2.db");
+        bf = BloomFilter.create(size, FilterTest.spec.bucketsPerElement);
         FilterTest.testFalsePositives(bf,
                                       new KeyGenerator.RandomStringGenerator(new Random().nextInt(), size),
                                       new KeyGenerator.RandomStringGenerator(new Random().nextInt(), size));
@@ -195,7 +200,7 @@ public class BloomFilterTest
     public void timeit() throws IOException {
         int size = 300 * FilterTest.ELEMENTS;
         for (int i = 0; i < 10; i++) {
-            bf = BloomFilter.create(size, FilterTest.spec.bucketsPerElement,"/tmp/ram/filter2.db");
+            bf = BloomFilter.create(size, FilterTest.spec.bucketsPerElement);
             FilterTest.testFalsePositives(bf,
                                           new KeyGenerator.RandomStringGenerator(new Random().nextInt(), size),
                                           new KeyGenerator.RandomStringGenerator(new Random().nextInt(), size));

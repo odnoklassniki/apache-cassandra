@@ -52,8 +52,8 @@
 
     <dependency org="net.java.dev.jna" name="jna" rev="3.2.7"/>
 
-    <!-- advancing to >1.1.16 it is neccesary to run extensive tests on offheap bloom filters -->
-    <dependency org="ru.odnoklassniki" name="one-nio" rev="1.1.16" conf="*->master,sources"/>
+    <!-- advancing to >1.1.17 it is neccesary to run on offheap bloom filters -->
+    <dependency org="ru.odnoklassniki" name="one-nio" rev="1.1.17" conf="*->master,sources"/>
 
     <!-- Transitive Dependencies -->
     <dependency org="logkit" name="logkit" rev="1.0.1" conf="*->default"/>

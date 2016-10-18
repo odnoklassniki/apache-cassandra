@@ -1,6 +1,7 @@
 package org.apache.cassandra.utils.obs;
 
 import java.io.Closeable;
+import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 
@@ -34,6 +35,6 @@ public interface IBitSet extends Closeable
     
     public void serialize(DataOutput out) throws IOException;
 
-    DataOutput newDataOutput();
-    
+    public void deserialize(DataInput out) throws IOException;
+
 }

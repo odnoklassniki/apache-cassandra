@@ -103,6 +103,11 @@ public class DatabaseDescriptor
         mmap_random,
         standard,
     }
+    
+    public static enum FilterAccessMode {
+        standard,
+        offheap
+    }
 
     public static final String random = "RANDOM";
     public static final String ophf = "OPHF";
@@ -201,7 +206,7 @@ public class DatabaseDescriptor
 
     private static DiskAccessMode diskAccessMode;
     private static DiskAccessMode indexAccessMode;
-    private static DiskAccessMode filterAccessMode;
+    private static FilterAccessMode filterAccessMode;
     private static boolean diskRandomHint = false;
 
     private static boolean snapshotBeforeCompaction;
@@ -419,14 +424,12 @@ public class DatabaseDescriptor
 
             String filterModeRaw = xmlUtils.getNodeValue( "/Storage/FilterAccessMode" );
             try {
-                filterAccessMode = filterModeRaw == null ? DiskAccessMode.standard : DiskAccessMode.valueOf( filterModeRaw );
-                if ( filterAccessMode != DiskAccessMode.standard && filterAccessMode != DiskAccessMode.mmap )
-                    throw new IllegalArgumentException();
+                filterAccessMode = filterModeRaw == null ? FilterAccessMode.standard : FilterAccessMode.valueOf( filterModeRaw );
 
                 logger.info( "FilterAccessMode is " + filterAccessMode + "" );
             } catch ( IllegalArgumentException e ) {
-                filterAccessMode = DiskAccessMode.standard;
-                throw new ConfigurationException( "FilterAccessMode must be either 'mmap' or 'standard'" );
+                filterAccessMode = FilterAccessMode.standard;
+                throw new ConfigurationException( "FilterAccessMode must be either 'offheap' or 'standard'" );
             }
 
             /* Authentication and authorization backend, implementing IAuthenticator */
@@ -2005,13 +2008,13 @@ public class DatabaseDescriptor
         return indexAccessMode;
     }
 
-    public static DiskAccessMode getFilterAccessMode()
+    public static FilterAccessMode getFilterAccessMode()
     {
         return filterAccessMode;
     }
     
     @VisibleForTesting
-    public static void setFilterAccessMode( DiskAccessMode filterAccessMode )
+    public static void setFilterAccessMode( FilterAccessMode filterAccessMode )
     {
         DatabaseDescriptor.filterAccessMode = filterAccessMode;
     }

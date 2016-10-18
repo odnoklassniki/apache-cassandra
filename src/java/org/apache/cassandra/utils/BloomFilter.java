@@ -30,10 +30,11 @@ import java.nio.ByteOrder;
 
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.DatabaseDescriptor.DiskAccessMode;
+import org.apache.cassandra.config.DatabaseDescriptor.FilterAccessMode;
 import org.apache.cassandra.io.ICompactSerializer2;
 import org.apache.cassandra.utils.obs.BitUtil;
 import org.apache.cassandra.utils.obs.IBitSet;
-import org.apache.cassandra.utils.obs.MappedFileBitSet;
+import org.apache.cassandra.utils.obs.OffheapIBitSet;
 import org.apache.cassandra.utils.obs.OpenBitSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,7 +48,6 @@ public class BloomFilter extends Filter implements Closeable
     private static final Logger logger = LoggerFactory.getLogger(BloomFilter.class);
     private static final int EXCESS = 20;
     static ICompactSerializer2<BloomFilter> serializer_ = new BloomFilterSerializer();
-    static BloomFilterWithElementCountSerializer serializerWithEC_ = new BloomFilterWithElementCountSerializer();
 
     public IBitSet bitset;
     
@@ -81,47 +81,30 @@ public class BloomFilter extends Filter implements Closeable
 
     public static BloomFilterWithElementCountSerializer serializerForSSTable()
     {
-        return serializerWithEC_ ;
+        return DatabaseDescriptor.getFilterAccessMode() == FilterAccessMode.standard ? new BloomFilterWithElementCountSerializer() : new OffheapBloomFilterSerializer() ;
     }
     
     @Override
     @VisibleForTesting
     ICompactSerializer2<BloomFilter> getSerializer()
     {
-        return serializerWithEC_ ;
+        return serializerForSSTable() ;
     }
 
-    public static BloomFilter open(String filename) throws IOException
+    public static BloomFilter open( String filename ) throws IOException
     {
         BloomFilter bf;
-        if ( DatabaseDescriptor.getFilterAccessMode()==DiskAccessMode.standard ) {
-            bf = openOnHeapBitSet( filename );
-        } else {
-            MappedFile mapped = new MappedFile( filename, 0, MappedFile.MAP_RO );
-            bf = new MappedFileBloomFilterSerializer( mapped ).deserialize( mapped.dataStream( ByteOrder.BIG_ENDIAN ) );
-        }
-
-        assert bf.getElementCount()>0;
-        return bf;
-    }
-
-    // temporary for cross check
-    @VisibleForTesting
-    public static BloomFilter openOnHeapBitSet( String filename ) throws FileNotFoundException, IOException
-    {
-        BloomFilter bf;
-        FileInputStream fileInputStream = new FileInputStream(filename);
-        DataInputStream stream = new DataInputStream(new BufferedInputStream(fileInputStream, 128*1024 ));
-        try
-        {
-            bf = serializerForSSTable().deserialize(stream);
-        }
-        finally
-        {
-            CLibrary.trySkipCache( CLibrary.getfd(fileInputStream.getFD()) ,0,0);
+        FileInputStream fileInputStream = new FileInputStream( filename );
+        DataInputStream stream = new DataInputStream( new BufferedInputStream( fileInputStream, 128 * 1024 ) );
+        try {
+            bf = serializerForSSTable().deserialize( stream );
+        } finally {
+            CLibrary.trySkipCache( CLibrary.getfd( fileInputStream.getFD() ), 0, 0 );
 
             stream.close();
         }
+
+        assert bf.getElementCount() > 0;
         return bf;
     }
 
@@ -156,45 +139,26 @@ public class BloomFilter extends Filter implements Closeable
     * 
      * @throws IOException 
     */
-    public static BloomFilter create( long numElements,int targetBucketsPerElem, String filename ) throws IOException
+    public static BloomFilter create( long numElements,int targetBucketsPerElem ) throws IOException
     {
-        assert filename != null;
         BloomCalculations.BloomSpecification spec = computeSpec( numElements, targetBucketsPerElem );
         long bits = numElements * spec.bucketsPerElement + EXCESS;
 
-        if ( DatabaseDescriptor.getFilterAccessMode() == DiskAccessMode.standard ) {
-            return new BloomFilter( spec.K, new OpenBitSet( bits ) );
-            
-        } else {
-            long words = BitUtil.bits2words( bits );
-            long headerSize = serializerWithEC_.headerSize( words );
-            long fileSize = serializerWithEC_.serializeSize( words );
-            
-            MappedFile mfile = new MappedFile( filename, fileSize, MappedFile.MAP_RW );
-            
-            return new BloomFilter( spec.K, new MappedFileBitSet( mfile, headerSize ) );
-        }
+        IBitSet bs = DatabaseDescriptor.getFilterAccessMode() == FilterAccessMode.standard ? new OpenBitSet( bits ) : new OffheapIBitSet( bits );
+
+        return new BloomFilter( spec.K, bs );
     }
     
-    public static BloomFilter create(long numElements, double maxFalsePosProbability, String filename) throws IOException
+    public static BloomFilter create(long numElements, double maxFalsePosProbability) throws IOException
     {
         assert maxFalsePosProbability <= 1.0 : "Invalid probability";
         int bucketsPerElement = BloomCalculations.maxBucketsPerElement(numElements);
         BloomCalculations.BloomSpecification spec = BloomCalculations.computeBloomSpec(bucketsPerElement, maxFalsePosProbability);
         long bits = numElements * spec.bucketsPerElement + EXCESS;
 
-        if ( DatabaseDescriptor.getFilterAccessMode() == DiskAccessMode.standard ) {
-            return new BloomFilter( spec.K, new OpenBitSet( bits ) );
-            
-        } else {
-            long words = BitUtil.bits2words( bits );
-            long headerSize = serializerWithEC_.headerSize( words );
-            long fileSize = serializerWithEC_.serializeSize( words );
-            
-            MappedFile mfile = new MappedFile( filename, fileSize, MappedFile.MAP_RW );
-            
-            return new BloomFilter( spec.K, new MappedFileBitSet( mfile, headerSize ) );
-        }
+        IBitSet bs = DatabaseDescriptor.getFilterAccessMode() == FilterAccessMode.standard ? new OpenBitSet( bits ) : new OffheapIBitSet( bits );
+
+        return new BloomFilter( spec.K, bs );
     }
 
     public long buckets()
@@ -207,7 +171,7 @@ public class BloomFilter extends Filter implements Closeable
     {
         IBitSet closing = bitset;
         // so trying to use closed bloom filter will lead to 100% false positives, which is ok, for some (rare) outstanding requests
-        // this is better then risk catching segfault for un-mapped bloom filters 
+        // this is better then risk catching segfault for freed offheap bloom filters 
         bitset = always.bitset; 
         closing.close();
     }

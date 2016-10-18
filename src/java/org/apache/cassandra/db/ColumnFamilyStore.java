@@ -203,7 +203,7 @@ public class ColumnFamilyStore implements ColumnFamilyStoreMBean
             catch (IOException ex)
             {
                 logger_.error("Corrupt file " + filename + "; skipped", ex);
-                continue;
+                throw ex;
             }
             sstables.add(sstable);
         }

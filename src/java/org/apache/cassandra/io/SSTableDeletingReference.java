@@ -36,6 +36,7 @@ import org.apache.log4j.Logger;
 import org.apache.cassandra.concurrent.NamedThreadFactory;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.DatabaseDescriptor.DiskAccessMode;
+import org.apache.cassandra.config.DatabaseDescriptor.FilterAccessMode;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.utils.BloomFilter;
 import org.apache.cassandra.utils.WrappedRunnable;
@@ -60,7 +61,7 @@ public class SSTableDeletingReference extends PhantomReference<SSTableReader>
         this.path = referent.path;
         this.size = referent.bytesOnDisk();
         
-        this.bf = DatabaseDescriptor.getFilterAccessMode() == DiskAccessMode.standard ? null : referent.bf;
+        this.bf = DatabaseDescriptor.getFilterAccessMode() == FilterAccessMode.standard ? null : referent.bf;
     }
 
     public void deleteOnCleanup()
