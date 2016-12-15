@@ -192,7 +192,7 @@ public class OdklDomainPartitioner extends OrderPreservingPartitioner
         float totalCount = 0;
         
         for (String table : DatabaseDescriptor.getNonSystemTables() ) {
-            AbstractReplicationStrategy strategy = StorageService.getReplicationStrategy(tm, table);
+            AbstractReplicationStrategy strategy = StorageService.instance.getReplicationStrategy(table);
             
             for (int domain=0;domain<256;domain++) {
                 ArrayList<InetAddress> endpoints = strategy.getNaturalEndpoints(toStringToken(domain, "1"), table);
